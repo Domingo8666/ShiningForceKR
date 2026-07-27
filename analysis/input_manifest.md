@@ -1,0 +1,49 @@
+# Input manifest
+
+Generated: 2026-07-28 00:30:23 +0900
+
+- 
+  - size: original/Shining Force Gaiden - Final Conflict (Japan).gg bytes
+  - sha256: 
+- 
+  - size: 524288 bytes
+  - sha256: 
+- 
+  - size: 4705256cc1a242aab7fea170369eb64723f796e27c6edfe0f93a674a8ba00f42 bytes
+  - sha256: 
+- 
+  - size: patch/Final_Conflict_Japan_to_Korean_v5.1.bps bytes
+  - sha256: 
+- 
+  - size: 1080753 bytes
+  - sha256: 
+- 
+  - size: 7f92221afc8dc4b13712776d7eeca3571b9896fd746cefbc44b5a5806501633b bytes
+  - sha256: 
+- 
+  - size: docs/korean_patch_coverage_report.txt bytes
+  - sha256: 
+- 
+  - size: 170535 bytes
+  - sha256: 
+- 
+  - size: 41ef51d277206bf06e7f4dd709ffe493146dd28bc9a0e4266bd647b74919a315 bytes
+  - sha256: 
+- 
+  - size: docs/korean_patch_rework_status.md bytes
+  - sha256: 
+- 
+  - size: 3753 bytes
+  - sha256: 
+- 
+  - size: 60c73e429ee4abf0ea568879be415705b5d47b825563748fe576dac2b83951db bytes
+  - sha256: 
+- 
+  - size: docs/korean_patch_rework_status-1.md bytes
+  - sha256: 
+- 
+  - size: 3753 bytes
+  - sha256: 
+- 
+  - size: 60c73e429ee4abf0ea568879be415705b5d47b825563748fe576dac2b83951db bytes
+  - sha256: 

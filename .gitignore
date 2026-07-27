@@ -1,0 +1,29 @@
+# ROM / patch outputs
+*.gg
+*.sms
+*.bin
+*.state
+*.state?
+*.sav
+
+# Video / images
+*.mp4
+*.mkv
+*.avi
+
+# Archives
+*.zip
+*.7z
+*.rar
+
+# Generated
+build/*
+backup/*
+logs/*.log
+__pycache__/
+*.pyc
+
+# Keep folders
+!build/.gitkeep
+!backup/.gitkeep
+!logs/.gitkeep

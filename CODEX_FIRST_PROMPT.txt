@@ -1,0 +1,18 @@
+이 프로젝트는 Sega Game Gear용 Shining Force Gaiden - Final Conflict 일본판의 한국어 패치 재작업 프로젝트다. 메가 CD판이 아니다.
+
+먼저 PROJECT_HANDOFF.md, README.md, docs/의 모든 파일을 읽고 현재 파일 구조를 검사해라.
+
+create-retro-game-kr-patch 스킬을 사용하되 ROM을 즉시 수정하지 말고 다음 순서로 진행해라.
+
+1. original/의 ROM과 patch/Final_Conflict_Japan_to_Korean_v5.1.bps 파일 존재 여부를 확인한다.
+2. 모든 입력 파일의 SHA-256과 크기를 analysis/input_manifest.md에 기록한다.
+3. BPS를 원본에 적용하는 재현 가능한 build 스크립트를 만든다.
+4. 적용된 v5.1 ROM과 원본 ROM의 바이너리 차이를 분석하고 analysis/v5_1_diff_map.md에 기록한다.
+5. docs/korean_patch_rework_status.md의 결론을 우선하며, 기존 테스트 패치를 최종 패치로 간주하지 않는다.
+6. 실제 Huffman 트리 벡터, 스크립트 lookup table, dictionary, compressed script bank를 찾는다.
+7. SFGDecoder와 일치하는 Python 디코더를 구현한다.
+8. `And so began Mishaela's new ambition...` 문장을 ROM에서 정상적으로 디코딩하기 전에는 한국어 전체 삽입이나 완성 선언을 하지 않는다.
+9. original/ 파일은 절대 수정하지 않고 모든 생성물은 build/에 둔다.
+10. 작업마다 로그와 Git 커밋을 남긴다.
+
+검은 깜빡임, 대사 잔상, 잘못된 한글 혼입, 역삼각형 표시 타이밍, 깨진 문자열, 부자연스러운 번역 문제는 별도의 issue 목록으로 정리하라.
