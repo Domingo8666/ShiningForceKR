@@ -1,0 +1,54 @@
+{
+  "artifact_kind": "sanitized-renderer-hook-observation",
+  "schema_version": 1,
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "status": "renderer-hook-not-observed",
+  "probe": {
+    "emulator": "Gearsystem",
+    "emulator_version": "3.9.14",
+    "system": "gamegear",
+    "frames_per_mapping": 1680,
+    "mappings_attempted": [
+      {
+        "call_site_file_offset": 16341,
+        "slot": 0,
+        "expected_bank": 0,
+        "logical_address": 16341
+      },
+      {
+        "call_site_file_offset": 16341,
+        "slot": 1,
+        "expected_bank": 0,
+        "logical_address": 32725
+      },
+      {
+        "call_site_file_offset": 16341,
+        "slot": 2,
+        "expected_bank": 0,
+        "logical_address": 49109
+      },
+      {
+        "call_site_file_offset": 262066,
+        "slot": 0,
+        "expected_bank": 15,
+        "logical_address": 16306
+      },
+      {
+        "call_site_file_offset": 262066,
+        "slot": 1,
+        "expected_bank": 15,
+        "logical_address": 32690
+      },
+      {
+        "call_site_file_offset": 262066,
+        "slot": 2,
+        "expected_bank": 15,
+        "logical_address": 49074
+      }
+    ]
+  },
+  "hit": null,
+  "renderer_hook_reached": false,
+  "translation_build_eligible": false,
+  "next_checkpoint": "extend-renderer-input-coverage"
+}
