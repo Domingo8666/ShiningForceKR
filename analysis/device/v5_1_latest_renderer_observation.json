@@ -1,6 +1,6 @@
 {
   "artifact_kind": "sanitized-text-engine-observation",
-  "schema_version": 4,
+  "schema_version": 5,
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "status": "text-decoder-observed",
   "probe": {
@@ -66,6 +66,7 @@
       "instruction_pc": 13318,
       "pc_after": 13319,
       "physical_pc_after": 13319,
+      "operand_kind": "hl-indirect",
       "classification": "source-region"
     },
     {
@@ -77,6 +78,7 @@
       "instruction_pc": 13318,
       "pc_after": 13319,
       "physical_pc_after": 13319,
+      "operand_kind": "hl-indirect",
       "classification": "source-region"
     },
     {
@@ -88,6 +90,7 @@
       "instruction_pc": 13318,
       "pc_after": 13319,
       "physical_pc_after": 13319,
+      "operand_kind": "hl-indirect",
       "classification": "source-region"
     },
     {
@@ -99,6 +102,7 @@
       "instruction_pc": 13318,
       "pc_after": 13319,
       "physical_pc_after": 13319,
+      "operand_kind": "hl-indirect",
       "classification": "source-region"
     },
     {
@@ -110,6 +114,7 @@
       "instruction_pc": 13318,
       "pc_after": 13319,
       "physical_pc_after": 13319,
+      "operand_kind": "hl-indirect",
       "classification": "source-region"
     },
     {
@@ -121,6 +126,7 @@
       "instruction_pc": 13318,
       "pc_after": 13319,
       "physical_pc_after": 13319,
+      "operand_kind": "hl-indirect",
       "classification": "source-region"
     },
     {
@@ -132,6 +138,7 @@
       "instruction_pc": 13318,
       "pc_after": 13319,
       "physical_pc_after": 13319,
+      "operand_kind": "hl-indirect",
       "classification": "source-region"
     },
     {
@@ -143,6 +150,7 @@
       "instruction_pc": 13318,
       "pc_after": 13319,
       "physical_pc_after": 13319,
+      "operand_kind": "hl-indirect",
       "classification": "source-region"
     },
     {
@@ -154,6 +162,7 @@
       "instruction_pc": 13368,
       "pc_after": 13372,
       "physical_pc_after": 13372,
+      "operand_kind": "absolute-word",
       "classification": "extension-other"
     },
     {
@@ -165,6 +174,7 @@
       "instruction_pc": 13373,
       "pc_after": 13374,
       "physical_pc_after": 13374,
+      "operand_kind": "hl-indirect",
       "classification": "korean-huffman-vector"
     },
     {
@@ -176,6 +186,7 @@
       "instruction_pc": 13419,
       "pc_after": 13420,
       "physical_pc_after": 13420,
+      "operand_kind": "hl-indirect",
       "classification": "korean-huffman-tree"
     },
     {
@@ -187,6 +198,7 @@
       "instruction_pc": 13443,
       "pc_after": 13444,
       "physical_pc_after": 13444,
+      "operand_kind": "hl-indirect",
       "classification": "korean-huffman-tree"
     },
     {
@@ -198,6 +210,7 @@
       "instruction_pc": 13443,
       "pc_after": 13444,
       "physical_pc_after": 13444,
+      "operand_kind": "hl-indirect",
       "classification": "korean-huffman-tree"
     },
     {
@@ -209,6 +222,7 @@
       "instruction_pc": 13464,
       "pc_after": 13465,
       "physical_pc_after": 13465,
+      "operand_kind": "de-indirect",
       "classification": "korean-huffman-tree"
     },
     {
@@ -220,6 +234,7 @@
       "instruction_pc": 16610,
       "pc_after": 16613,
       "physical_pc_after": 131301,
+      "operand_kind": "absolute-word",
       "classification": "extension-other"
     },
     {
@@ -231,6 +246,7 @@
       "instruction_pc": 13336,
       "pc_after": 13339,
       "physical_pc_after": 13339,
+      "operand_kind": "absolute-byte",
       "classification": "extension-other"
     },
     {
@@ -242,6 +258,7 @@
       "instruction_pc": 13342,
       "pc_after": 13345,
       "physical_pc_after": 13345,
+      "operand_kind": "absolute-word",
       "classification": "extension-other"
     },
     {
@@ -253,6 +270,7 @@
       "instruction_pc": 13350,
       "pc_after": 13353,
       "physical_pc_after": 13353,
+      "operand_kind": "absolute-byte",
       "classification": "extension-other"
     },
     {
@@ -264,6 +282,7 @@
       "instruction_pc": 13373,
       "pc_after": 13374,
       "physical_pc_after": 13374,
+      "operand_kind": "hl-indirect",
       "classification": "korean-huffman-vector"
     },
     {
@@ -275,6 +294,7 @@
       "instruction_pc": 13419,
       "pc_after": 13420,
       "physical_pc_after": 13420,
+      "operand_kind": "hl-indirect",
       "classification": "korean-huffman-tree"
     },
     {
@@ -286,6 +306,7 @@
       "instruction_pc": 13464,
       "pc_after": 13465,
       "physical_pc_after": 13465,
+      "operand_kind": "de-indirect",
       "classification": "korean-huffman-tree"
     },
     {
@@ -297,6 +318,7 @@
       "instruction_pc": 13373,
       "pc_after": 13374,
       "physical_pc_after": 13374,
+      "operand_kind": "hl-indirect",
       "classification": "korean-huffman-vector"
     },
     {
@@ -308,6 +330,7 @@
       "instruction_pc": 13419,
       "pc_after": 13420,
       "physical_pc_after": 13420,
+      "operand_kind": "hl-indirect",
       "classification": "korean-huffman-tree"
     },
     {
@@ -319,6 +342,7 @@
       "instruction_pc": 13443,
       "pc_after": 13444,
       "physical_pc_after": 13444,
+      "operand_kind": "hl-indirect",
       "classification": "korean-huffman-tree"
     },
     {
@@ -330,6 +354,7 @@
       "instruction_pc": 13443,
       "pc_after": 13444,
       "physical_pc_after": 13444,
+      "operand_kind": "hl-indirect",
       "classification": "korean-huffman-tree"
     },
     {
@@ -341,6 +366,7 @@
       "instruction_pc": 13443,
       "pc_after": 13444,
       "physical_pc_after": 13444,
+      "operand_kind": "hl-indirect",
       "classification": "korean-huffman-tree"
     },
     {
@@ -352,6 +378,7 @@
       "instruction_pc": 13443,
       "pc_after": 13444,
       "physical_pc_after": 13444,
+      "operand_kind": "hl-indirect",
       "classification": "korean-huffman-tree"
     },
     {
@@ -363,6 +390,7 @@
       "instruction_pc": 13443,
       "pc_after": 13444,
       "physical_pc_after": 13444,
+      "operand_kind": "hl-indirect",
       "classification": "korean-huffman-tree"
     },
     {
@@ -374,6 +402,7 @@
       "instruction_pc": 13464,
       "pc_after": 13465,
       "physical_pc_after": 13465,
+      "operand_kind": "de-indirect",
       "classification": "korean-huffman-tree"
     }
   ],
