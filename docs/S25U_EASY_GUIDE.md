@@ -7,8 +7,8 @@
 
 ~~~sh
 cd ~/storage/shared/ShiningForceKR
-git pull --ff-only
 bash tools/manage_s25u_autopilot.sh stop
+git pull --ff-only
 bash tools/manage_s25u_autopilot.sh install --interval 60
 ~~~
 
