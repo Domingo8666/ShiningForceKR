@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from tools.run_s25u_runtime_probe import (
+    INPUT_SCHEDULE,
     _call_stack_depth,
     _frames_per_slot,
     _last_candidate_access,
@@ -16,6 +17,7 @@ from tools.run_s25u_runtime_probe import (
     _target_candidates,
     _tool_payload,
     _step_frames_and_wait,
+    _step_instruction_and_wait,
     _watch_ranges,
 )
 
@@ -54,6 +56,47 @@ class _FakeProbeClient:
         return {}
 
 
+class _FakeInstructionFetchClient:
+    def __init__(self) -> None:
+        self.phase = 0
+        self.calls: list[str] = []
+
+    def call(
+        self, name: str, arguments: dict[str, object] | None = None
+    ) -> dict[str, object]:
+        self.calls.append(name)
+        if name == "debug_step_into":
+            self.phase = 1
+            return {}
+        if name == "debug_get_status":
+            return {
+                "paused": True,
+                "at_breakpoint": self.phase != 1 or self.calls[-2] != "debug_step_into",
+                "pc": "031C" if self.phase else "0B7B",
+            }
+        if name == "get_z80_status":
+            return {
+                "physical_PC": "031C" if self.phase else "0B7B",
+                "bank": "00",
+                "AF": "0044",
+                "BC": "0F83",
+                "DE": "8B7D",
+                "HL": "8B7C",
+                "IX": "FFFF",
+                "IY": "FFFF",
+                "SP": "DEFF",
+            }
+        if name == "list_memory_areas":
+            return {"areas": [{"name": "RAM", "id": 1, "size": 0x2000}]}
+        if name == "read_memory":
+            return {"data": "08 00 00 00"}
+        if name == "get_trace_log":
+            return {"count": 1, "lines": []}
+        if name == "get_call_stack":
+            return {"frames": []}
+        return {}
+
+
 class S25URuntimeProbeTests(unittest.TestCase):
     def test_frame_step_waits_for_paused_completion_barrier(self) -> None:
         class FakeClient:
@@ -82,6 +125,33 @@ class S25URuntimeProbeTests(unittest.TestCase):
         self.assertTrue(status["paused"])
         self.assertEqual(client.calls[0], "debug_step_frame")
         self.assertEqual(client.calls.count("debug_get_status"), 2)
+
+    def test_instruction_step_waits_for_paused_completion_barrier(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.statuses = iter(({"paused": False}, {"paused": True}))
+                self.calls: list[str] = []
+
+            def call(
+                self,
+                name: str,
+                arguments: dict[str, object] | None = None,
+            ) -> dict[str, object]:
+                self.calls.append(name)
+                if name == "debug_get_status":
+                    return next(self.statuses)
+                return {}
+
+        client = FakeClient()
+        with patch("tools.run_s25u_runtime_probe.time.sleep"):
+            status = _step_instruction_and_wait(client)
+        self.assertTrue(status["paused"])
+        self.assertEqual(client.calls[0], "debug_step_into")
+        self.assertEqual(client.calls.count("debug_get_status"), 2)
+
+    def test_runtime_probe_follows_confirmed_story_route(self) -> None:
+        self.assertEqual(INPUT_SCHEDULE[:2], ((180, None), (240, "start")))
+        self.assertEqual(INPUT_SCHEDULE[2:], ((180, "2"),) * 16)
 
     def test_watch_ranges_require_trace_schema_five(self) -> None:
         plan = {
@@ -242,6 +312,24 @@ class S25URuntimeProbeTests(unittest.TestCase):
         self.assertTrue(_instruction_fetch_like(hit, mapping))
         hit["physical_pc_after"] = 0x031C
         self.assertFalse(_instruction_fetch_like(hit, mapping))
+
+    def test_probe_steps_past_instruction_fetch_and_keeps_searching(self) -> None:
+        mapping = {
+            "slot": 0,
+            "expected_bank": 0,
+            "logical_start": 0x0B7A,
+            "logical_end": 0x0C2E,
+        }
+        client = _FakeInstructionFetchClient()
+        hit, evidence, rejected = _probe_slot(client, mapping)
+        self.assertIsNotNone(hit)
+        self.assertIsNotNone(evidence)
+        assert hit is not None
+        self.assertEqual(hit["physical_pc_after"], 0x031C)
+        self.assertEqual(rejected[0]["rejection_kind"], "instruction-fetch-like")
+        self.assertEqual(client.calls.count("debug_step_into"), 1)
+        self.assertEqual(client.calls.count("set_breakpoint_range"), 2)
+        self.assertEqual(client.calls.count("remove_breakpoint"), 2)
 
     def test_call_stack_depth_and_frame_budget(self) -> None:
         self.assertEqual(_call_stack_depth({"frames": [{}, {}, {}]}), 3)

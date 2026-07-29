@@ -65,6 +65,7 @@ REQUIRED_TOOLS = {
     "debug_pause",
     "debug_reset",
     "debug_step_frame",
+    "debug_step_into",
     "get_call_stack",
     "get_media_info",
     "get_trace_log",
@@ -78,19 +79,8 @@ REQUIRED_TOOLS = {
 }
 INPUT_SCHEDULE: tuple[tuple[int, str | None], ...] = (
     (180, None),
-    (60, "start"),
-    (120, "1"),
-    (120, "1"),
-    (120, "1"),
-    (120, "1"),
-    (120, "1"),
-    (120, "1"),
-    (120, "1"),
-    (120, "1"),
-    (120, "1"),
-    (120, "1"),
-    (120, "1"),
-    (120, "1"),
+    (240, "start"),
+    *((180, "2"),) * 16,
 )
 MAX_REJECTED_BANK_HITS_PER_SLOT = 64
 MAX_RUNTIME_CANDIDATE_GROUPS = 2
@@ -281,6 +271,20 @@ def _step_frames_and_wait(
             raise RuntimeError(
                 f"Gearsystem frame step did not finish within {frames} frames"
             )
+        time.sleep(0.02)
+
+
+def _step_instruction_and_wait(client: McpStdioClient) -> dict[str, object]:
+    """Execute exactly one Z80 instruction and wait for Gearsystem to stop."""
+
+    client.call("debug_step_into")
+    deadline = time.monotonic() + 5.0
+    while True:
+        status = client.call("debug_get_status")
+        if status.get("paused") is True:
+            return status
+        if time.monotonic() >= deadline:
+            raise RuntimeError("Gearsystem instruction step did not finish")
         time.sleep(0.02)
 
 
@@ -846,7 +850,29 @@ def _probe_slot(
                         rejected_bank_hits.append(
                             _rejected_instruction_fetch_hit(hit, mapping)
                         )
-                        return None, None, rejected_bank_hits
+                        if len(rejected_bank_hits) >= max_rejected_bank_hits:
+                            return None, None, rejected_bank_hits
+                        client.call(
+                            "remove_breakpoint",
+                            {
+                                "address": start,
+                                "end_address": end,
+                                "memory_area": "rom_ram",
+                            },
+                        )
+                        _step_instruction_and_wait(client)
+                        client.call(
+                            "set_breakpoint_range",
+                            {
+                                "start_address": start,
+                                "end_address": end,
+                                "memory_area": "rom_ram",
+                                "execute": False,
+                                "read": True,
+                                "write": False,
+                            },
+                        )
+                        continue
                     return hit, evidence, rejected_bank_hits
                 rejected_bank_hits.append(_rejected_bank_hit(hit, mapping))
                 if len(rejected_bank_hits) >= max_rejected_bank_hits:
