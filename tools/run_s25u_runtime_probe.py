@@ -1152,17 +1152,14 @@ def main() -> int:
             raise RuntimeError("Gearsystem did not load the expected Game Gear ROM")
         emulator_version = str(media.get("emulator_version", "unknown"))
         runtime_stage = "trace-enable"
+        # A full CPU trace formats every Z80 instruction. That makes a long
+        # breakpoint route prohibitively slow in the S25U proot environment.
+        # First locate a mapper-correct, non-executing range read without CPU
+        # trace; a later bounded replay can trace only the confirmed window.
         client.call(
             "set_trace_log",
             {
-                "enabled": True,
-                "cpu_irq": False,
-                "vdp_write": False,
-                "vdp_status": False,
-                "psg": False,
-                "ym2413": False,
-                "io_port": False,
-                "bank_switch": True,
+                "enabled": False,
             },
         )
         for group in candidate_groups:
@@ -1204,7 +1201,12 @@ def main() -> int:
                             "evidence": None,
                             "events_seen": 0,
                         }
-                        continue
+                        # The range breakpoint plus mapper match and execution
+                        # exclusion are valid coarse read evidence. Preserve
+                        # that hit and stop this expensive route; exact access
+                        # recovery belongs to a short traced replay.
+                        safe_hit = hit
+                        break
                     else:
                         _, _, logical_access = found
                         physical_table_byte = (

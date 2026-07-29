@@ -163,6 +163,17 @@ class S25URuntimeProbeTests(unittest.TestCase):
         self.assertEqual(INPUT_SCHEDULE[:2], ((180, None), (240, "start")))
         self.assertEqual(INPUT_SCHEDULE[2:], ((180, "2"),) * 16)
 
+    def test_long_route_does_not_enable_full_cpu_trace(self) -> None:
+        source = __import__("inspect").getsource(
+            __import__(
+                "tools.run_s25u_runtime_probe",
+                fromlist=["main"],
+            ).main
+        )
+        self.assertIn('"set_trace_log"', source)
+        self.assertIn('"enabled": False', source)
+        self.assertNotIn('"enabled": True', source)
+
     def test_runtime_failure_receipt_is_path_free_and_method_scoped(self) -> None:
         class FakeClient:
             last_request_method = "debug_step_frame"
