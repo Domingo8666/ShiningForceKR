@@ -4,16 +4,18 @@ import unittest
 from unittest.mock import patch
 
 from tools.run_s25u_renderer_probe import (
+    _classify_decoder_read,
+    _decoder_mappings,
     _frame_budget,
+    _last_rom_read,
+    _probe_hit_matches,
     _probe_mappings,
-    _renderer_hit_matches,
-    _renderer_mappings,
 )
 
 
 class S25URendererProbeTests(unittest.TestCase):
     def test_idle_attract_route_uses_one_reset_and_all_breakpoints(self) -> None:
-        mappings = _renderer_mappings()
+        mappings = _decoder_mappings()
 
         class FakeClient:
             def __init__(self) -> None:
@@ -33,7 +35,7 @@ class S25URendererProbeTests(unittest.TestCase):
         expected = mappings[-1]
         state = {
             "pc_after": expected["logical_address"],
-            "physical_pc_after": expected["call_site_file_offset"],
+            "physical_pc_after": expected["probe_file_offset"],
             "slot0_bank": 0,
             "slot1_bank": 1,
             "slot2_bank": expected["expected_bank"],
@@ -44,7 +46,7 @@ class S25URendererProbeTests(unittest.TestCase):
         ):
             hit, evidence, rejected = _probe_mappings(client, mappings)
 
-        self.assertEqual(hit["call_site_file_offset"], 0x3FFB2)
+        self.assertEqual(hit["probe_file_offset"], 0x3411)
         self.assertEqual(evidence, {"trace": "local-only"})
         self.assertEqual(rejected, [])
         self.assertEqual(
@@ -53,57 +55,85 @@ class S25URendererProbeTests(unittest.TestCase):
         )
         self.assertEqual(
             [name for name, _ in client.calls].count("set_breakpoint_range"),
-            6,
+            3,
         )
         self.assertEqual(
             [name for name, _ in client.calls].count("remove_breakpoint"),
-            6,
+            3,
         )
         self.assertNotIn("controller_button", [name for name, _ in client.calls])
         self.assertEqual(_frame_budget(), 12_000)
 
-    def test_verified_call_sites_expand_to_six_mapper_hypotheses(self) -> None:
-        mappings = _renderer_mappings()
-        self.assertEqual(len(mappings), 6)
+    def test_decoder_entry_expands_to_three_mapper_hypotheses(self) -> None:
+        mappings = _decoder_mappings()
+        self.assertEqual(len(mappings), 3)
         self.assertEqual(
-            {item["call_site_file_offset"] for item in mappings},
-            {0x3FD5, 0x3FFB2},
+            {item["probe_file_offset"] for item in mappings},
+            {0x3411},
         )
         self.assertEqual(
             [
                 item
                 for item in mappings
-                if item["call_site_file_offset"] == 0x3FFB2
-                and item["slot"] == 2
+                if item["slot"] == 2
             ][0],
             {
-                "call_site_file_offset": 0x3FFB2,
+                "probe_file_offset": 0x3411,
                 "slot": 2,
-                "expected_bank": 0x0F,
-                "logical_address": 0xBFB2,
+                "expected_bank": 0,
+                "logical_address": 0xB411,
             },
         )
 
     def test_execute_hit_requires_logical_physical_and_mapper_match(self) -> None:
         mapping = {
-            "call_site_file_offset": 0x3FFB2,
+            "probe_file_offset": 0x3411,
             "slot": 2,
-            "expected_bank": 0x0F,
-            "logical_address": 0xBFB2,
+            "expected_bank": 0,
+            "logical_address": 0xB411,
         }
         state = {
-            "pc_after": 0xBFB2,
-            "physical_pc_after": 0x3FFB2,
+            "pc_after": 0xB411,
+            "physical_pc_after": 0x3411,
             "slot0_bank": 0,
             "slot1_bank": 1,
-            "slot2_bank": 0x0F,
+            "slot2_bank": 0,
         }
-        self.assertTrue(_renderer_hit_matches(state, mapping))
+        self.assertTrue(_probe_hit_matches(state, mapping))
         state["slot2_bank"] = 0x10
-        self.assertFalse(_renderer_hit_matches(state, mapping))
-        state["slot2_bank"] = 0x0F
+        self.assertFalse(_probe_hit_matches(state, mapping))
+        state["slot2_bank"] = 0
         state["physical_pc_after"] = 0x43FB2
-        self.assertFalse(_renderer_hit_matches(state, mapping))
+        self.assertFalse(_probe_hit_matches(state, mapping))
+
+    def test_last_rom_read_uses_live_mapper_bank(self) -> None:
+        state = {
+            "pc_after": 0x3421,
+            "physical_pc_after": 0x3421,
+            "slot0_bank": 0,
+            "slot1_bank": 0x20,
+            "slot2_bank": 2,
+        }
+        evidence = {
+            "z80": {"IX": "0000", "IY": "0000"},
+            "trace": {
+                "lines": [
+                    "00:3420 A:00 BC:0000 DE:0000 HL:4100 SP:DFF0  LD A,(HL)  7E"
+                ]
+            },
+        }
+        sample = _last_rom_read(state, evidence, 0x17C000)
+        self.assertIsNotNone(sample)
+        assert sample is not None
+        self.assertEqual(sample["physical_file_offset"], 0x80100)
+        self.assertEqual(sample["classification"], "korean-huffman-vector")
+
+    def test_decoder_read_classification_distinguishes_runtime_layers(self) -> None:
+        self.assertEqual(
+            _classify_decoder_read(0x80300),
+            "korean-huffman-tree",
+        )
+        self.assertEqual(_classify_decoder_read(0x10000), "source-region")
 
 
 if __name__ == "__main__":

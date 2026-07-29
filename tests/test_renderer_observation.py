@@ -16,16 +16,16 @@ from tools.v5_1_renderer_observation import (
 def mappings() -> list[dict[str, int]]:
     return [
         {
-            "call_site_file_offset": 0x3FD5,
+            "probe_file_offset": 0x3411,
             "slot": 0,
             "expected_bank": 0,
-            "logical_address": 0x3FD5,
+            "logical_address": 0x3411,
         },
         {
-            "call_site_file_offset": 0x3FD5,
+            "probe_file_offset": 0x3411,
             "slot": 1,
             "expected_bank": 0,
-            "logical_address": 0x7FD5,
+            "logical_address": 0x7411,
         },
     ]
 
@@ -33,8 +33,8 @@ def mappings() -> list[dict[str, int]]:
 def hit() -> dict[str, object]:
     return {
         **mappings()[0],
-        "pc_after": 0x3FD5,
-        "physical_pc_after": 0x3FD5,
+        "pc_after": 0x3411,
+        "physical_pc_after": 0x3411,
         "executing_bank": 0,
         "mapper_control": 0,
         "slot0_bank": 0,
@@ -54,18 +54,36 @@ def hit() -> dict[str, object]:
     }
 
 
+def decoder_reads() -> list[dict[str, object]]:
+    return [
+        {
+            "slot": 1,
+            "logical_access": 0x4100,
+            "physical_file_offset": 0x80100,
+            "mapped_bank": 0x20,
+            "instruction_bank": 0,
+            "instruction_pc": 0x3420,
+            "pc_after": 0x3421,
+            "physical_pc_after": 0x3421,
+            "classification": "korean-huffman-vector",
+        }
+    ]
+
+
 class RendererObservationTests(unittest.TestCase):
-    def test_renderer_hit_contains_only_safe_fixed_fields(self) -> None:
+    def test_decoder_hit_contains_only_safe_fixed_fields(self) -> None:
         observation = build_renderer_observation(
             target_sha256="a" * 64,
             emulator_version="3.9.14",
             frame_budget=12_000,
             mappings_attempted=mappings(),
             hit=hit(),
+            decoder_reads=decoder_reads(),
         )
         validate_renderer_observation(observation)
         encoded = json.dumps(observation)
-        self.assertTrue(observation["renderer_hook_reached"])
+        self.assertTrue(observation["text_decoder_reached"])
+        self.assertFalse(observation["renderer_hook_reached"])
         self.assertFalse(observation["translation_build_eligible"])
         self.assertNotIn("trace_lines", encoded)
         self.assertNotIn("decoded_text", encoded)
@@ -78,10 +96,11 @@ class RendererObservationTests(unittest.TestCase):
             frame_budget=12_000,
             mappings_attempted=mappings(),
             hit=None,
+            decoder_reads=[],
         )
         self.assertEqual(
             observation["status"],
-            "renderer-hook-not-observed",
+            "text-decoder-not-observed",
         )
         validate_renderer_observation(observation)
 
@@ -92,6 +111,7 @@ class RendererObservationTests(unittest.TestCase):
             frame_budget=12_000,
             mappings_attempted=[],
             hit=None,
+            decoder_reads=[],
         )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

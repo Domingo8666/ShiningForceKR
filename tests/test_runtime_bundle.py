@@ -126,6 +126,7 @@ class RuntimeBundleTests(unittest.TestCase):
             frame_budget=12_000,
             mappings_attempted=[],
             hit=None,
+            decoder_reads=[],
         )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

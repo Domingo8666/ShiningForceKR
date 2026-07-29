@@ -24,7 +24,8 @@
 | SFKR-016 | 슬롯 2의 같은 논리 주소를 다른 매퍼 뱅크에서 읽은 히트가 물리 뱅크 0 조회표 증거로 잘못 승격 | fixed-static | 논리 범위와 슬롯 매퍼 뱅크가 모두 일치하는 히트만 채택하고 불일치 히트 뒤 탐색을 계속한 다음 S25U 재실행 |
 | SFKR-017 | 최상위 물리 뱅크 0 조회표 후보가 스크립트 입력 구간에서 실제로 읽히지 않음 | investigating | 직전 무히트 범위를 자동 제외하고 bounded decode 가능한 다음 2개 3바이트 후보군을 같은 S25U 실행에서 순차 추적 |
 | SFKR-018 | 정적 상위 3바이트 조회표 후보군 세 곳 모두 입력 구간에서 실제 읽기 0회 | investigating | 추정 조회표 확대를 중단하고 검증된 v5.1 한글 렌더러 호출 좌표 0x003FD5·0x03FFB2의 execute hit와 mapper bank를 역추적 |
-| SFKR-019 | 렌더러 추적 자동화가 콜드 부팅 180프레임 뒤 Start와 1번 버튼을 눌러 무입력 도입 장면을 건너뜀 | fixed-static | 여섯 execute breakpoint를 한 콜드 부팅에 동시에 설치하고 12,000프레임 동안 입력 없는 attract intro를 S25U에서 재추적 |
+| SFKR-019 | 렌더러 추적 자동화가 콜드 부팅 180프레임 뒤 Start와 1번 버튼을 눌러 무입력 도입 장면을 건너뜀 | fixed-emulator | 여섯 execute breakpoint를 한 콜드 부팅에 동시에 설치하고 12,000프레임 무입력 attract intro를 S25U에서 재추적 완료 |
+| SFKR-020 | 무입력 attract intro에서도 0x003FD5·0x03FFB2의 0x5F 전용 한국어 페이지 렌더러 호출이 0회 | fixed-static | 전용 호출보다 앞선 공용 텍스트 디코더 0x003411을 추적하고, 히트 직후 slot 1·2 ROM 데이터 읽기의 논리 주소·매퍼 뱅크·물리 좌표를 자동 수집 |
 
 ## 테스트 원칙
 

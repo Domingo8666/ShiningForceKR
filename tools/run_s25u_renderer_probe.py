@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trace verified v5.1 Korean renderer call sites on S25U."""
+"""Trace the v5.1 text decoder and its ROM reads on S25U."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ try:
         _default_command,
     )
     from .v5_1_consumer import verify_target_identity
+    from .v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
     from .v5_1_renderer_observation import (
         build_renderer_observation,
         write_renderer_observation,
@@ -32,6 +33,7 @@ except ImportError:  # direct script execution
         _default_command,
     )
     from v5_1_consumer import verify_target_identity
+    from v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
     from v5_1_renderer_observation import (
         build_renderer_observation,
         write_renderer_observation,
@@ -43,26 +45,28 @@ LOCAL_REPORT = Path("reports/local/v5_1_renderer_probe.json")
 CONSUMER_RESOLUTION = Path(
     "analysis/device/v5_1_latest_consumer_resolution.json"
 )
-RENDERER_CALL_SITES = (0x003FD5, 0x03FFB2)
+TEXT_DECODER_ENTRY = 0x003411
 IDLE_FRAME_CHUNKS = (300,) * 40
+ROM_READ_RANGES = ((0x4000, 0x7FFF), (0x8000, 0xBFFF))
+MAX_DECODER_READ_HITS = 96
+MAX_DECODER_READ_SAMPLES = 64
 
 
 def _frame_budget() -> int:
     return sum(IDLE_FRAME_CHUNKS)
 
 
-def _renderer_mappings() -> list[dict[str, int]]:
+def _decoder_mappings() -> list[dict[str, int]]:
     output: list[dict[str, int]] = []
-    for file_offset in RENDERER_CALL_SITES:
-        for item in logical_mapping_hypotheses(file_offset, 1):
-            output.append(
-                {
-                    "call_site_file_offset": file_offset,
-                    "slot": int(item["slot"]),
-                    "expected_bank": int(item["bank"]),
-                    "logical_address": int(item["logical_start"]),
-                }
-            )
+    for item in logical_mapping_hypotheses(TEXT_DECODER_ENTRY, 1):
+        output.append(
+            {
+                "probe_file_offset": TEXT_DECODER_ENTRY,
+                "slot": int(item["slot"]),
+                "expected_bank": int(item["bank"]),
+                "logical_address": int(item["logical_start"]),
+            }
+        )
     return output
 
 
@@ -73,7 +77,7 @@ def _mapped_bank(
     return int(state[f"slot{int(mapping['slot'])}_bank"])
 
 
-def _renderer_hit_matches(
+def _probe_hit_matches(
     state: dict[str, object],
     mapping: dict[str, int],
 ) -> bool:
@@ -81,7 +85,7 @@ def _renderer_hit_matches(
         _mapped_bank(state, mapping) == int(mapping["expected_bank"])
         and int(state["pc_after"]) == int(mapping["logical_address"])
         and int(state["physical_pc_after"])
-        == int(mapping["call_site_file_offset"])
+        == int(mapping["probe_file_offset"])
     )
 
 
@@ -121,7 +125,7 @@ def _probe_mappings(
                     (
                         mapping
                         for mapping in mappings
-                        if _renderer_hit_matches(state, mapping)
+                        if _probe_hit_matches(state, mapping)
                     ),
                     None,
                 )
@@ -154,6 +158,128 @@ def _probe_mappings(
     return None, None, rejected
 
 
+def _classify_decoder_read(physical_file_offset: int) -> str:
+    if 0x80100 <= physical_file_offset < 0x80300:
+        return "korean-huffman-vector"
+    if 0x80300 <= physical_file_offset < 0x808D3:
+        return "korean-huffman-tree"
+    if 0x87000 <= physical_file_offset < 0x8730B:
+        return "korean-font-runtime"
+    if physical_file_offset < 0x80000:
+        return "source-region"
+    return "extension-other"
+
+
+def _last_rom_read(
+    state: dict[str, object],
+    evidence: dict[str, object],
+    rom_size: int,
+) -> dict[str, object] | None:
+    trace = evidence.get("trace")
+    z80 = evidence.get("z80")
+    if not isinstance(trace, dict) or not isinstance(z80, dict):
+        return None
+    lines = trace.get("lines")
+    if not isinstance(lines, list):
+        return None
+    for line in reversed(lines):
+        if not isinstance(line, str):
+            continue
+        parsed = _parse_trace_line(line)
+        if parsed is None:
+            continue
+        registers = parsed["registers"]
+        if not isinstance(registers, dict):
+            continue
+        for name in ("IX", "IY"):
+            value = z80.get(name)
+            if isinstance(value, str):
+                registers[name.lower()] = int(value, 16)
+        for logical_access in _read_addresses(parsed["opcodes"], registers):
+            if not 0x4000 <= logical_access < 0xC000:
+                continue
+            slot = logical_access // 0x4000
+            mapped_bank = int(state[f"slot{slot}_bank"])
+            physical = mapped_bank * 0x4000 + (logical_access & 0x3FFF)
+            if physical >= rom_size:
+                continue
+            return {
+                "slot": slot,
+                "logical_access": logical_access,
+                "physical_file_offset": physical,
+                "mapped_bank": mapped_bank,
+                "instruction_bank": int(parsed["bank"]),
+                "instruction_pc": int(parsed["pc"]),
+                "pc_after": int(state["pc_after"]),
+                "physical_pc_after": int(state["physical_pc_after"]),
+                "classification": _classify_decoder_read(physical),
+            }
+    return None
+
+
+def _capture_decoder_reads(
+    client: McpStdioClient,
+    rom_size: int,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    ranges = [(f"{start:04X}", f"{end:04X}") for start, end in ROM_READ_RANGES]
+    for start, end in ranges:
+        client.call(
+            "set_breakpoint_range",
+            {
+                "start_address": start,
+                "end_address": end,
+                "memory_area": "rom_ram",
+                "execute": False,
+                "read": True,
+                "write": False,
+            },
+        )
+    samples: list[dict[str, object]] = []
+    local_events: list[dict[str, object]] = []
+    seen: set[tuple[int, int, int]] = set()
+    try:
+        for _ in range(MAX_DECODER_READ_HITS):
+            client.call("debug_step_frame", {"frames": 1})
+            status = client.call("debug_get_status")
+            if status.get("at_breakpoint") is not True:
+                break
+            state, evidence = _capture_state(client)
+            sample = _last_rom_read(state, evidence, rom_size)
+            if sample is None:
+                continue
+            key = (
+                int(sample["physical_file_offset"]),
+                int(sample["instruction_bank"]),
+                int(sample["instruction_pc"]),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            samples.append(sample)
+            local_events.append(
+                {
+                    "sample": sample,
+                    "evidence": evidence,
+                }
+            )
+            if len(samples) >= MAX_DECODER_READ_SAMPLES:
+                break
+    finally:
+        for start, end in ranges:
+            try:
+                client.call(
+                    "remove_breakpoint",
+                    {
+                        "address": start,
+                        "end_address": end,
+                        "memory_area": "rom_ram",
+                    },
+                )
+            except RuntimeError:
+                pass
+    return samples, local_events
+
+
 def _consumer_already_confirmed(root: Path) -> bool:
     path = root / CONSUMER_RESOLUTION
     try:
@@ -184,13 +310,14 @@ def main() -> int:
     rom = rom_path.read_bytes()
     verify_target_identity(rom)
     target_sha256 = sha256_file(rom_path)
-    mappings = _renderer_mappings()
+    mappings = _decoder_mappings()
     safe_hit: dict[str, object] | None = None
+    decoder_reads: list[dict[str, object]] = []
     emulator_version = "unknown"
     local_result: dict[str, object] = {
         "target_sha256": target_sha256,
         "rom": str(rom_path),
-        "call_sites": list(RENDERER_CALL_SITES),
+        "decoder_entry": TEXT_DECODER_ENTRY,
         "attempts": [],
     }
 
@@ -225,6 +352,12 @@ def main() -> int:
         )
         hit, evidence, rejected = _probe_mappings(client, mappings)
         safe_hit = hit
+        local_read_events: list[dict[str, object]] = []
+        if safe_hit is not None:
+            decoder_reads, local_read_events = _capture_decoder_reads(
+                client,
+                len(rom),
+            )
         local_result["attempts"].append(
             {
                 "route": "cold-boot-idle-attract-introduction",
@@ -233,6 +366,7 @@ def main() -> int:
                 "hit": hit,
                 "evidence": evidence,
                 "rejected_hits": rejected,
+                "decoder_read_events": local_read_events,
             }
         )
     finally:
@@ -251,14 +385,16 @@ def main() -> int:
         frame_budget=_frame_budget(),
         mappings_attempted=mappings,
         hit=safe_hit,
+        decoder_reads=decoder_reads,
     )
     safe_path = write_renderer_observation(root, observation)
     if safe_hit is None:
-        print("SFKR renderer hook was not reached during the idle attract intro.")
+        print("SFKR text decoder was not reached during the idle attract intro.")
     else:
         print(
-            "SFKR renderer hook reached at "
-            f"physical 0x{safe_hit['physical_pc_after']:06X}."
+            "SFKR text decoder reached at "
+            f"physical 0x{safe_hit['physical_pc_after']:06X}; "
+            f"captured {len(decoder_reads)} unique ROM reads."
         )
     print(f"Local renderer evidence: {local_path}")
     print(f"Safe renderer observation: {safe_path}")

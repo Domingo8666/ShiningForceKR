@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate and write a ROM-free Korean renderer-hook observation."""
+"""Validate and write a ROM-free Korean text-engine observation."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import json
 from pathlib import Path
 import re
 
-ARTIFACT_KIND = "sanitized-renderer-hook-observation"
-SCHEMA_VERSION = 2
+ARTIFACT_KIND = "sanitized-text-engine-observation"
+SCHEMA_VERSION = 3
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_renderer_observation.json"
 )
@@ -20,7 +20,9 @@ TOP_LEVEL_KEYS = {
     "status",
     "probe",
     "hit",
+    "decoder_reads",
     "renderer_hook_reached",
+    "text_decoder_reached",
     "translation_build_eligible",
     "next_checkpoint",
 }
@@ -28,11 +30,13 @@ PROBE_KEYS = {
     "emulator",
     "emulator_version",
     "system",
+    "route",
+    "anchor_kind",
     "frame_budget",
     "mappings_attempted",
 }
 MAPPING_KEYS = {
-    "call_site_file_offset",
+    "probe_file_offset",
     "slot",
     "expected_bank",
     "logical_address",
@@ -48,6 +52,17 @@ HIT_KEYS = MAPPING_KEYS | {
     "registers",
     "trace_entries",
     "call_stack_depth",
+}
+DECODER_READ_KEYS = {
+    "slot",
+    "logical_access",
+    "physical_file_offset",
+    "mapped_bank",
+    "instruction_bank",
+    "instruction_pc",
+    "pc_after",
+    "physical_pc_after",
+    "classification",
 }
 REGISTER_KEYS = {
     "af",
@@ -87,8 +102,8 @@ def _validate_mapping(value: object, label: str) -> None:
     if not isinstance(value, dict) or set(value) != MAPPING_KEYS:
         raise ValueError(f"{label} fields do not match the safe schema")
     _require_int(
-        value["call_site_file_offset"],
-        f"{label}.call_site_file_offset",
+        value["probe_file_offset"],
+        f"{label}.probe_file_offset",
         0,
         0xFFFFFF,
     )
@@ -119,17 +134,31 @@ def validate_renderer_observation(
         raise ValueError("target_sha256 must be a lowercase SHA-256")
     for key in ("status", "next_checkpoint"):
         _require_token(observation[key], key)
-    for key in ("renderer_hook_reached", "translation_build_eligible"):
+    for key in (
+        "renderer_hook_reached",
+        "text_decoder_reached",
+        "translation_build_eligible",
+    ):
         if not isinstance(observation[key], bool):
             raise ValueError(f"{key} must be a boolean")
+    if observation["renderer_hook_reached"]:
+        raise ValueError("decoder-entry observation cannot prove renderer hook reach")
     if observation["translation_build_eligible"]:
-        raise ValueError("a renderer hook alone cannot enable translation builds")
+        raise ValueError("a text-engine observation cannot enable translation builds")
 
     probe = observation["probe"]
     if not isinstance(probe, dict) or set(probe) != PROBE_KEYS:
         raise ValueError("renderer probe fields do not match")
-    for key in ("emulator", "emulator_version", "system"):
+    for key in (
+        "emulator",
+        "emulator_version",
+        "system",
+        "route",
+        "anchor_kind",
+    ):
         _require_token(probe[key], key)
+    if probe["anchor_kind"] != "text-decoder-entry":
+        raise ValueError("unexpected text-engine probe anchor")
     _require_int(probe["frame_budget"], "frame_budget", 1, 100_000)
     mappings = probe["mappings_attempted"]
     if not isinstance(mappings, list) or len(mappings) > 6:
@@ -137,17 +166,65 @@ def validate_renderer_observation(
     for index, mapping in enumerate(mappings):
         _validate_mapping(mapping, f"mappings_attempted[{index}]")
 
+    reads = observation["decoder_reads"]
+    if not isinstance(reads, list) or len(reads) > 64:
+        raise ValueError("decoder_reads must contain at most 64 samples")
+    for index, item in enumerate(reads):
+        if not isinstance(item, dict) or set(item) != DECODER_READ_KEYS:
+            raise ValueError(f"decoder_reads[{index}] fields do not match")
+        _require_int(item["slot"], f"decoder_reads[{index}].slot", 1, 2)
+        _require_int(
+            item["logical_access"],
+            f"decoder_reads[{index}].logical_access",
+            0x4000,
+            0xBFFF,
+        )
+        if item["logical_access"] // 0x4000 != item["slot"]:
+            raise ValueError("decoder read logical address and slot disagree")
+        _require_int(
+            item["physical_file_offset"],
+            f"decoder_reads[{index}].physical_file_offset",
+            0,
+            0x17BFFF,
+        )
+        _require_int(
+            item["mapped_bank"],
+            f"decoder_reads[{index}].mapped_bank",
+            0,
+            0x5E,
+        )
+        expected_physical = (
+            item["mapped_bank"] * 0x4000
+            + (item["logical_access"] & 0x3FFF)
+        )
+        if item["physical_file_offset"] != expected_physical:
+            raise ValueError("decoder read physical address and mapper bank disagree")
+        for key in ("instruction_bank", "instruction_pc", "pc_after"):
+            _require_int(item[key], f"decoder_reads[{index}].{key}", 0, 0xFFFF)
+        _require_int(
+            item["physical_pc_after"],
+            f"decoder_reads[{index}].physical_pc_after",
+            0,
+            0x17BFFF,
+        )
+        _require_token(
+            item["classification"],
+            f"decoder_reads[{index}].classification",
+        )
+
     hit = observation["hit"]
     if hit is None:
-        if observation["renderer_hook_reached"]:
-            raise ValueError("renderer_hook_reached requires a hit")
-        if observation["status"] != "renderer-hook-not-observed":
-            raise ValueError("renderer no-hit status mismatch")
+        if observation["text_decoder_reached"]:
+            raise ValueError("text_decoder_reached requires a hit")
+        if reads:
+            raise ValueError("decoder reads require a decoder-entry hit")
+        if observation["status"] != "text-decoder-not-observed":
+            raise ValueError("text decoder no-hit status mismatch")
         return
-    if observation["renderer_hook_reached"] is not True:
-        raise ValueError("renderer hit requires renderer_hook_reached")
-    if observation["status"] != "renderer-hook-observed":
-        raise ValueError("renderer hit status mismatch")
+    if observation["text_decoder_reached"] is not True:
+        raise ValueError("decoder hit requires text_decoder_reached")
+    if observation["status"] != "text-decoder-observed":
+        raise ValueError("text decoder hit status mismatch")
     if not isinstance(hit, dict) or set(hit) != HIT_KEYS:
         raise ValueError("renderer hit fields do not match")
     _validate_mapping({key: hit[key] for key in MAPPING_KEYS}, "hit")
@@ -186,6 +263,7 @@ def build_renderer_observation(
     frame_budget: int,
     mappings_attempted: list[dict[str, int]],
     hit: dict[str, object] | None,
+    decoder_reads: list[dict[str, object]],
 ) -> dict[str, object]:
     observed = hit is not None
     observation: dict[str, object] = {
@@ -193,24 +271,30 @@ def build_renderer_observation(
         "schema_version": SCHEMA_VERSION,
         "target_sha256": target_sha256,
         "status": (
-            "renderer-hook-observed"
+            "text-decoder-observed"
             if observed
-            else "renderer-hook-not-observed"
+            else "text-decoder-not-observed"
         ),
         "probe": {
             "emulator": "Gearsystem",
             "emulator_version": emulator_version,
             "system": "gamegear",
+            "route": "cold-boot-idle-attract-introduction",
+            "anchor_kind": "text-decoder-entry",
             "frame_budget": frame_budget,
             "mappings_attempted": mappings_attempted,
         },
         "hit": hit,
-        "renderer_hook_reached": observed,
+        "decoder_reads": decoder_reads,
+        "renderer_hook_reached": False,
+        "text_decoder_reached": observed,
         "translation_build_eligible": False,
         "next_checkpoint": (
-            "resolve-pre-hook-script-state"
+            "resolve-decoder-rom-reads"
+            if observed and decoder_reads
+            else "extend-decoder-read-capture"
             if observed
-            else "extend-renderer-input-coverage"
+            else "verify-attract-route-screen"
         ),
     }
     validate_renderer_observation(observation)
