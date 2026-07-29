@@ -158,6 +158,7 @@ class S25URuntimeProbeTests(unittest.TestCase):
     def test_runtime_failure_receipt_is_path_free_and_method_scoped(self) -> None:
         class FakeClient:
             last_request_method = "debug_step_frame"
+            last_tool_name = "debug_step_frame"
 
         receipt = _runtime_failure_receipt(
             "candidate-probe",
@@ -178,6 +179,23 @@ class S25URuntimeProbeTests(unittest.TestCase):
         )
         self.assertNotIn("/", str(receipt))
         validate_runtime_failure_receipt(receipt)
+
+    def test_runtime_failure_receipt_distinguishes_frame_barrier_timeout(
+        self,
+    ) -> None:
+        class FakeClient:
+            last_request_method = "tools/call"
+            last_tool_name = "debug_get_status"
+
+        receipt = _runtime_failure_receipt(
+            "candidate-probe",
+            RuntimeError(
+                "Gearsystem frame step did not finish within 180 frames"
+            ),
+            FakeClient(),  # type: ignore[arg-type]
+        )
+        self.assertEqual(receipt["failure_kind"], "frame-step-timeout")
+        self.assertEqual(receipt["mcp_method"], "debug_get_status")
 
     def test_watch_ranges_require_trace_schema_five(self) -> None:
         plan = {

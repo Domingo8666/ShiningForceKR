@@ -102,6 +102,8 @@ RUNTIME_FAILURE_KINDS = {
     "process-io",
     "invalid-runtime-data",
     "mcp-timeout",
+    "frame-step-timeout",
+    "instruction-step-timeout",
     "mcp-error",
     "tool-error",
     "required-tools",
@@ -175,6 +177,7 @@ class McpStdioClient:
         self._next_id = 1
         self._messages: queue.Queue[dict[str, object]] = queue.Queue()
         self.last_request_method: str | None = None
+        self.last_tool_name: str | None = None
         self.stderr_tail: deque[str] = deque(maxlen=80)
         threading.Thread(
             target=self._drain_stdout,
@@ -258,6 +261,7 @@ class McpStdioClient:
         }
 
     def call(self, name: str, arguments: dict[str, object] | None = None) -> dict[str, Any]:
+        self.last_tool_name = name
         return _tool_payload(
             self._request(
                 "tools/call",
@@ -944,6 +948,10 @@ def _runtime_failure_kind(error: Exception) -> str:
     if isinstance(error, ValueError):
         return "invalid-runtime-data"
     message = str(error)
+    if message.startswith("Gearsystem frame step did not finish"):
+        return "frame-step-timeout"
+    if message.startswith("Gearsystem instruction step did not finish"):
+        return "instruction-step-timeout"
     if "timed out" in message or "did not finish" in message:
         return "mcp-timeout"
     if message.startswith("MCP error:"):
@@ -972,7 +980,9 @@ def _runtime_failure_receipt(
 ) -> dict[str, object]:
     if stage not in RUNTIME_FAILURE_STAGES:
         stage = "candidate-probe"
-    method = client.last_request_method if client is not None else None
+    method = client.last_tool_name if client is not None else None
+    if method is None and client is not None:
+        method = client.last_request_method
     if method is not None and (
         not method.replace("_", "").isalnum() or len(method) > 40
     ):
