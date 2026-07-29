@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+import tools.run_mobile_pipeline  # regression: pipeline must parse and import
 from tools.v5_1_trace_plan import (
     build_trace_plan,
     logical_mapping_hypotheses,

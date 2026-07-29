@@ -16,6 +16,7 @@
 | SFKR-008 | 실제 스크립트 조회표 미확정 | investigating | 0x80100 벡터 소비부와 0x87000 런타임 호출부 추적 |
 | SFKR-009 | 한국어 문맥·제어 심벌 의미 미확정 | investigating | 확인된 51개 문맥을 글꼴 페이지·화면 동작과 연결 |
 | SFKR-010 | 목표 인트로 문장 ROM 디코딩 미완료 | blocked | 정확한 조회표 엔트리 ID 확인 뒤 재개 |
+| SFKR-011 | 추적 계획 추가 뒤 모바일 파이프라인 SyntaxError | fixed-static | compileall 및 파이프라인 import 회귀 통과 후 S25U 재실행 |
 
 ## 테스트 원칙
 

@@ -147,13 +147,11 @@ def main() -> int:
     _write_text(args.trace_plan_report, trace_to_markdown(trace_plan))
     _write_text(
         args.trace_plan_json,
-        json.dumps(trace_plan, ensure_ascii=False, indent=2) + "
-",
+        json.dumps(trace_plan, ensure_ascii=False, indent=2) + "\n",
     )
     _write_text(
         args.summary_report,
-        to_korean_summary(consumer) + "
-" + trace_to_korean_summary(trace_plan),
+        to_korean_summary(consumer) + "\n" + trace_to_korean_summary(trace_plan),
     )
 
     english: dict[str, object]
