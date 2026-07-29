@@ -14,8 +14,10 @@ try:
         McpStdioClient,
         _capture_state,
         _default_command,
+        _runtime_failure_receipt,
         _step_frames_and_wait,
         _step_instruction_and_wait,
+        _write_runtime_failure_receipt,
     )
     from .v5_1_consumer import verify_target_identity
     from .v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
@@ -30,8 +32,10 @@ except ImportError:  # direct script execution
         McpStdioClient,
         _capture_state,
         _default_command,
+        _runtime_failure_receipt,
         _step_frames_and_wait,
         _step_instruction_and_wait,
+        _write_runtime_failure_receipt,
     )
     from v5_1_consumer import verify_target_identity
     from v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
@@ -470,11 +474,13 @@ def main() -> int:
     }
 
     client = McpStdioClient(_default_command())
+    runtime_stage = "mcp-initialize"
     try:
         tools = client.initialize()
         missing = sorted(REQUIRED_TOOLS - tools)
         if missing:
             raise RuntimeError(f"Gearsystem MCP tools missing: {missing}")
+        runtime_stage = "load-media"
         client.call("load_media", {"file_path": str(rom_path)})
         media = client.call("get_media_info")
         local_result["media"] = media
@@ -498,6 +504,7 @@ def main() -> int:
                 "bank_switch": True,
             },
         )
+        runtime_stage = "candidate-probe"
         hit: dict[str, object] | None = None
         evidence: dict[str, object] | None = None
         selected_attempt: dict[str, object] | None = None
@@ -536,12 +543,18 @@ def main() -> int:
                     "bank_switch": True,
                 },
             )
+            runtime_stage = "target-followup"
             decoder_reads, local_read_events = _capture_decoder_reads(
                 client,
                 len(rom),
             )
             if selected_attempt is not None:
                 selected_attempt["decoder_read_events"] = local_read_events
+    except Exception as error:
+        receipt = _runtime_failure_receipt(runtime_stage, error, client)
+        local_result["failure"] = receipt
+        _write_runtime_failure_receipt(root, receipt)
+        raise
     finally:
         local_result["stderr_tail"] = list(client.stderr_tail)
         client.close()
