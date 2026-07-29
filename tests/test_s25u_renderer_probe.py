@@ -5,9 +5,12 @@ from unittest.mock import patch
 
 from tools.run_s25u_renderer_probe import (
     TEXT_ROUTE_SCHEDULE,
+    _capture_decoder_reads,
     _classify_decoder_read,
+    _decoder_entry_mappings,
     _frame_budget,
     _last_rom_read,
+    _probe_decoder_entry,
     _probe_vector_reads,
     _vector_mappings,
     _vector_read_matches,
@@ -15,6 +18,130 @@ from tools.run_s25u_renderer_probe import (
 
 
 class S25URendererProbeTests(unittest.TestCase):
+    def test_decoder_read_capture_steps_past_each_breakpoint(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, dict[str, object]]] = []
+
+            def call(
+                self,
+                name: str,
+                arguments: dict[str, object] | None = None,
+            ) -> dict[str, object]:
+                self.calls.append((name, arguments or {}))
+                return {}
+
+        samples = [
+            {
+                "slot": 1,
+                "logical_access": 0x4100,
+                "physical_file_offset": 0x80100,
+                "mapped_bank": 0x20,
+                "instruction_bank": 0,
+                "instruction_pc": 0x3431,
+                "pc_after": 0x3432,
+                "physical_pc_after": 0x3432,
+                "classification": "korean-huffman-vector",
+            },
+            {
+                "slot": 1,
+                "logical_access": 0x4300,
+                "physical_file_offset": 0x80300,
+                "mapped_bank": 0x20,
+                "instruction_bank": 0,
+                "instruction_pc": 0x3438,
+                "pc_after": 0x3439,
+                "physical_pc_after": 0x3439,
+                "classification": "korean-huffman-tree",
+            },
+        ]
+        client = FakeClient()
+        with patch(
+            "tools.run_s25u_renderer_probe._step_frames_and_wait",
+            side_effect=[
+                {"at_breakpoint": True},
+                {"at_breakpoint": True},
+                {"at_breakpoint": False},
+            ],
+        ), patch(
+            "tools.run_s25u_renderer_probe._capture_state",
+            side_effect=[
+                ({"pc_after": 0x3432}, {"trace": "first"}),
+                ({"pc_after": 0x3439}, {"trace": "second"}),
+            ],
+        ), patch(
+            "tools.run_s25u_renderer_probe._last_rom_read",
+            side_effect=samples,
+        ), patch(
+            "tools.run_s25u_renderer_probe._step_instruction_and_wait",
+        ) as step_instruction:
+            captured, events = _capture_decoder_reads(client, 0x17C000)
+
+        self.assertEqual(captured, samples)
+        self.assertEqual(len(events), 2)
+        self.assertEqual(step_instruction.call_count, 2)
+        self.assertEqual(
+            [name for name, _ in client.calls].count("set_breakpoint_range"),
+            6,
+        )
+        self.assertEqual(
+            [name for name, _ in client.calls].count("remove_breakpoint"),
+            6,
+        )
+
+    def test_story_route_stops_on_patched_decoder_entry(self) -> None:
+        mappings = _decoder_entry_mappings()
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, dict[str, object]]] = []
+                self.step_requests = 0
+                self.break_on_step = 180 + 240 + 3
+
+            def call(
+                self,
+                name: str,
+                arguments: dict[str, object] | None = None,
+            ) -> dict[str, object]:
+                self.calls.append((name, arguments or {}))
+                if name == "debug_step_frame":
+                    self.step_requests += 1
+                if name == "debug_get_status":
+                    return {
+                        "at_breakpoint": (
+                            self.step_requests >= self.break_on_step
+                        ),
+                        "paused": self.step_requests < self.break_on_step,
+                    }
+                return {}
+
+        client = FakeClient()
+        state = {
+            "pc_after": 0x3431,
+            "physical_pc_after": 0x3431,
+            "slot0_bank": 0,
+        }
+        with patch(
+            "tools.run_s25u_renderer_probe._capture_state",
+            return_value=(state, {"trace": "local-only"}),
+        ):
+            hit, evidence = _probe_decoder_entry(client, mappings)
+
+        self.assertEqual(hit["probe_file_offset"], 0x3431)
+        self.assertEqual(hit["logical_address"], 0x3431)
+        self.assertEqual(evidence, {"trace": "local-only"})
+        breakpoint_calls = [
+            arguments
+            for name, arguments in client.calls
+            if name == "set_breakpoint_range"
+        ]
+        self.assertEqual(len(breakpoint_calls), 3)
+        self.assertTrue(all(item["execute"] for item in breakpoint_calls))
+        self.assertEqual(
+            [name for name, _ in client.calls].count("remove_breakpoint"),
+            3,
+        )
+
     def test_story_route_uses_start_then_confirm_and_all_breakpoints(self) -> None:
         mappings = _vector_mappings()
 

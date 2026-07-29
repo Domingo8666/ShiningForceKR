@@ -137,6 +137,13 @@ class KoreanEngineTests(unittest.TestCase):
         self.assertEqual(result["huffman"]["tree_data_end_exclusive"], 0x808D3)
         self.assertEqual(result["font_runtime"]["page_map_entries"], 244)
         self.assertEqual(len(result["font_runtime"]["full_0x3000_payload_banks"]), 60)
+        self.assertEqual(result["decoder_anchor"]["patched_code_start"], 0x33FA)
+        self.assertEqual(result["decoder_anchor"]["tree_bank_literal_offset"], 0x3432)
+        self.assertEqual(result["decoder_anchor"]["tree_bank"], 0x20)
+        self.assertEqual(
+            result["decoder_anchor"]["execute_candidates"],
+            [0x33FA, 0x3411, 0x3431],
+        )
         self.assertFalse(result["checkpoints"]["translation_build_eligible"])
 
 

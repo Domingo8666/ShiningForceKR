@@ -34,6 +34,9 @@ KO_VECTOR_LOGICAL = 0x4100
 KO_VECTOR_ENTRIES = 256
 KO_TREE_DATA_START = 0x80300
 KO_TREE_DATA_END = 0x808D3
+DECODER_PATCH_CODE = (0x33FA, 0x3405)
+DECODER_TREE_BANK_LITERAL = 0x3432
+DECODER_ENTRY_CANDIDATES = (0x33FA, 0x3411, 0x3431)
 EXPECTED_CONTEXTS = (
     *range(0x00, 0x21),
     0x5F, 0x64, 0xC9, 0xCA, 0xCC, 0xCD, 0xCF, 0xD0, 0xD1,
@@ -134,6 +137,24 @@ def analyze_patch(patch: bytes) -> dict[str, object]:
         raise PatchError("primary Korean runtime signature mismatch")
     if sparse.data[0x87A00:0x87A08] != bytes.fromhex("f5c5d5e5dde5fde5"):
         raise PatchError("secondary Korean runtime signature mismatch")
+    _require_known(
+        sparse.known,
+        DECODER_PATCH_CODE[0],
+        DECODER_PATCH_CODE[1],
+        "patched decoder code signature",
+    )
+    _require_known(
+        sparse.known,
+        DECODER_TREE_BANK_LITERAL,
+        DECODER_TREE_BANK_LITERAL + 1,
+        "patched decoder tree-bank literal",
+    )
+    if sparse.data[slice(*DECODER_PATCH_CODE)] != bytes.fromhex(
+        "21e83f197e23666f041804"
+    ):
+        raise PatchError("patched decoder code signature mismatch")
+    if sparse.data[DECODER_TREE_BANK_LITERAL] != KO_TREE_BANK:
+        raise PatchError("patched decoder tree-bank literal mismatch")
 
     page_map = sparse.data[slice(*FONT_PAGE_MAP)]
     return {
@@ -176,6 +197,14 @@ def analyze_patch(patch: bytes) -> dict[str, object]:
             "full_0x3000_payload_banks": full_font_banks,
             "bank_usage": font_bank_usage,
         },
+        "decoder_anchor": {
+            "status": "static-patch-anchor",
+            "patched_code_start": DECODER_PATCH_CODE[0],
+            "patched_code_end_exclusive": DECODER_PATCH_CODE[1],
+            "tree_bank_literal_offset": DECODER_TREE_BANK_LITERAL,
+            "tree_bank": sparse.data[DECODER_TREE_BANK_LITERAL],
+            "execute_candidates": list(DECODER_ENTRY_CANDIDATES),
+        },
         "checkpoints": {
             "korean_tree_vector": "pass",
             "korean_font_runtime": "pass",
@@ -190,7 +219,13 @@ def to_markdown(result: dict[str, object]) -> str:
     patch = result["patch"]
     huffman = result["huffman"]
     font = result["font_runtime"]
-    assert isinstance(patch, dict) and isinstance(huffman, dict) and isinstance(font, dict)
+    decoder = result["decoder_anchor"]
+    assert (
+        isinstance(patch, dict)
+        and isinstance(huffman, dict)
+        and isinstance(font, dict)
+        and isinstance(decoder, dict)
+    )
     contexts = " ".join(f"0x{value:02X}" for value in huffman["contexts"])
     return "\n".join(
         [
@@ -219,6 +254,15 @@ def to_markdown(result: dict[str, object]) -> str:
             f"- Secondary code: 0x{font['secondary_code_start']:06X}..0x{font['secondary_code_end_exclusive']:06X}",
             f"- Page map: 0x{font['page_map_start']:06X}..0x{font['page_map_end_exclusive']:06X} ({font['page_map_entries']} entries)",
             f"- Font data banks: 0x{font['font_data_first_bank']:02X}..0x{font['font_data_last_bank']:02X}",
+            "",
+            "## Patched decoder anchor",
+            "",
+            f"- Patched code: 0x{decoder['patched_code_start']:06X}..0x{decoder['patched_code_end_exclusive']:06X}",
+            f"- Tree-bank literal: file 0x{decoder['tree_bank_literal_offset']:06X} = 0x{decoder['tree_bank']:02X}",
+            "- Execute candidates: "
+            + ", ".join(
+                f"0x{value:04X}" for value in decoder["execute_candidates"]
+            ),
             "",
             "## Guardrail",
             "",

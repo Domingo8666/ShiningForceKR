@@ -26,12 +26,13 @@
 | SFKR-018 | 정적 상위 3바이트 조회표 후보군 세 곳 모두 입력 구간에서 실제 읽기 0회 | investigating | 추정 조회표 확대를 중단하고 검증된 v5.1 한글 렌더러 호출 좌표 0x003FD5·0x03FFB2의 execute hit와 mapper bank를 역추적 |
 | SFKR-019 | 렌더러 추적 자동화가 콜드 부팅 180프레임 뒤 Start와 1번 버튼을 눌러 무입력 도입 장면을 건너뜀 | fixed-emulator | 여섯 execute breakpoint를 한 콜드 부팅에 동시에 설치하고 12,000프레임 무입력 attract intro를 S25U에서 재추적 완료 |
 | SFKR-020 | 무입력 attract intro에서도 0x003FD5·0x03FFB2의 0x5F 전용 한국어 페이지 렌더러 호출이 0회 | fixed-emulator | 전용 호출보다 앞선 공용 텍스트 디코더 0x003411도 같은 12,000프레임 경로에서 실행되지 않음을 S25U로 확인 |
-| SFKR-021 | 무입력 attract 경로는 추정 텍스트 디코더 0x003411에 도달하지 않고, 이전 새 게임 자동 조작은 확인이 아닌 1번 취소 버튼을 반복함 | revalidate-frame-sync | 초기 Start·2번 3,300프레임 무히트는 비동기 step 완료 장벽이 없어 폐기했으며 `debug_get_status.paused` 동기화로 재검증 |
-| SFKR-022 | 0x003411은 v5.1 BPS의 source-independent 확장 코드나 패치 호출부에서 검증된 진입점이 아닌데 공용 디코더로 가정됨 | fixed-static | 검증된 한국어 Huffman 벡터 물리 0x080100..0x0802FF를 slot 1·2, mapper bank 0x20 조건의 실제 read로 직접 추적 |
+| SFKR-021 | 무입력 attract 경로는 추정 텍스트 디코더 0x003411에 도달하지 않고, 이전 새 게임 자동 조작은 확인이 아닌 1번 취소 버튼을 반복함 | fixed-emulator | Start·2번 3,300프레임을 단일 프레임 완료 장벽으로 S25U 재검증 |
+| SFKR-022 | 0x003411은 v5.1 BPS의 source-independent 확장 코드나 패치 호출부에서 검증된 진입점이 아닌데 공용 디코더로 가정됨 | fixed-static | BPS에서 확인한 0x0033FA..0x003405 패치 코드와 0x003432 bank 0x20 리터럴을 근거로 0x33FA·0x3411·0x3431 execute 후보를 추적 |
 | SFKR-023 | S25U 런타임 준비 검사는 모두 통과했지만 probe 종료 코드 1의 안전 요약이 `runtime-command`까지만 구분됨 | fixed-static | 로컬 전체 오류는 S25U에 보존하고 실패 단계·분류·마지막 MCP 메서드만 schema v3 진단으로 게시한 뒤 자동실행 재수집 |
 | SFKR-024 | S25U proot의 180프레임 실행을 PAL 실시간 속도로 가정한 8.6초 완료 제한이 정상 실행을 중단 | fixed-static | 프레임 수와 저속 실행 하한으로 계산하되 180프레임에 최소 60초를 허용하는 bounded 완료 장벽으로 S25U 재실행 |
 | SFKR-025 | 장거리 후보 탐색 전체에 CPU trace를 켜 모든 Z80 명령을 기록해 60초 프레임 제한도 소진 | fixed-static | 첫 경로는 trace 없이 mapper 일치·실행 범위 비중첩 read hit를 수집하고 정확한 접근 명령은 짧은 후속 replay로 분리 |
 | SFKR-026 | Gearsystem 3.9.14의 multi-frame 예약이 완료되지 않을 때 `debug_pause`로 pending count를 취소할 수 없어 probe가 복구 불가 | fixed-static | 브레이크포인트 감시 구간을 1프레임 단위로 실행하고 매번 paused/breakpoint 완료를 확인 |
+| SFKR-027 | 단일 프레임 장벽으로 완료한 Start·2번 3,300프레임 경로에서 상위 정적 조회표 후보의 매퍼 일치 read가 0회 | investigating | 장거리 trace를 끈 채 패치된 디코더 execute 후보를 잡고 진입 직후의 짧은 slot 1·2 ROM read를 수집 |
 
 ## 테스트 원칙
 

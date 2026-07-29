@@ -15,6 +15,7 @@ try:
         _capture_state,
         _default_command,
         _step_frames_and_wait,
+        _step_instruction_and_wait,
     )
     from .v5_1_consumer import verify_target_identity
     from .v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
@@ -30,6 +31,7 @@ except ImportError:  # direct script execution
         _capture_state,
         _default_command,
         _step_frames_and_wait,
+        _step_instruction_and_wait,
     )
     from v5_1_consumer import verify_target_identity
     from v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
@@ -46,7 +48,8 @@ CONSUMER_RESOLUTION = Path(
 HUFFMAN_VECTOR_START = 0x080100
 HUFFMAN_VECTOR_END = 0x0802FF
 HUFFMAN_VECTOR_BANK = 0x20
-TEXT_ROUTE = "cold-boot-start-confirm-story"
+DECODER_ENTRY_CANDIDATES = (0x33FA, 0x3411, 0x3431)
+TEXT_ROUTE = "cold-boot-start-confirm-decoder-entry"
 TEXT_ROUTE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
     (180, None),
     (240, "start"),
@@ -72,6 +75,81 @@ def _vector_mappings() -> list[dict[str, int]]:
         }
         for slot in (1, 2)
     ]
+
+
+def _decoder_entry_mappings() -> list[dict[str, int]]:
+    return [
+        {
+            "probe_file_offset": address,
+            "slot": 0,
+            "expected_bank": 0,
+            "logical_address": address,
+        }
+        for address in DECODER_ENTRY_CANDIDATES
+    ]
+
+
+def _probe_decoder_entry(
+    client: McpStdioClient,
+    mappings: list[dict[str, int]],
+) -> tuple[
+    dict[str, object] | None,
+    dict[str, object] | None,
+]:
+    client.call("debug_reset")
+    client.call("debug_pause")
+    addresses = [f"{mapping['logical_address']:04X}" for mapping in mappings]
+    for address in addresses:
+        client.call(
+            "set_breakpoint_range",
+            {
+                "start_address": address,
+                "end_address": address,
+                "memory_area": "rom_ram",
+                "execute": True,
+                "read": False,
+                "write": False,
+            },
+        )
+    try:
+        for frames, button in TEXT_ROUTE_SCHEDULE:
+            if button is not None:
+                client.call(
+                    "controller_button",
+                    {
+                        "player": 1,
+                        "button": button,
+                        "action": "press_and_release",
+                    },
+                )
+            status = _step_frames_and_wait(client, frames)
+            if status.get("at_breakpoint") is not True:
+                continue
+            state, evidence = _capture_state(client)
+            physical_pc = int(state["physical_pc_after"])
+            mapping = min(
+                mappings,
+                key=lambda item: abs(
+                    int(item["probe_file_offset"]) - physical_pc
+                ),
+            )
+            if abs(int(mapping["probe_file_offset"]) - physical_pc) > 4:
+                continue
+            return {**mapping, **state}, evidence
+    finally:
+        for address in addresses:
+            try:
+                client.call(
+                    "remove_breakpoint",
+                    {
+                        "address": address,
+                        "end_address": address,
+                        "memory_area": "rom_ram",
+                    },
+                )
+            except RuntimeError:
+                pass
+    return None, None
 
 
 def _vector_read_matches(
@@ -263,48 +341,22 @@ def _capture_decoder_reads(
     rom_size: int,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     ranges = [(f"{start:04X}", f"{end:04X}") for start, end in ROM_READ_RANGES]
-    for start, end in ranges:
-        client.call(
-            "set_breakpoint_range",
-            {
-                "start_address": start,
-                "end_address": end,
-                "memory_area": "rom_ram",
-                "execute": False,
-                "read": True,
-                "write": False,
-            },
-        )
-    samples: list[dict[str, object]] = []
-    local_events: list[dict[str, object]] = []
-    seen: set[tuple[int, int, int]] = set()
-    try:
-        for _ in range(MAX_DECODER_READ_HITS):
-            status = _step_frames_and_wait(client, 1)
-            if status.get("at_breakpoint") is not True:
-                break
-            state, evidence = _capture_state(client)
-            sample = _last_rom_read(state, evidence, rom_size)
-            if sample is None:
-                continue
-            key = (
-                int(sample["physical_file_offset"]),
-                int(sample["instruction_bank"]),
-                int(sample["instruction_pc"]),
-            )
-            if key in seen:
-                continue
-            seen.add(key)
-            samples.append(sample)
-            local_events.append(
+
+    def arm() -> None:
+        for start, end in ranges:
+            client.call(
+                "set_breakpoint_range",
                 {
-                    "sample": sample,
-                    "evidence": evidence,
-                }
+                    "start_address": start,
+                    "end_address": end,
+                    "memory_area": "rom_ram",
+                    "execute": False,
+                    "read": True,
+                    "write": False,
+                },
             )
-            if len(samples) >= MAX_DECODER_READ_SAMPLES:
-                break
-    finally:
+
+    def disarm() -> None:
         for start, end in ranges:
             try:
                 client.call(
@@ -317,6 +369,40 @@ def _capture_decoder_reads(
                 )
             except RuntimeError:
                 pass
+
+    arm()
+    samples: list[dict[str, object]] = []
+    local_events: list[dict[str, object]] = []
+    seen: set[tuple[int, int, int]] = set()
+    try:
+        for _ in range(MAX_DECODER_READ_HITS):
+            status = _step_frames_and_wait(client, 1)
+            if status.get("at_breakpoint") is not True:
+                break
+            state, evidence = _capture_state(client)
+            sample = _last_rom_read(state, evidence, rom_size)
+            if sample is not None:
+                key = (
+                    int(sample["physical_file_offset"]),
+                    int(sample["instruction_bank"]),
+                    int(sample["instruction_pc"]),
+                )
+                if key not in seen:
+                    seen.add(key)
+                    samples.append(sample)
+                    local_events.append(
+                        {
+                            "sample": sample,
+                            "evidence": evidence,
+                        }
+                    )
+                    if len(samples) >= MAX_DECODER_READ_SAMPLES:
+                        break
+            disarm()
+            _step_instruction_and_wait(client)
+            arm()
+    finally:
+        disarm()
     return samples, local_events
 
 
@@ -350,7 +436,7 @@ def main() -> int:
     rom = rom_path.read_bytes()
     verify_target_identity(rom)
     target_sha256 = sha256_file(rom_path)
-    mappings = _vector_mappings()
+    mappings = _decoder_entry_mappings()
     safe_hit: dict[str, object] | None = None
     decoder_reads: list[dict[str, object]] = []
     emulator_version = "unknown"
@@ -383,7 +469,7 @@ def main() -> int:
         client.call(
             "set_trace_log",
             {
-                "enabled": True,
+                "enabled": False,
                 "cpu_irq": False,
                 "vdp_write": False,
                 "vdp_status": False,
@@ -393,44 +479,32 @@ def main() -> int:
                 "bank_switch": True,
             },
         )
-        hit, evidence, rejected = _probe_vector_reads(
+        hit, evidence = _probe_decoder_entry(
             client,
             mappings,
-            len(rom),
         )
         safe_hit = hit
         local_read_events: list[dict[str, object]] = []
         if safe_hit is not None:
             if evidence is None:
-                raise RuntimeError("vector read hit has no trace evidence")
-            first_read = _last_rom_read(safe_hit, evidence, len(rom))
-            if (
-                first_read is None
-                or first_read["classification"]
-                != "korean-huffman-vector"
-            ):
-                raise RuntimeError("vector read hit could not be reconstructed")
-            following_reads, local_read_events = _capture_decoder_reads(
+                raise RuntimeError("decoder entry hit has no local evidence")
+            client.call(
+                "set_trace_log",
+                {
+                    "enabled": True,
+                    "cpu_irq": False,
+                    "vdp_write": False,
+                    "vdp_status": False,
+                    "psg": False,
+                    "ym2413": False,
+                    "io_port": False,
+                    "bank_switch": True,
+                },
+            )
+            decoder_reads, local_read_events = _capture_decoder_reads(
                 client,
                 len(rom),
             )
-            decoder_reads = [first_read]
-            seen_reads = {
-                (
-                    first_read["physical_file_offset"],
-                    first_read["instruction_bank"],
-                    first_read["instruction_pc"],
-                )
-            }
-            for item in following_reads:
-                key = (
-                    item["physical_file_offset"],
-                    item["instruction_bank"],
-                    item["instruction_pc"],
-                )
-                if key not in seen_reads:
-                    seen_reads.add(key)
-                    decoder_reads.append(item)
         local_result["attempts"].append(
             {
                 "route": TEXT_ROUTE,
@@ -438,7 +512,6 @@ def main() -> int:
                 "mappings": mappings,
                 "hit": hit,
                 "evidence": evidence,
-                "rejected_hits": rejected,
                 "decoder_read_events": local_read_events,
             }
         )
@@ -456,7 +529,7 @@ def main() -> int:
         target_sha256=target_sha256,
         emulator_version=emulator_version,
         route=TEXT_ROUTE,
-        anchor_kind="huffman-vector-read",
+        anchor_kind="text-decoder-entry",
         frame_budget=_frame_budget(),
         mappings_attempted=mappings,
         hit=safe_hit,
@@ -464,11 +537,11 @@ def main() -> int:
     )
     safe_path = write_renderer_observation(root, observation)
     if safe_hit is None:
-        print("SFKR Korean Huffman vector was not read on the story route.")
+        print("SFKR decoder entry was not executed on the story route.")
     else:
         print(
-            "SFKR Korean Huffman vector read at "
-            f"physical 0x{safe_hit['probe_file_offset']:06X}; "
+            "SFKR decoder entry executed at "
+            f"physical 0x{safe_hit['physical_pc_after']:06X}; "
             f"captured {len(decoder_reads)} unique ROM reads."
         )
     print(f"Local renderer evidence: {local_path}")
