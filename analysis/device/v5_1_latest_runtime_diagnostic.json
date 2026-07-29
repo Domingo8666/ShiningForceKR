@@ -1,0 +1,21 @@
+{
+  "artifact_kind": "sanitized-runtime-stage-diagnostic",
+  "schema_version": 1,
+  "status": "runtime-stage-not-ready",
+  "trigger": "setup",
+  "exit_code": 100,
+  "checks": {
+    "proot_available": true,
+    "ubuntu_available": true,
+    "gearsystem_binary_available": false,
+    "dynamic_dependencies_ready": false,
+    "mcp_initialize_ready": false,
+    "required_tools_ready": false,
+    "local_target_present": true,
+    "trace_plan_present": true,
+    "target_identity_ready": true
+  },
+  "failed_stage": "gearsystem-binary-available",
+  "runtime_observation_present": false,
+  "next_checkpoint": "repair-first-failed-runtime-stage"
+}
