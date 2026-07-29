@@ -40,7 +40,7 @@ except ImportError:  # direct script execution
     from v5_1_safe_observation import _git, _normalized_remote
 
 ARTIFACT_KIND = "sanitized-runtime-consumer-resolution"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_consumer_resolution.json"
 )
@@ -69,6 +69,7 @@ TOP_LEVEL_KEYS = {
     "status",
     "hit",
     "alignment_resolutions",
+    "target_read",
     "selected_alignment_format",
     "selected_entry_index",
     "consumer_evidence_confirmed",
@@ -96,6 +97,17 @@ ALIGNMENT_KEYS = {
     "symbol_count",
     "roundtrip_exact",
     "encoded_bits",
+}
+TARGET_READ_KEYS = {
+    "slot",
+    "logical_access",
+    "physical_target_byte",
+    "instruction_bank",
+    "instruction_pc",
+    "pc_after",
+    "physical_pc_after",
+    "expected_bank",
+    "mapped_bank",
 }
 
 
@@ -215,6 +227,21 @@ def _actual_slot_bank(hit: dict[str, object]) -> int:
     return int(hit[f"slot{slot}_bank"])
 
 
+def _candidate_access_is_valid(
+    pointer_address: int,
+    pointer_bank: int,
+    target_slot: int,
+    logical_access: int,
+    mapped_bank: int,
+) -> bool:
+    return (
+        target_slot in {1, 2}
+        and pointer_address // 0x4000 == target_slot
+        and pointer_address == logical_access
+        and pointer_bank == mapped_bank
+    )
+
+
 def _find_access(
     attempt: dict[str, object],
 ) -> tuple[dict[str, object], dict[str, object], int] | None:
@@ -249,6 +276,47 @@ def _find_access(
     return None
 
 
+def _alignment_pointer(
+    rom: bytes,
+    item: dict[str, object],
+    physical_table_byte: int,
+) -> dict[str, object] | None:
+    start = int(item["file_offset"])
+    end = int(item["end_exclusive"])
+    entries = int(item["entries"])
+    format_name = str(item["format"])
+    if not start <= physical_table_byte < end:
+        return None
+    relative = physical_table_byte - start
+    entry_index = relative // 3
+    entry_byte_index = relative % 3
+    if not 0 <= entry_index < entries:
+        return None
+    at = start + entry_index * 3
+    if at + 3 > len(rom):
+        return None
+    first, second, third = rom[at : at + 3]
+    if format_name == "addr_le_bank":
+        address = first | (second << 8)
+        bank = third
+    elif format_name == "bank_addr_le":
+        bank = first
+        address = second | (third << 8)
+    else:
+        return None
+    target = mapper_file_offset(bank, address, len(rom))
+    return {
+        "format": format_name,
+        "alignment_file_offset": start,
+        "entry_index": entry_index,
+        "entry_byte_index": entry_byte_index,
+        "pointer_bank": bank,
+        "pointer_address": address,
+        "target_slot": address // 0x4000 if 0x4000 <= address < 0xC000 else None,
+        "target_file_offset": target,
+    }
+
+
 def _alignment_resolutions(
     rom: bytes,
     plan: dict[str, object],
@@ -263,30 +331,10 @@ def _alignment_resolutions(
     for item in cluster:
         if not isinstance(item, dict):
             continue
-        start = int(item["file_offset"])
-        end = int(item["end_exclusive"])
-        entries = int(item["entries"])
-        format_name = str(item["format"])
-        if not start <= physical_table_byte < end:
+        pointer = _alignment_pointer(rom, item, physical_table_byte)
+        if pointer is None:
             continue
-        relative = physical_table_byte - start
-        entry_index = relative // 3
-        entry_byte_index = relative % 3
-        if not 0 <= entry_index < entries:
-            continue
-        at = start + entry_index * 3
-        if at + 3 > len(rom):
-            continue
-        first, second, third = rom[at : at + 3]
-        if format_name == "addr_le_bank":
-            address = first | (second << 8)
-            bank = third
-        elif format_name == "bank_addr_le":
-            bank = first
-            address = second | (third << 8)
-        else:
-            continue
-        target = mapper_file_offset(bank, address, len(rom))
+        target = pointer["target_file_offset"]
         bounded = False
         symbol_count: int | None = None
         roundtrip_exact = False
@@ -332,10 +380,10 @@ def _alignment_resolutions(
                         )
         output.append(
             {
-                "format": format_name,
-                "alignment_file_offset": start,
-                "entry_index": entry_index,
-                "entry_byte_index": entry_byte_index,
+                "format": pointer["format"],
+                "alignment_file_offset": pointer["alignment_file_offset"],
+                "entry_index": pointer["entry_index"],
+                "entry_byte_index": pointer["entry_byte_index"],
                 "target_file_offset": target,
                 "bounded_decode": bounded,
                 "symbol_count": symbol_count,
@@ -411,6 +459,33 @@ def validate_consumer_resolution(resolution: dict[str, object]) -> None:
             not item["bounded_decode"] or item["encoded_bits"] is None
         ):
             raise ValueError("exact roundtrip requires bounded decode and bits")
+    target_read = resolution["target_read"]
+    if target_read is not None:
+        if not isinstance(target_read, dict) or set(target_read) != TARGET_READ_KEYS:
+            raise ValueError("target read fields do not match")
+        for key, value in target_read.items():
+            maximum = 0xFFFFFF if key in {
+                "physical_target_byte",
+                "physical_pc_after",
+            } else 0xFFFF
+            if key in {
+                "slot",
+                "instruction_bank",
+                "expected_bank",
+                "mapped_bank",
+            }:
+                maximum = 255
+            _require_int(value, key, 0, maximum)
+        if target_read["slot"] not in {1, 2}:
+            raise ValueError("target read must use a banked ROM slot")
+        if target_read["logical_access"] // 0x4000 != target_read["slot"]:
+            raise ValueError("target read logical address and slot disagree")
+        expected_physical = (
+            target_read["expected_bank"] * 0x4000
+            + (target_read["logical_access"] & 0x3FFF)
+        )
+        if target_read["physical_target_byte"] != expected_physical:
+            raise ValueError("target read physical address and mapper bank disagree")
     confirmed = resolution["consumer_evidence_confirmed"]
     if not isinstance(confirmed, bool):
         raise ValueError("consumer_evidence_confirmed must be boolean")
@@ -424,6 +499,10 @@ def validate_consumer_resolution(resolution: dict[str, object]) -> None:
         _require_int(selected_index, "selected_entry_index")
         if resolution["status"] != "consumer-entry-resolved":
             raise ValueError("confirmed resolution status mismatch")
+        if target_read is None:
+            raise ValueError("confirmed resolution requires a target read")
+        if target_read["expected_bank"] != target_read["mapped_bank"]:
+            raise ValueError("confirmed target read mapper bank mismatch")
     else:
         if selected_format is not None or selected_index is not None:
             raise ValueError("ambiguous resolution cannot select an entry")
@@ -445,6 +524,7 @@ def build_consumer_resolution(
     trace_record: dict[str, object],
     logical_access: int,
     alignments: list[dict[str, object]],
+    target_followup: dict[str, object] | None = None,
 ) -> dict[str, object]:
     watch = plan.get("selected_watch")
     if not isinstance(watch, dict):
@@ -452,25 +532,76 @@ def build_consumer_resolution(
     mapping_start = int(hit["logical_start"])
     file_start = int(watch["file_start"])
     physical_table_byte = file_start + logical_access - mapping_start
-    selected = plan.get("selected_hypothesis")
-    if not isinstance(selected, dict):
-        raise ValueError("trace plan has no selected hypothesis")
-    selected_format = str(selected["format"])
-    selected_start = int(selected["file_offset"])
-    selected_resolution = next(
-        (
-            item
-            for item in alignments
-            if item["format"] == selected_format
-            and item["alignment_file_offset"] == selected_start
-        ),
-        None,
-    )
+    selected_resolution: dict[str, object] | None = None
+    safe_target_read: dict[str, int] | None = None
+    if isinstance(target_followup, dict):
+        candidate = target_followup.get("matching_candidate")
+        target_hit = target_followup.get("hit")
+        target_trace = target_followup.get("trace_record")
+        target_access = target_followup.get("logical_access")
+        if (
+            isinstance(candidate, dict)
+            and isinstance(target_hit, dict)
+            and isinstance(target_trace, dict)
+            and isinstance(target_access, int)
+        ):
+            try:
+                candidate_format = str(candidate["format"])
+                candidate_start = int(candidate["alignment_file_offset"])
+                candidate_index = int(candidate["entry_index"])
+                candidate_address = int(candidate["pointer_address"])
+                candidate_bank = int(candidate["pointer_bank"])
+                candidate_slot = int(candidate["target_slot"])
+                candidate_target = int(candidate["target_file_offset"])
+                target_mapped_bank = int(target_hit[f"slot{candidate_slot}_bank"])
+                target_instruction_bank = int(target_trace["bank"])
+                target_instruction_pc = int(target_trace["pc"])
+                target_pc_after = int(target_hit["pc_after"])
+                target_physical_pc_after = int(target_hit["physical_pc_after"])
+            except (KeyError, TypeError, ValueError):
+                pass
+            else:
+                selected_resolution = next(
+                    (
+                        item
+                        for item in alignments
+                        if item["format"] == candidate_format
+                        and item["alignment_file_offset"] == candidate_start
+                        and item["entry_index"] == candidate_index
+                        and item["target_file_offset"] == candidate_target
+                    ),
+                    None,
+                )
+                if (
+                    selected_resolution is not None
+                    and candidate_slot in {1, 2}
+                    and _candidate_access_is_valid(
+                        candidate_address,
+                        candidate_bank,
+                        candidate_slot,
+                        target_access,
+                        target_mapped_bank,
+                    )
+                ):
+                    safe_target_read = {
+                        "slot": candidate_slot,
+                        "logical_access": target_access,
+                        "physical_target_byte": candidate_target,
+                        "instruction_bank": target_instruction_bank,
+                        "instruction_pc": target_instruction_pc,
+                        "pc_after": target_pc_after,
+                        "physical_pc_after": target_physical_pc_after,
+                        "expected_bank": candidate_bank,
+                        "mapped_bank": target_mapped_bank,
+                    }
+                else:
+                    selected_resolution = None
     mapped_bank = _actual_slot_bank(hit)
     confirmed = bool(
         selected_resolution
         and selected_resolution["bounded_decode"]
         and mapped_bank == int(hit["expected_bank"])
+        and safe_target_read is not None
     )
     roundtrip_exact = bool(
         selected_resolution
@@ -498,8 +629,11 @@ def build_consumer_resolution(
         ),
         "hit": safe_hit,
         "alignment_resolutions": alignments,
+        "target_read": safe_target_read,
         "selected_alignment_format": (
-            selected_format if confirmed else None
+            str(selected_resolution["format"])
+            if confirmed and selected_resolution is not None
+            else None
         ),
         "selected_entry_index": (
             int(selected_resolution["entry_index"])
@@ -613,9 +747,9 @@ def main() -> int:
     attempts = report.get("attempts")
     if not isinstance(attempts, list):
         raise ValueError("local runtime report has no attempts")
-    found = next(
+    found_record = next(
         (
-            access
+            (attempt, access)
             for attempt in attempts
             if isinstance(attempt, dict)
             for access in [_find_access(attempt)]
@@ -623,9 +757,10 @@ def main() -> int:
         ),
         None,
     )
-    if found is None:
+    if found_record is None:
         print("No resolvable runtime read hit; safe resolution was not written.")
         return 0
+    attempt, found = found_record
     hit, trace_record, logical_access = found
     watch = plan.get("selected_watch")
     assert isinstance(watch, dict)
@@ -654,6 +789,11 @@ def main() -> int:
         trace_record=trace_record,
         logical_access=logical_access,
         alignments=alignments,
+        target_followup=(
+            attempt.get("target_followup")
+            if isinstance(attempt.get("target_followup"), dict)
+            else None
+        ),
     )
     path = write_consumer_resolution(root, resolution)
     print(

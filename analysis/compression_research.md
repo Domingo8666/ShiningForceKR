@@ -71,6 +71,10 @@ v5.1 BPS는 영어 벡터 위치 512바이트 중 487바이트를 명시적으�
 - 형식 설명: https://github.com/maxim-zhao/psrp/blob/04bbfc3421b0dd46ef9ba72974e877cdb7e697b2/technical.md
 
 참고 구현 코드는 복사하지 않았습니다. 기록된 형식과 실제 Final Conflict IPS 바이트를 대조해 독립적으로 작성했습니다.
+참고 `SFGDecoder`의 조회 항목은 `[bank][address low][address high]` 순서이고
+이전 심벌별 트리를 선택하는 문맥 의존 방식입니다. 이 계열 구조는
+v5.1의 `bank_addr_le` 후보를 정적으로 지지하지만, 실제 v5.1 정렬은
+후보 압축 주소의 런타임 read와 매퍼 뱅크가 함께 확인될 때만 확정합니다.
 
 ## 2026-07-29 v5.1 한국어 엔진 추가 확정
 

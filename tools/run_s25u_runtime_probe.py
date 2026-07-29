@@ -21,6 +21,12 @@ try:
         publish_runtime_observation,
         write_runtime_observation,
     )
+    from .v5_1_runtime_hit_resolver import (
+        _alignment_pointer,
+        _find_access,
+        _parse_trace_line,
+        _read_addresses,
+    )
 except ImportError:  # direct script execution
     from patch_io import sha256_file
     from v5_1_consumer import verify_target_identity
@@ -28,6 +34,12 @@ except ImportError:  # direct script execution
         build_runtime_observation,
         publish_runtime_observation,
         write_runtime_observation,
+    )
+    from v5_1_runtime_hit_resolver import (
+        _alignment_pointer,
+        _find_access,
+        _parse_trace_line,
+        _read_addresses,
     )
 
 DEFAULT_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
@@ -42,6 +54,7 @@ GEARSYSTEM_COMMAND = (
 )
 REQUIRED_TOOLS = {
     "controller_button",
+    "debug_continue",
     "debug_get_status",
     "debug_pause",
     "debug_reset",
@@ -274,9 +287,8 @@ def _frames_per_slot() -> int:
     return sum(frames for frames, _ in INPUT_SCHEDULE)
 
 
-def _capture_hit(
+def _capture_state(
     client: McpStdioClient,
-    mapping: dict[str, int],
 ) -> tuple[dict[str, object], dict[str, object]]:
     status = client.call("debug_get_status")
     z80 = client.call("get_z80_status")
@@ -316,8 +328,7 @@ def _capture_hit(
         key.lower(): _parse_hex(z80.get(key), key)
         for key in ("AF", "BC", "DE", "HL", "IX", "IY", "SP")
     }
-    safe_hit: dict[str, object] = {
-        **mapping,
+    safe_state: dict[str, object] = {
         "pc_after": _parse_hex(status.get("pc"), "pc"),
         "physical_pc_after": _parse_hex(z80.get("physical_PC"), "physical_PC"),
         "executing_bank": _parse_hex(z80.get("bank"), "bank"),
@@ -336,7 +347,174 @@ def _capture_hit(
         "trace": trace,
         "call_stack": call_stack,
     }
-    return safe_hit, local_evidence
+    return safe_state, local_evidence
+
+
+def _capture_hit(
+    client: McpStdioClient,
+    mapping: dict[str, int],
+) -> tuple[dict[str, object], dict[str, object]]:
+    safe_state, local_evidence = _capture_state(client)
+    return {**mapping, **safe_state}, local_evidence
+
+
+def _target_candidates(
+    rom: bytes,
+    plan: dict[str, object],
+    physical_table_byte: int,
+) -> list[dict[str, object]]:
+    cluster = plan.get("selected_alignment_cluster")
+    if not isinstance(cluster, list):
+        raise ValueError("trace plan has no alignment cluster")
+    output: list[dict[str, object]] = []
+    for item in cluster:
+        if not isinstance(item, dict):
+            continue
+        pointer = _alignment_pointer(rom, item, physical_table_byte)
+        if (
+            pointer is not None
+            and pointer["target_file_offset"] is not None
+            and pointer["target_slot"] in {1, 2}
+        ):
+            output.append(pointer)
+    return output
+
+
+def _last_candidate_access(
+    evidence: dict[str, object],
+    candidates: list[dict[str, object]],
+) -> tuple[dict[str, int], int] | None:
+    trace = evidence.get("trace")
+    z80 = evidence.get("z80")
+    if not isinstance(trace, dict) or not isinstance(z80, dict):
+        return None
+    lines = trace.get("lines")
+    if not isinstance(lines, list):
+        return None
+    addresses = {int(item["pointer_address"]) for item in candidates}
+    for line in reversed(lines):
+        if not isinstance(line, str):
+            continue
+        parsed = _parse_trace_line(line)
+        if parsed is None:
+            continue
+        registers = parsed["registers"]
+        assert isinstance(registers, dict)
+        registers = {str(key): int(value) for key, value in registers.items()}
+        for name in ("IX", "IY"):
+            value = z80.get(name)
+            if isinstance(value, str):
+                registers[name.lower()] = int(value, 16)
+        for address in _read_addresses(parsed["opcodes"], registers):
+            if address in addresses:
+                return {
+                    "bank": int(parsed["bank"]),
+                    "pc": int(parsed["pc"]),
+                }, address
+    return None
+
+
+def _matching_target_candidate(
+    candidates: list[dict[str, object]],
+    logical_access: int,
+    state: dict[str, object],
+) -> dict[str, object] | None:
+    matches: list[dict[str, object]] = []
+    for candidate in candidates:
+        slot = int(candidate["target_slot"])
+        if (
+            int(candidate["pointer_address"]) == logical_access
+            and int(candidate["pointer_bank"]) == int(state[f"slot{slot}_bank"])
+        ):
+            matches.append(candidate)
+    return matches[0] if len(matches) == 1 else None
+
+
+def _follow_target_read(
+    client: McpStdioClient,
+    candidates: list[dict[str, object]],
+    timeout_seconds: float = 10.0,
+) -> dict[str, object]:
+    result: dict[str, object] = {
+        "status": "target-read-not-attempted",
+        "candidates": candidates,
+        "matching_candidate": None,
+        "logical_access": None,
+        "trace_record": None,
+        "hit": None,
+        "evidence": None,
+        "events_seen": 0,
+    }
+    if not candidates:
+        result["status"] = "target-read-no-valid-candidates"
+        return result
+
+    addresses = sorted({int(item["pointer_address"]) for item in candidates})
+    armed: list[str] = []
+    try:
+        for address in addresses:
+            encoded = f"{address:04X}"
+            client.call(
+                "set_breakpoint_range",
+                {
+                    "start_address": encoded,
+                    "end_address": encoded,
+                    "memory_area": "rom_ram",
+                    "execute": False,
+                    "read": True,
+                    "write": False,
+                },
+            )
+            armed.append(encoded)
+
+        deadline = time.monotonic() + timeout_seconds
+        client.call("debug_continue")
+        while time.monotonic() < deadline:
+            status = client.call("debug_get_status")
+            if status.get("at_breakpoint") is not True:
+                time.sleep(0.05)
+                continue
+            state, evidence = _capture_state(client)
+            result["events_seen"] = int(result["events_seen"]) + 1
+            access = _last_candidate_access(evidence, candidates)
+            if access is not None:
+                trace_record, logical_access = access
+                matching = _matching_target_candidate(
+                    candidates, logical_access, state
+                )
+                result.update(
+                    {
+                        "logical_access": logical_access,
+                        "trace_record": trace_record,
+                        "hit": state,
+                        "evidence": evidence,
+                        "matching_candidate": matching,
+                    }
+                )
+                if matching is not None:
+                    result["status"] = "target-read-confirmed"
+                    return result
+            if int(result["events_seen"]) >= 32:
+                result["status"] = "target-read-unconfirmed"
+                return result
+            client.call("debug_continue")
+
+        client.call("debug_pause")
+        result["status"] = "target-read-timeout"
+        return result
+    finally:
+        for encoded in armed:
+            try:
+                client.call(
+                    "remove_breakpoint",
+                    {
+                        "address": encoded,
+                        "end_address": encoded,
+                        "memory_area": "rom_ram",
+                    },
+                )
+            except RuntimeError:
+                pass
 
 
 def _probe_slot(
@@ -467,14 +645,41 @@ def main() -> int:
         for mapping in ranges:
             slots_attempted.append(mapping["slot"])
             hit, evidence = _probe_slot(client, mapping)
-            local_result["attempts"].append(
-                {
-                    "mapping": mapping,
-                    "hit": hit,
-                    "evidence": evidence,
-                }
-            )
+            attempt: dict[str, object] = {
+                "mapping": mapping,
+                "hit": hit,
+                "evidence": evidence,
+                "target_followup": None,
+            }
+            local_result["attempts"].append(attempt)
             if hit is not None:
+                found = _find_access(attempt)
+                if found is None:
+                    attempt["target_followup"] = {
+                        "status": "table-read-address-unresolved",
+                        "candidates": [],
+                        "matching_candidate": None,
+                        "logical_access": None,
+                        "trace_record": None,
+                        "hit": None,
+                        "evidence": None,
+                        "events_seen": 0,
+                    }
+                else:
+                    _, _, logical_access = found
+                    watch = plan.get("selected_watch")
+                    assert isinstance(watch, dict)
+                    physical_table_byte = (
+                        int(watch["file_start"])
+                        + logical_access
+                        - int(hit["logical_start"])
+                    )
+                    candidates = _target_candidates(
+                        rom, plan, physical_table_byte
+                    )
+                    attempt["target_followup"] = _follow_target_read(
+                        client, candidates
+                    )
                 safe_hit = hit
                 break
     finally:

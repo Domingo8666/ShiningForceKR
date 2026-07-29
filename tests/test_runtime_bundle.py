@@ -68,6 +68,40 @@ class RuntimeBundleTests(unittest.TestCase):
             ):
                 _load_validated_artifacts(Path(directory))
 
+    def test_skips_stale_artifact_when_another_is_valid(self) -> None:
+        diagnostic = {
+            "artifact_kind": "sanitized-runtime-stage-diagnostic",
+            "schema_version": 1,
+            "status": "runtime-stage-not-ready",
+            "trigger": "setup",
+            "exit_code": 1,
+            "checks": {
+                "proot_available": False,
+                "ubuntu_available": False,
+                "gearsystem_binary_available": False,
+                "dynamic_dependencies_ready": False,
+                "mcp_initialize_ready": False,
+                "required_tools_ready": False,
+                "local_target_present": True,
+                "trace_plan_present": True,
+                "target_identity_ready": True,
+            },
+            "failed_stage": "proot-available",
+            "runtime_observation_present": False,
+            "next_checkpoint": "repair-first-failed-runtime-stage",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_runtime_diagnostic(root, diagnostic)
+            stale = (
+                root
+                / "analysis/device/v5_1_latest_consumer_resolution.json"
+            )
+            stale.write_text('{"schema_version": 1}\n', encoding="utf-8")
+            artifacts = _load_validated_artifacts(root)
+        self.assertEqual(len(artifacts), 1)
+        self.assertNotIn(stale.relative_to(root), artifacts)
+
 
 if __name__ == "__main__":
     unittest.main()

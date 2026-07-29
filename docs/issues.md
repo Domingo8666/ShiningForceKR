@@ -13,7 +13,7 @@
 | SFKR-005 | 부자연스럽거나 문맥에 맞지 않는 번역 | open | 원문 확정 뒤 엔트리별 사람 검수 |
 | SFKR-006 | 세이브 상태의 이전 VRAM/폰트가 테스트 오염 | open | 콜드 부팅과 새 게임 기준 재검증 |
 | SFKR-007 | 대사창 테두리와 주변 그래픽 손상 위험 | open | 글리프 업로드 범위와 타일 인덱스 경계 검사 |
-| SFKR-008 | 실제 스크립트 조회표 미확정 | investigating | 0x80100 벡터 소비부와 0x87000 런타임 호출부 추적 |
+| SFKR-008 | 실제 스크립트 조회표 미확정 | investigating | 표 히트 뒤 후보 압축 주소의 read breakpoint와 매퍼 뱅크 일치 확인 |
 | SFKR-009 | 한국어 문맥·제어 심벌 의미 미확정 | investigating | 확인된 51개 문맥을 글꼴 페이지·화면 동작과 연결 |
 | SFKR-010 | 목표 인트로 문장 ROM 디코딩 미완료 | blocked | 정확한 조회표 엔트리 ID 확인 뒤 재개 |
 | SFKR-011 | 추적 계획 추가 뒤 모바일 파이프라인 SyntaxError | fixed-static | compileall 및 파이프라인 import 회귀 통과 후 S25U 재실행 |

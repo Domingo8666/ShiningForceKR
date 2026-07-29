@@ -38,10 +38,15 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
         path = root / relative
         if not path.is_file():
             continue
-        value = json.loads(path.read_text(encoding="utf-8"))
-        if not isinstance(value, dict):
-            raise ValueError(f"{relative} must contain a JSON object")
-        validator(value)
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(value, dict):
+                raise ValueError(f"{relative} must contain a JSON object")
+            validator(value)
+        except (OSError, ValueError, json.JSONDecodeError):
+            # A stale or malformed local artifact must never block publication
+            # of newly validated safe artifacts, and is never staged itself.
+            continue
         artifacts[relative] = value
     if not artifacts:
         raise ValueError("no sanitized runtime artifacts are available")
@@ -91,11 +96,6 @@ def publish_runtime_bundle(root: Path) -> dict[str, object]:
     }
     porcelain = _git(root, "status", "--porcelain").stdout.splitlines()
     changed_paths = {_porcelain_path(line) for line in porcelain}
-    unrelated = sorted(changed_paths - allowed)
-    if unrelated:
-        raise ValueError(
-            "refusing to publish with unrelated working tree changes"
-        )
 
     selected = sorted(
         str(relative).replace("\\", "/")
@@ -120,6 +120,7 @@ def publish_runtime_bundle(root: Path) -> dict[str, object]:
     return {
         "changed": bool(selected),
         "commit": _git(root, "rev-parse", "HEAD").stdout.strip(),
+        "ignored_paths": sorted(changed_paths - allowed),
         "paths": sorted(
             str(relative).replace("\\", "/") for relative in artifacts
         ),
