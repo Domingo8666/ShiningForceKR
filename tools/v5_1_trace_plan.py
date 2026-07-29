@@ -20,6 +20,13 @@ except ImportError:  # direct script execution
 BANK_SIZE = 0x4000
 MAX_HYPOTHESES = 12
 MAX_REFERENCE_EXAMPLES = 16
+BANK_LINK_WINDOW = 32
+MAPPER_WRITE_MAX_GAP = 16
+MAPPER_REGISTER_BY_SLOT = {
+    0: 0xFFFD,
+    1: 0xFFFE,
+    2: 0xFFFF,
+}
 
 REFERENCE_SHAPES = (
     ("ld_bc_nn", b"\x01"),
@@ -58,6 +65,34 @@ def _find_all(data: bytes, pattern: bytes) -> list[int]:
             return hits
         hits.append(at)
         start = at + 1
+
+
+def _has_mapper_bank_select_sequence(
+    rom: bytes,
+    reference_at: int,
+    reference_size: int,
+    expected_bank: int,
+    expected_slot: int,
+) -> bool:
+    """Find a nearby Sega mapper write for the expected slot and bank.
+
+    This is still only a byte-shape candidate. Requiring the matching
+    ``LD A,bank`` then ``LD (slot-register),A`` pair prevents a lone bank
+    literal from receiving the same priority as a plausible mapper update.
+    """
+
+    mapper_register = MAPPER_REGISTER_BY_SLOT[expected_slot]
+    mapper_write = bytes((0x32, mapper_register & 0xFF, mapper_register >> 8))
+    left = max(0, reference_at - BANK_LINK_WINDOW)
+    right = min(len(rom), reference_at + reference_size + BANK_LINK_WINDOW)
+    bank_load = bytes((0x3E, expected_bank))
+    for load_at in _find_all(rom[left:right], bank_load):
+        load_at += left
+        write_start = load_at + len(bank_load)
+        write_end = min(right, write_start + MAPPER_WRITE_MAX_GAP + len(mapper_write))
+        if rom.find(mapper_write, write_start, write_end) >= 0:
+            return True
+    return False
 
 
 def logical_mapping_hypotheses(file_offset: int, extent: int) -> list[dict[str, object]]:
@@ -101,6 +136,7 @@ def _reference_shapes(
     rom: bytes,
     logical_address: int,
     expected_bank: int,
+    expected_slot: int,
 ) -> dict[str, object]:
     encoded = logical_address.to_bytes(2, "little")
     examples: list[dict[str, object]] = []
@@ -112,6 +148,7 @@ def _reference_shapes(
     total = 0
     nearby_bank_total = 0
     bank_coupled_pointer_loads = 0
+    mapper_coupled_pointer_loads = 0
     for shape, prefix in REFERENCE_SHAPES:
         if shape in POINTER_LOAD_SHAPES:
             category = "pointer_load"
@@ -124,12 +161,24 @@ def _reference_shapes(
         for at in _find_all(rom, prefix + encoded):
             total += 1
             counts[category] += 1
-            left = max(0, at - 24)
-            right = min(len(rom), at + len(prefix) + 2 + 24)
+            instruction_size = len(prefix) + 2
+            left = max(0, at - BANK_LINK_WINDOW)
+            right = min(len(rom), at + instruction_size + BANK_LINK_WINDOW)
             has_bank_literal = rom.find(bytes((0x3E, expected_bank)), left, right) >= 0
+            has_mapper_sequence = (
+                category == "pointer_load"
+                and _has_mapper_bank_select_sequence(
+                    rom,
+                    at,
+                    instruction_size,
+                    expected_bank,
+                    expected_slot,
+                )
+            )
             nearby_bank_total += int(has_bank_literal)
             if category == "pointer_load" and has_bank_literal:
                 bank_coupled_pointer_loads += 1
+            mapper_coupled_pointer_loads += int(has_mapper_sequence)
             if len(examples) < MAX_REFERENCE_EXAMPLES:
                 examples.append(
                     {
@@ -137,6 +186,7 @@ def _reference_shapes(
                         "instruction_shape": shape,
                         "category": category,
                         "nearby_ld_a_bank_literal": has_bank_literal,
+                        "matching_mapper_bank_select": has_mapper_sequence,
                     }
                 )
     return {
@@ -146,6 +196,7 @@ def _reference_shapes(
         "absolute_memory_count": counts["absolute_memory"],
         "nearby_bank_literal_count": nearby_bank_total,
         "bank_coupled_pointer_load_count": bank_coupled_pointer_loads,
+        "mapper_coupled_pointer_load_count": mapper_coupled_pointer_loads,
         "examples": examples,
         "examples_truncated": total > len(examples),
     }
@@ -186,12 +237,14 @@ def build_trace_plan(rom: bytes, consumer: dict[str, object]) -> dict[str, objec
         absolute_memory_total = 0
         nearby_bank_total = 0
         coupled_pointer_total = 0
+        mapper_coupled_pointer_total = 0
         generic_slot_base = False
         for mapping in mappings:
             refs = _reference_shapes(
                 rom,
                 int(mapping["logical_start"]),
                 int(mapping["bank"]),
+                int(mapping["slot"]),
             )
             mapping["reference_shapes"] = refs
             reference_total += int(refs["candidate_count"])
@@ -200,20 +253,28 @@ def build_trace_plan(rom: bytes, consumer: dict[str, object]) -> dict[str, objec
             absolute_memory_total += int(refs["absolute_memory_count"])
             nearby_bank_total += int(refs["nearby_bank_literal_count"])
             coupled_pointer_total += int(refs["bank_coupled_pointer_load_count"])
+            mapper_coupled_pointer_total += int(
+                refs["mapper_coupled_pointer_load_count"]
+            )
             generic_slot_base = generic_slot_base or int(mapping["logical_start"]) in (
                 0x4000,
                 0x8000,
             )
 
-        # Raw jp/call shapes at 0x4000 or 0x8000 are common banked-code
-        # control flow, not evidence that the candidate is a data table.
-        # Keep them in the report but exclude them from candidate promotion.
+        # Raw jp/call shapes at 0x4000 or 0x8000 are common banked-code control
+        # flow. A lone nearby bank literal is also weak: require the matching
+        # slot register write before giving a bank relationship a strong
+        # ranking weight. All of these remain hypotheses until runtime proof.
         score = (
             float(item["scanner_score"])
-            + min(pointer_load_total, 4) * 12
+            + min(pointer_load_total, 4) * 8
             + min(absolute_memory_total, 2) * 4
-            + min(coupled_pointer_total, 3) * 100
-            - (80 if generic_slot_base and coupled_pointer_total == 0 else 0)
+            + min(mapper_coupled_pointer_total, 3) * 140
+            - (
+                100
+                if generic_slot_base and mapper_coupled_pointer_total == 0
+                else 0
+            )
         )
         ranked.append(
             {
@@ -225,8 +286,9 @@ def build_trace_plan(rom: bytes, consumer: dict[str, object]) -> dict[str, objec
                 "absolute_memory_shape_count": absolute_memory_total,
                 "nearby_bank_literal_count": nearby_bank_total,
                 "bank_coupled_pointer_load_count": coupled_pointer_total,
+                "mapper_coupled_pointer_load_count": mapper_coupled_pointer_total,
                 "generic_slot_base_discounted": (
-                    generic_slot_base and coupled_pointer_total == 0
+                    generic_slot_base and mapper_coupled_pointer_total == 0
                 ),
                 "combined_candidate_score": round(score, 2),
             }
@@ -235,6 +297,7 @@ def build_trace_plan(rom: bytes, consumer: dict[str, object]) -> dict[str, objec
     ranked.sort(
         key=lambda item: (
             item["combined_candidate_score"],
+            item["mapper_coupled_pointer_load_count"],
             item["bank_coupled_pointer_load_count"],
             item["pointer_load_shape_count"],
             -item["file_offset"],
@@ -267,7 +330,7 @@ def build_trace_plan(rom: bytes, consumer: dict[str, object]) -> dict[str, objec
             )
 
     return {
-        "schema_version": 2,
+        "schema_version": 3,
         "status": "runtime-trace-plan-ready",
         "source_analysis_sha256": consumer["input"]["sha256"],
         "ranked_consumer_hypotheses": ranked,
@@ -321,11 +384,13 @@ def to_markdown(plan: dict[str, object]) -> str:
         "Byte-shaped references only adjust candidate priority. They are not",
         "disassembly or runtime-consumption proof. Common jp/call shapes at slot",
         "bases 0x4000 and 0x8000 are reported but do not promote a data-table candidate.",
+        "A bank relationship receives strong weight only when the expected bank",
+        "literal is followed by a write to the mapper register for the same slot.",
         "",
         "## Ranked consumer hypotheses",
         "",
-        "| Rank | File offset | Family | Entries | Pointer loads | Branches | Bank-coupled pointers | Slot-base discount | Score |",
-        "|---:|---:|---|---:|---:|---:|---:|---|---:|",
+        "| Rank | File offset | Family | Entries | Pointer loads | Branches | Nearby bank literals | Mapper-linked pointers | Slot-base discount | Score |",
+        "|---:|---:|---|---:|---:|---:|---:|---:|---|---:|",
     ]
     if ranked:
         for rank, item in enumerate(ranked, 1):
@@ -334,11 +399,12 @@ def to_markdown(plan: dict[str, object]) -> str:
                 f"{item['entries']} | {item['pointer_load_shape_count']} | "
                 f"{item['control_flow_shape_count']} | "
                 f"{item['bank_coupled_pointer_load_count']} | "
+                f"{item['mapper_coupled_pointer_load_count']} | "
                 f"{'yes' if item['generic_slot_base_discounted'] else 'no'} | "
                 f"{item['combined_candidate_score']:.2f} |"
             )
     else:
-        lines.append("| - | - | none | 0 | 0 | 0 | 0 | - | - |")
+        lines.append("| - | - | none | 0 | 0 | 0 | 0 | 0 | - | - |")
 
     lines.extend(["", "## Selected watch ranges", ""])
     if selected:
@@ -388,7 +454,7 @@ def to_korean_summary(plan: dict[str, object]) -> str:
     if not selected:
         return "\n".join(
             [
-                "[소비 코드 2차 분석]",
+                "[소비 코드 3차 분석]",
                 "- 실행 추적 대상으로 승격할 후보가 없습니다.",
                 "- 후보 필터를 다시 설계해야 합니다.",
                 "",
@@ -400,12 +466,13 @@ def to_korean_summary(plan: dict[str, object]) -> str:
     )
     return "\n".join(
         [
-            "[소비 코드 2차 분석]",
+            "[소비 코드 3차 분석]",
             f"- 선택된 물리 ROM 후보: {_hex(selected['file_offset'])}",
             f"- 구조: {selected['family']} / {selected['entries']}개 항목",
             f"- 데이터 포인터 적재 모양: {selected['pointer_load_shape_count']}개",
             f"- 분기/호출 모양(점수 제외): {selected['control_flow_shape_count']}개",
-            f"- 뱅크 리터럴 결합 포인터: {selected['bank_coupled_pointer_load_count']}개",
+            f"- 근처 뱅크 리터럴 포인터: {selected['bank_coupled_pointer_load_count']}개",
+            f"- 슬롯 매퍼 쓰기 결합 포인터: {selected['mapper_coupled_pointer_load_count']}개",
             f"- 슬롯 시작 주소 할인 적용: {'예' if selected['generic_slot_base_discounted'] else '아니요'}",
             f"- 실행 읽기 감시 범위: {mappings}",
             "- 아직 실행 중 읽기 증거가 없으므로 확정 조회표가 아닙니다.",

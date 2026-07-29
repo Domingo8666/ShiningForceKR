@@ -204,10 +204,18 @@ def main() -> int:
         },
         "runtime_trace_plan": {
             "status": trace_plan["status"],
+            "schema_version": trace_plan["schema_version"],
             "selected_file_offset": (
                 None
                 if trace_plan["selected_hypothesis"] is None
                 else trace_plan["selected_hypothesis"]["file_offset"]
+            ),
+            "selected_mapper_coupled_pointer_loads": (
+                0
+                if trace_plan["selected_hypothesis"] is None
+                else trace_plan["selected_hypothesis"][
+                    "mapper_coupled_pointer_load_count"
+                ]
             ),
             "report": args.trace_plan_report.name,
             "json": args.trace_plan_json.name,

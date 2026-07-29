@@ -43,7 +43,7 @@ class TracePlanTests(unittest.TestCase):
 
     def test_reference_shape_prioritizes_and_builds_emucap_args(self) -> None:
         rom = bytearray(b"\xFF" * 0x10000)
-        rom[0x200:0x205] = bytes.fromhex("3e00217d0b")
+        rom[0x200:0x208] = bytes.fromhex("3e0032fdff217d0b")
         plan = build_trace_plan(bytes(rom), synthetic_consumer())
         selected = plan["selected_hypothesis"]
         self.assertIsNotNone(selected)
@@ -52,7 +52,8 @@ class TracePlanTests(unittest.TestCase):
         self.assertEqual(selected["pointer_load_shape_count"], 1)
         self.assertEqual(selected["control_flow_shape_count"], 0)
         self.assertEqual(selected["bank_coupled_pointer_load_count"], 1)
-        self.assertEqual(plan["schema_version"], 2)
+        self.assertEqual(selected["mapper_coupled_pointer_load_count"], 1)
+        self.assertEqual(plan["schema_version"], 3)
 
         steps = plan["emucap"]["before_resume"]
         self.assertEqual(steps[0], {"tool": "set_trace", "args": {"enabled": True}})
@@ -69,6 +70,24 @@ class TracePlanTests(unittest.TestCase):
         self.assertFalse(plan["consumer_evidence_confirmed"])
         self.assertIn("0x000B7D", to_korean_summary(plan))
 
+    def test_wrong_mapper_register_does_not_link_pointer_to_slot(self) -> None:
+        rom = bytearray(b"\xFF" * 0x10000)
+        # The pointer is for slot 0, but the write selects slot 1 (0xFFFE).
+        rom[0x200:0x208] = bytes.fromhex("3e0032feff217d0b")
+        plan = build_trace_plan(bytes(rom), synthetic_consumer())
+        selected = plan["selected_hypothesis"]
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected["bank_coupled_pointer_load_count"], 1)
+        self.assertEqual(selected["mapper_coupled_pointer_load_count"], 0)
+
+    def test_bank_literal_without_mapper_write_remains_weak_evidence(self) -> None:
+        rom = bytearray(b"\xFF" * 0x10000)
+        rom[0x200:0x205] = bytes.fromhex("3e00217d0b")
+        plan = build_trace_plan(bytes(rom), synthetic_consumer())
+        selected = plan["selected_hypothesis"]
+        self.assertIsNotNone(selected)
+        self.assertEqual(selected["bank_coupled_pointer_load_count"], 1)
+        self.assertEqual(selected["mapper_coupled_pointer_load_count"], 0)
 
     def test_generic_slot_base_calls_do_not_promote_a_data_table(self) -> None:
         rom = bytearray(bytes([0xFF]) * 0x20000)
@@ -112,8 +131,9 @@ class TracePlanTests(unittest.TestCase):
         )
         self.assertEqual(generic["pointer_load_shape_count"], 0)
         self.assertEqual(generic["control_flow_shape_count"], 40)
+        self.assertEqual(generic["mapper_coupled_pointer_load_count"], 0)
         self.assertTrue(generic["generic_slot_base_discounted"])
-        self.assertEqual(generic["combined_candidate_score"], 170.0)
+        self.assertEqual(generic["combined_candidate_score"], 150.0)
 
 
 if __name__ == "__main__":
