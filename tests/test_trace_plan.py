@@ -53,7 +53,7 @@ class TracePlanTests(unittest.TestCase):
         self.assertEqual(selected["control_flow_shape_count"], 0)
         self.assertEqual(selected["bank_coupled_pointer_load_count"], 1)
         self.assertEqual(selected["mapper_coupled_pointer_load_count"], 1)
-        self.assertEqual(plan["schema_version"], 3)
+        self.assertEqual(plan["schema_version"], 4)
 
         steps = plan["emucap"]["before_resume"]
         self.assertEqual(steps[0], {"tool": "set_trace", "args": {"enabled": True}})
@@ -69,6 +69,33 @@ class TracePlanTests(unittest.TestCase):
         )
         self.assertFalse(plan["consumer_evidence_confirmed"])
         self.assertIn("0x000B7D", to_korean_summary(plan))
+
+    def test_shifted_triplet_candidates_share_one_union_watch(self) -> None:
+        rom = bytearray(b"\xFF" * 0x10000)
+        consumer = synthetic_consumer()
+        consumer["pointer_table_candidates"]["ranked_triplet_runs"].append(
+            {
+                "file_offset": 0x0B7C,
+                "end_exclusive": 0x0B7C + 12 * 3,
+                "format": "addr_le_bank",
+                "entries": 12,
+                "score": 90.0,
+            }
+        )
+        plan = build_trace_plan(bytes(rom), consumer)
+
+        cluster = plan["selected_alignment_cluster"]
+        self.assertEqual(
+            [item["file_offset"] for item in cluster],
+            [0x0B7D, 0x0B7C],
+        )
+        watch = plan["selected_watch"]
+        self.assertEqual(watch["file_start"], 0x0B7C)
+        self.assertEqual(watch["end_exclusive"], 0x0B7D + 12 * 3)
+        self.assertEqual(
+            [item["args"]["start"] for item in plan["emucap"]["before_resume"][1:]],
+            [0x0B7C, 0x4B7C, 0x8B7C],
+        )
 
     def test_wrong_mapper_register_does_not_link_pointer_to_slot(self) -> None:
         rom = bytearray(b"\xFF" * 0x10000)

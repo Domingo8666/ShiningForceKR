@@ -211,6 +211,9 @@ def _table_hypotheses(consumer: dict[str, object]) -> list[dict[str, object]]:
     ):
         assert isinstance(entries, list)
         for original_rank, item in enumerate(entries, 1):
+            unique_ratio = item.get(
+                "unique_target_ratio", item.get("unique_address_ratio")
+            )
             output.append(
                 {
                     "family": family,
@@ -221,9 +224,55 @@ def _table_hypotheses(consumer: dict[str, object]) -> list[dict[str, object]]:
                     "entries": item["entries"],
                     "entry_width": width,
                     "scanner_score": item["score"],
+                    "unique_ratio": unique_ratio,
+                    "monotonic_ratio": item.get("monotonic_ratio"),
+                    "original_512k_target_ratio": item.get(
+                        "original_512k_target_ratio"
+                    ),
+                    "decode_probe": item.get("decode_probe"),
                 }
             )
     return output
+
+
+def _overlap_ratio(left: dict[str, object], right: dict[str, object]) -> float:
+    left_start = int(left["file_offset"])
+    left_end = int(left["end_exclusive"])
+    right_start = int(right["file_offset"])
+    right_end = int(right["end_exclusive"])
+    overlap = max(0, min(left_end, right_end) - max(left_start, right_start))
+    shorter = min(left_end - left_start, right_end - right_start)
+    return 0.0 if shorter <= 0 else overlap / shorter
+
+
+def _alignment_cluster(
+    selected: dict[str, object],
+    ranked: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Group near-identical shifted interpretations of one physical run."""
+
+    cluster: list[dict[str, object]] = []
+    for item in ranked:
+        if item["family"] != selected["family"]:
+            continue
+        if item["entry_width"] != selected["entry_width"]:
+            continue
+        if abs(int(item["file_offset"]) - int(selected["file_offset"])) >= int(
+            selected["entry_width"]
+        ):
+            continue
+        if _overlap_ratio(selected, item) < 0.90:
+            continue
+        cluster.append(
+            {
+                "file_offset": item["file_offset"],
+                "end_exclusive": item["end_exclusive"],
+                "format": item["format"],
+                "entries": item["entries"],
+                "combined_candidate_score": item["combined_candidate_score"],
+            }
+        )
+    return cluster
 
 
 def build_trace_plan(rom: bytes, consumer: dict[str, object]) -> dict[str, object]:
@@ -306,15 +355,29 @@ def build_trace_plan(rom: bytes, consumer: dict[str, object]) -> dict[str, objec
     )
     ranked = ranked[:MAX_HYPOTHESES]
     selected = ranked[0] if ranked else None
+    alignment_cluster: list[dict[str, object]] = []
+    selected_watch: dict[str, object] | None = None
+    if selected:
+        alignment_cluster = _alignment_cluster(selected, ranked)
+        watch_start = min(int(item["file_offset"]) for item in alignment_cluster)
+        watch_end = max(int(item["end_exclusive"]) for item in alignment_cluster)
+        selected_watch = {
+            "file_start": watch_start,
+            "end_exclusive": watch_end,
+            "logical_mappings": logical_mapping_hypotheses(
+                watch_start, watch_end - watch_start
+            ),
+        }
 
     arm_steps: list[dict[str, object]] = []
-    if selected:
-        for mapping in selected["logical_mappings"]:
+    if selected and selected_watch:
+        for mapping in selected_watch["logical_mappings"]:
             arm_steps.append(
                 {
                     "tool": "set_breakpoint",
                     "purpose": (
-                        f"candidate {_hex(selected['file_offset'])}, "
+                        f"alignment union {_hex(selected_watch['file_start'])}"
+                        f"..{_hex(selected_watch['end_exclusive'] - 1)}, "
                         f"slot {mapping['slot']}, expected bank 0x{mapping['bank']:02X}"
                     ),
                     "args": {
@@ -330,11 +393,13 @@ def build_trace_plan(rom: bytes, consumer: dict[str, object]) -> dict[str, objec
             )
 
     return {
-        "schema_version": 3,
+        "schema_version": 4,
         "status": "runtime-trace-plan-ready",
         "source_analysis_sha256": consumer["input"]["sha256"],
         "ranked_consumer_hypotheses": ranked,
         "selected_hypothesis": selected,
+        "selected_alignment_cluster": alignment_cluster,
+        "selected_watch": selected_watch,
         "emucap": {
             "required_system": "gamegear",
             "required_memory_type": "smsMemory",
@@ -375,6 +440,8 @@ def build_trace_plan(rom: bytes, consumer: dict[str, object]) -> dict[str, objec
 def to_markdown(plan: dict[str, object]) -> str:
     ranked = plan["ranked_consumer_hypotheses"]
     selected = plan["selected_hypothesis"]
+    alignment_cluster = plan["selected_alignment_cluster"]
+    selected_watch = plan["selected_watch"]
     assert isinstance(ranked, list)
     lines = [
         "# v5.1 emucap runtime trace plan",
@@ -389,35 +456,62 @@ def to_markdown(plan: dict[str, object]) -> str:
         "",
         "## Ranked consumer hypotheses",
         "",
-        "| Rank | File offset | Family | Entries | Pointer loads | Branches | Nearby bank literals | Mapper-linked pointers | Slot-base discount | Score |",
-        "|---:|---:|---|---:|---:|---:|---:|---:|---|---:|",
+        "| Rank | File offset | Family | Entries | Unique | Monotonic | Decode terminations | Pointer loads | Mapper-linked pointers | Score |",
+        "|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|",
     ]
     if ranked:
         for rank, item in enumerate(ranked, 1):
+            decode_probe = item["decode_probe"]
+            decode_text = (
+                "-"
+                if not isinstance(decode_probe, dict)
+                else (
+                    f"{decode_probe['bounded_terminations']}/"
+                    f"{decode_probe['attempted']}"
+                )
+            )
+            unique_text = (
+                "-" if item["unique_ratio"] is None else f"{item['unique_ratio']:.2f}"
+            )
+            monotonic_text = (
+                "-"
+                if item["monotonic_ratio"] is None
+                else f"{item['monotonic_ratio']:.2f}"
+            )
             lines.append(
                 f"| {rank} | {_hex(item['file_offset'])} | {item['family']} | "
-                f"{item['entries']} | {item['pointer_load_shape_count']} | "
-                f"{item['control_flow_shape_count']} | "
-                f"{item['bank_coupled_pointer_load_count']} | "
+                f"{item['entries']} | {unique_text} | {monotonic_text} | "
+                f"{decode_text} | {item['pointer_load_shape_count']} | "
                 f"{item['mapper_coupled_pointer_load_count']} | "
-                f"{'yes' if item['generic_slot_base_discounted'] else 'no'} | "
                 f"{item['combined_candidate_score']:.2f} |"
             )
     else:
-        lines.append("| - | - | none | 0 | 0 | 0 | 0 | 0 | - | - |")
+        lines.append("| - | - | none | 0 | - | - | - | 0 | 0 | - |")
 
     lines.extend(["", "## Selected watch ranges", ""])
-    if selected:
+    if selected and isinstance(selected_watch, dict):
         lines.extend(
             [
-                f"- Physical ROM candidate: {_hex(selected['file_offset'])}",
-                f"- Format: {selected['format']}, {selected['entries']} entries",
+                f"- Ranked first: {_hex(selected['file_offset'])}",
+                (
+                    f"- Alignment-union physical range: "
+                    f"{_hex(selected_watch['file_start'])}.."
+                    f"{_hex(selected_watch['end_exclusive'] - 1)}"
+                ),
+                "- Shifted alignment alternatives:",
+                *[
+                    (
+                        f"  - {_hex(item['file_offset'])}, {item['format']}, "
+                        f"{item['entries']} entries"
+                    )
+                    for item in alignment_cluster
+                ],
                 "",
                 "| Slot | Expected bank | CPU read range | Mapping note |",
                 "|---:|---:|---:|---|",
             ]
         )
-        for mapping in selected["logical_mappings"]:
+        for mapping in selected_watch["logical_mappings"]:
             lines.append(
                 f"| {mapping['slot']} | 0x{mapping['bank']:02X} | "
                 f"{_hex(mapping['logical_start'], 4)}..{_hex(mapping['logical_end'], 4)} | "
@@ -451,22 +545,29 @@ def to_markdown(plan: dict[str, object]) -> str:
 
 def to_korean_summary(plan: dict[str, object]) -> str:
     selected = plan["selected_hypothesis"]
+    alignment_cluster = plan["selected_alignment_cluster"]
+    selected_watch = plan["selected_watch"]
     if not selected:
         return "\n".join(
             [
-                "[소비 코드 3차 분석]",
+                "[소비 코드 4차 분석]",
                 "- 실행 추적 대상으로 승격할 후보가 없습니다.",
                 "- 후보 필터를 다시 설계해야 합니다.",
                 "",
             ]
         )
+    assert isinstance(selected_watch, dict)
     mappings = ", ".join(
         f"{_hex(item['logical_start'], 4)}..{_hex(item['logical_end'], 4)}"
-        for item in selected["logical_mappings"]
+        for item in selected_watch["logical_mappings"]
+    )
+    alignments = ", ".join(
+        f"{_hex(item['file_offset'])}({item['format']})"
+        for item in alignment_cluster
     )
     return "\n".join(
         [
-            "[소비 코드 3차 분석]",
+            "[소비 코드 4차 분석]",
             f"- 선택된 물리 ROM 후보: {_hex(selected['file_offset'])}",
             f"- 구조: {selected['family']} / {selected['entries']}개 항목",
             f"- 데이터 포인터 적재 모양: {selected['pointer_load_shape_count']}개",
@@ -474,6 +575,12 @@ def to_korean_summary(plan: dict[str, object]) -> str:
             f"- 근처 뱅크 리터럴 포인터: {selected['bank_coupled_pointer_load_count']}개",
             f"- 슬롯 매퍼 쓰기 결합 포인터: {selected['mapper_coupled_pointer_load_count']}개",
             f"- 슬롯 시작 주소 할인 적용: {'예' if selected['generic_slot_base_discounted'] else '아니요'}",
+            f"- 겹치는 정렬 후보: {alignments}",
+            (
+                f"- 통합 물리 감시 범위: "
+                f"{_hex(selected_watch['file_start'])}.."
+                f"{_hex(selected_watch['end_exclusive'] - 1)}"
+            ),
             f"- 실행 읽기 감시 범위: {mappings}",
             "- 아직 실행 중 읽기 증거가 없으므로 확정 조회표가 아닙니다.",
             "",

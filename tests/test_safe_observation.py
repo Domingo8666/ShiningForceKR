@@ -28,6 +28,31 @@ def synthetic_trace_plan() -> dict[str, object]:
                     "format": "bank_addr_le",
                     "entries": 12,
                     "score": 100.0,
+                    "unique_target_ratio": 0.8,
+                    "monotonic_ratio": 0.9,
+                    "original_512k_target_ratio": 1.0,
+                    "decode_probe": {
+                        "attempted": 12,
+                        "bounded_terminations": 10,
+                        "termination_ratio": 0.8333,
+                        "median_symbols": 24.0,
+                    },
+                },
+                {
+                    "file_offset": 0x0B7C,
+                    "end_exclusive": 0x0B7C + 12 * 3,
+                    "format": "addr_le_bank",
+                    "entries": 12,
+                    "score": 90.0,
+                    "unique_target_ratio": 0.75,
+                    "monotonic_ratio": 0.85,
+                    "original_512k_target_ratio": 1.0,
+                    "decode_probe": {
+                        "attempted": 12,
+                        "bounded_terminations": 9,
+                        "termination_ratio": 0.75,
+                        "median_symbols": 20.0,
+                    },
                 }
             ],
             "ranked_pair_runs": [],
@@ -56,7 +81,11 @@ class SafeObservationTests(unittest.TestCase):
         selected_safe = observation["ranked_hypotheses"][0]
         self.assertEqual(selected_safe["file_offset"], 0x0B7D)
         self.assertEqual(selected_safe["mapper_coupled_pointer_load_count"], 1)
+        self.assertEqual(selected_safe["decode_probe"]["bounded_terminations"], 10)
+        self.assertEqual(len(observation["selected_alignment_cluster"]), 2)
+        self.assertEqual(observation["selected_watch"]["file_start"], 0x0B7C)
         self.assertIn("selected=0x000B7D", compact_summary(observation))
+        self.assertIn("alignments=2", compact_summary(observation))
 
     def test_schema_rejects_extra_fields(self) -> None:
         observation = build_safe_observation(synthetic_trace_plan())

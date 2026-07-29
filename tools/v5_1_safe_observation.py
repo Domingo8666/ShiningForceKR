@@ -10,8 +10,9 @@ import re
 import subprocess
 
 ARTIFACT_KIND = "sanitized-runtime-trace-observation"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MAX_SHARED_HYPOTHESES = 5
+MAX_ALIGNMENT_ALTERNATIVES = 6
 PUBLISH_RELATIVE_PATH = Path("analysis/device/v5_1_latest_observation.json")
 EXPECTED_REMOTE = "github.com/Domingo8666/ShiningForceKR"
 DEFAULT_GIT_NAME = "Domingo8666"
@@ -25,6 +26,8 @@ TOP_LEVEL_KEYS = {
     "status",
     "ranked_hypotheses",
     "selected_rank",
+    "selected_alignment_cluster",
+    "selected_watch",
     "consumer_evidence_confirmed",
     "translation_build_eligible",
     "next_checkpoint",
@@ -38,6 +41,10 @@ CANDIDATE_KEYS = {
     "entries",
     "scanner_score",
     "combined_candidate_score",
+    "unique_ratio",
+    "monotonic_ratio",
+    "original_512k_target_ratio",
+    "decode_probe",
     "reference_shape_count",
     "pointer_load_shape_count",
     "control_flow_shape_count",
@@ -55,6 +62,24 @@ MAPPING_KEYS = {
     "mapping_note",
     "extent_truncated_at_bank_end",
 }
+DECODE_KEYS = {
+    "attempted",
+    "bounded_terminations",
+    "termination_ratio",
+    "median_symbols",
+}
+ALIGNMENT_KEYS = {
+    "file_offset",
+    "end_exclusive",
+    "format",
+    "entries",
+    "combined_candidate_score",
+}
+WATCH_KEYS = {
+    "file_start",
+    "end_exclusive",
+    "logical_mappings",
+}
 
 
 def _shared_mapping(mapping: dict[str, object]) -> dict[str, object]:
@@ -68,7 +93,29 @@ def _shared_candidate(rank: int, item: dict[str, object]) -> dict[str, object]:
     if not isinstance(mappings, list):
         raise ValueError("logical_mappings must be a list")
     output["logical_mappings"] = [_shared_mapping(mapping) for mapping in mappings]
+    decode_probe = item["decode_probe"]
+    if decode_probe is not None:
+        if not isinstance(decode_probe, dict):
+            raise ValueError("decode_probe must be an object or null")
+        output["decode_probe"] = {key: decode_probe[key] for key in DECODE_KEYS}
     return output
+
+
+def _shared_alignment(item: dict[str, object]) -> dict[str, object]:
+    return {key: item[key] for key in ALIGNMENT_KEYS}
+
+
+def _shared_watch(watch: dict[str, object] | None) -> dict[str, object] | None:
+    if watch is None:
+        return None
+    mappings = watch["logical_mappings"]
+    if not isinstance(mappings, list):
+        raise ValueError("selected watch mappings must be a list")
+    return {
+        "file_start": watch["file_start"],
+        "end_exclusive": watch["end_exclusive"],
+        "logical_mappings": [_shared_mapping(mapping) for mapping in mappings],
+    }
 
 
 def build_safe_observation(trace_plan: dict[str, object]) -> dict[str, object]:
@@ -77,6 +124,9 @@ def build_safe_observation(trace_plan: dict[str, object]) -> dict[str, object]:
     ranked = trace_plan["ranked_consumer_hypotheses"]
     if not isinstance(ranked, list):
         raise ValueError("ranked_consumer_hypotheses must be a list")
+    alignment_cluster = trace_plan["selected_alignment_cluster"]
+    if not isinstance(alignment_cluster, list):
+        raise ValueError("selected_alignment_cluster must be a list")
     observation = {
         "artifact_kind": ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
@@ -88,6 +138,10 @@ def build_safe_observation(trace_plan: dict[str, object]) -> dict[str, object]:
             for rank, item in enumerate(ranked[:MAX_SHARED_HYPOTHESES], 1)
         ],
         "selected_rank": 1 if trace_plan["selected_hypothesis"] is not None else None,
+        "selected_alignment_cluster": [
+            _shared_alignment(item) for item in alignment_cluster
+        ],
+        "selected_watch": _shared_watch(trace_plan["selected_watch"]),
         "consumer_evidence_confirmed": bool(
             trace_plan["consumer_evidence_confirmed"]
         ),
@@ -110,6 +164,11 @@ def _require_number(value: object, label: str) -> None:
         or not math.isfinite(float(value))
     ):
         raise ValueError(f"{label} must be a finite number")
+
+
+def _require_optional_number(value: object, label: str) -> None:
+    if value is not None:
+        _require_number(value, label)
 
 
 def _require_short_token(value: object, label: str) -> None:
@@ -171,6 +230,12 @@ def validate_safe_observation(observation: dict[str, object]) -> None:
             _require_int(candidate[key], key)
         for key in ("scanner_score", "combined_candidate_score"):
             _require_number(candidate[key], key)
+        for key in (
+            "unique_ratio",
+            "monotonic_ratio",
+            "original_512k_target_ratio",
+        ):
+            _require_optional_number(candidate[key], key)
         for key in ("family", "format"):
             _require_short_token(candidate[key], key)
         if not isinstance(candidate["generic_slot_base_discounted"], bool):
@@ -186,12 +251,52 @@ def validate_safe_observation(observation: dict[str, object]) -> None:
             _require_short_token(mapping["mapping_note"], "mapping_note")
             if not isinstance(mapping["extent_truncated_at_bank_end"], bool):
                 raise ValueError("extent_truncated_at_bank_end must be a boolean")
+        decode_probe = candidate["decode_probe"]
+        if decode_probe is not None:
+            if not isinstance(decode_probe, dict) or set(decode_probe) != DECODE_KEYS:
+                raise ValueError("decode_probe fields do not match the safe schema")
+            for key in ("attempted", "bounded_terminations"):
+                _require_int(decode_probe[key], key)
+            _require_number(decode_probe["termination_ratio"], "termination_ratio")
+            _require_optional_number(decode_probe["median_symbols"], "median_symbols")
 
     selected_rank = observation["selected_rank"]
     if selected_rank is not None:
         _require_int(selected_rank, "selected_rank", 1)
         if selected_rank > len(ranked):
             raise ValueError("selected_rank is outside ranked_hypotheses")
+
+    alignment_cluster = observation["selected_alignment_cluster"]
+    if (
+        not isinstance(alignment_cluster, list)
+        or len(alignment_cluster) > MAX_ALIGNMENT_ALTERNATIVES
+    ):
+        raise ValueError("selected_alignment_cluster exceeds the safe limit")
+    for item in alignment_cluster:
+        if not isinstance(item, dict) or set(item) != ALIGNMENT_KEYS:
+            raise ValueError("alignment fields do not match the safe schema")
+        for key in ("file_offset", "end_exclusive", "entries"):
+            _require_int(item[key], key)
+        _require_short_token(item["format"], "alignment format")
+        _require_number(item["combined_candidate_score"], "alignment score")
+
+    selected_watch = observation["selected_watch"]
+    if selected_watch is not None:
+        if not isinstance(selected_watch, dict) or set(selected_watch) != WATCH_KEYS:
+            raise ValueError("selected_watch fields do not match the safe schema")
+        _require_int(selected_watch["file_start"], "watch file_start")
+        _require_int(selected_watch["end_exclusive"], "watch end_exclusive")
+        mappings = selected_watch["logical_mappings"]
+        if not isinstance(mappings, list) or len(mappings) > 3:
+            raise ValueError("selected watch mappings must contain at most three slots")
+        for mapping in mappings:
+            if not isinstance(mapping, dict) or set(mapping) != MAPPING_KEYS:
+                raise ValueError("selected watch mapping fields do not match the schema")
+            for key in ("slot", "bank", "logical_start", "logical_end"):
+                _require_int(mapping[key], key)
+            _require_short_token(mapping["mapping_note"], "watch mapping_note")
+            if not isinstance(mapping["extent_truncated_at_bank_end"], bool):
+                raise ValueError("watch extent flag must be a boolean")
 
 
 def write_safe_observation(
@@ -217,13 +322,19 @@ def compact_summary(observation: dict[str, object]) -> str:
             "no ranked hypothesis"
         )
     selected = ranked[0]
+    watch = observation["selected_watch"]
+    assert isinstance(watch, dict)
+    alignments = observation["selected_alignment_cluster"]
+    assert isinstance(alignments, list)
     return (
         f"SFKR safe observation v{observation['schema_version']}: "
         f"trace-v{observation['trace_plan_schema_version']} "
         f"selected=0x{selected['file_offset']:06X} "
         f"entries={selected['entries']} "
         f"mapper-links={selected['mapper_coupled_pointer_load_count']} "
-        f"score={selected['combined_candidate_score']:.2f}"
+        f"score={selected['combined_candidate_score']:.2f} "
+        f"alignments={len(alignments)} "
+        f"watch=0x{watch['file_start']:06X}..0x{watch['end_exclusive'] - 1:06X}"
     )
 
 
