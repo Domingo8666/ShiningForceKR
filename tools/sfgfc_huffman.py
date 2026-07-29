@@ -191,6 +191,65 @@ def decode_symbols(
     raise PatchError("candidate entry did not terminate within symbol limit")
 
 
+def _symbol_codes(root: HuffmanNode) -> dict[int, tuple[int, ...]]:
+    codes: dict[int, tuple[int, ...]] = {}
+
+    def visit(node: HuffmanNode | None, path: tuple[int, ...]) -> None:
+        if node is None:
+            raise PatchError("malformed Huffman branch")
+        if node.is_leaf:
+            symbol = node.symbol
+            assert symbol is not None
+            if symbol in codes:
+                raise PatchError(
+                    f"duplicate Huffman leaf symbol 0x{symbol:02x}"
+                )
+            codes[symbol] = path
+            return
+        visit(node.left, path + (0,))
+        visit(node.right, path + (1,))
+
+    visit(root, ())
+    return codes
+
+
+def encode_symbols(
+    trees: dict[int, ParsedTree],
+    symbols: list[int],
+    initial_symbol: int = CANDIDATE_END_SYMBOL,
+    end_symbol: int = CANDIDATE_END_SYMBOL,
+    max_bits: int = 32768,
+) -> tuple[bytes, int]:
+    """Encode one terminated context-dependent Huffman symbol sequence."""
+
+    if not symbols or symbols[-1] != end_symbol:
+        raise PatchError("Huffman symbol sequence must end with the terminator")
+    bits: list[int] = []
+    previous = initial_symbol
+    code_cache: dict[int, dict[int, tuple[int, ...]]] = {}
+    for symbol in symbols:
+        tree = trees.get(previous)
+        if tree is None:
+            raise PatchError(
+                f"no Huffman tree for previous symbol 0x{previous:02x}"
+            )
+        codes = code_cache.setdefault(previous, _symbol_codes(tree.root))
+        code = codes.get(symbol)
+        if code is None:
+            raise PatchError(
+                f"symbol 0x{symbol:02x} is absent after 0x{previous:02x}"
+            )
+        bits.extend(code)
+        if len(bits) > max_bits:
+            raise PatchError("encoded Huffman entry exceeded bit limit")
+        previous = symbol
+    output = bytearray((len(bits) + 7) // 8)
+    for index, bit in enumerate(bits):
+        if bit:
+            output[index >> 3] |= 1 << (7 - (index & 7))
+    return bytes(output), len(bits)
+
+
 def render_basic(symbols: list[int]) -> str:
     rendered: list[str] = []
     for symbol in symbols:

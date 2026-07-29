@@ -97,6 +97,8 @@ class RuntimeHitResolverTests(unittest.TestCase):
             "target_file_offset": 0x4000,
             "bounded_decode": True,
             "symbol_count": 3,
+            "roundtrip_exact": True,
+            "encoded_bits": 5,
         }
         resolution = build_consumer_resolution(
             target_sha256="a" * 64,

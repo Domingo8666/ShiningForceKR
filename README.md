@@ -105,7 +105,9 @@ bounded decode에 연결한 뒤 다음 게이트를 엽니다.
 히트가 생기면 같은 wrapper가 로컬 trace의 마지막 메모리 읽기 명령을
 제한된 Z80 주소 형식으로 판정하고, 접근한 물리 표 바이트를 정렬 후보의
 엔트리 번호와 연결합니다. 해당 엔트리가 실제 매퍼 뱅크와 일치하고
-제한 안에서 디코딩될 때만 소비 증거를 확정합니다. GitHub에는 opcode,
+제한 안에서 디코딩될 때만 소비 증거를 확정합니다. 컨텍스트별 Huffman
+경로를 다시 인코딩해 원래 비트열과 정확히 같은지도 함께 검증합니다.
+GitHub에는 opcode,
 엔트리 바이트와 디코딩 심벌을 제외한
 `analysis/device/v5_1_latest_consumer_resolution.json`만 게시하며,
 왕복 인코딩 전까지 `translation_build_eligible`은 false입니다.

@@ -13,6 +13,7 @@ try:
     from .sfgfc_huffman import (
         CANDIDATE_END_SYMBOL,
         decode_symbols,
+        encode_symbols,
         load_trees_at,
     )
     from .v5_1_consumer import mapper_file_offset, verify_target_identity
@@ -27,6 +28,7 @@ except ImportError:  # direct script execution
     from sfgfc_huffman import (
         CANDIDATE_END_SYMBOL,
         decode_symbols,
+        encode_symbols,
         load_trees_at,
     )
     from v5_1_consumer import mapper_file_offset, verify_target_identity
@@ -92,6 +94,8 @@ ALIGNMENT_KEYS = {
     "target_file_offset",
     "bounded_decode",
     "symbol_count",
+    "roundtrip_exact",
+    "encoded_bits",
 }
 
 
@@ -285,9 +289,11 @@ def _alignment_resolutions(
         target = mapper_file_offset(bank, address, len(rom))
         bounded = False
         symbol_count: int | None = None
+        roundtrip_exact = False
+        encoded_bits: int | None = None
         if target is not None:
             try:
-                symbols, _ = decode_symbols(
+                symbols, decoded_bits = decode_symbols(
                     rom,
                     known,
                     trees,
@@ -302,6 +308,28 @@ def _alignment_resolutions(
             else:
                 bounded = True
                 symbol_count = len(symbols)
+                try:
+                    encoded, encoded_bits = encode_symbols(
+                        trees,
+                        symbols,
+                        initial_symbol=CANDIDATE_END_SYMBOL,
+                        end_symbol=CANDIDATE_END_SYMBOL,
+                        max_bits=256 * 8,
+                    )
+                except PatchError:
+                    encoded_bits = None
+                else:
+                    if encoded_bits == decoded_bits:
+                        roundtrip_exact = all(
+                            (
+                                (rom[target + (bit >> 3)] >> (7 - (bit & 7)))
+                                & 1
+                            )
+                            == (
+                                (encoded[bit >> 3] >> (7 - (bit & 7))) & 1
+                            )
+                            for bit in range(encoded_bits)
+                        )
         output.append(
             {
                 "format": format_name,
@@ -311,6 +339,8 @@ def _alignment_resolutions(
                 "target_file_offset": target,
                 "bounded_decode": bounded,
                 "symbol_count": symbol_count,
+                "roundtrip_exact": roundtrip_exact,
+                "encoded_bits": encoded_bits,
             }
         )
     return output
@@ -371,6 +401,16 @@ def validate_consumer_resolution(resolution: dict[str, object]) -> None:
             raise ValueError("bounded_decode must be boolean")
         if item["symbol_count"] is not None:
             _require_int(item["symbol_count"], "symbol_count")
+        if not isinstance(item["roundtrip_exact"], bool):
+            raise ValueError("roundtrip_exact must be boolean")
+        if item["encoded_bits"] is not None:
+            _require_int(item["encoded_bits"], "encoded_bits")
+        if item["bounded_decode"] != (item["symbol_count"] is not None):
+            raise ValueError("bounded_decode and symbol_count disagree")
+        if item["roundtrip_exact"] and (
+            not item["bounded_decode"] or item["encoded_bits"] is None
+        ):
+            raise ValueError("exact roundtrip requires bounded decode and bits")
     confirmed = resolution["consumer_evidence_confirmed"]
     if not isinstance(confirmed, bool):
         raise ValueError("consumer_evidence_confirmed must be boolean")
@@ -432,6 +472,10 @@ def build_consumer_resolution(
         and selected_resolution["bounded_decode"]
         and mapped_bank == int(hit["expected_bank"])
     )
+    roundtrip_exact = bool(
+        selected_resolution
+        and selected_resolution["roundtrip_exact"]
+    )
     safe_hit = {
         "slot": int(hit["slot"]),
         "logical_access": logical_access,
@@ -465,7 +509,9 @@ def build_consumer_resolution(
         "consumer_evidence_confirmed": confirmed,
         "translation_build_eligible": False,
         "next_checkpoint": (
-            "roundtrip-selected-entry-and-identify-intro-line"
+            "identify-intro-line-and-build-test-translation"
+            if confirmed and roundtrip_exact
+            else "repair-selected-entry-roundtrip"
             if confirmed
             else "collect-additional-runtime-read-hits"
         ),

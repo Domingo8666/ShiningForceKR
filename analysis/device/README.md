@@ -37,6 +37,7 @@
 
 read breakpoint가 발생하면 `tools/v5_1_runtime_hit_resolver.py`가 로컬
 trace에서 제한적으로 지원하는 Z80 읽기 주소를 복원합니다. 매퍼 뱅크,
-물리 표 바이트, 정렬 형식, 엔트리 번호와 bounded decode 집계만
+물리 표 바이트, 정렬 형식, 엔트리 번호, bounded decode와 비트 단위
+재인코딩 일치 여부만
 `v5_1_latest_consumer_resolution.json`에 기록합니다. 명령 바이트,
 엔트리 바이트와 디코딩 심벌은 로컬 보고서 밖으로 내보내지 않습니다.
