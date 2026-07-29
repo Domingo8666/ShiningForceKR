@@ -1,0 +1,65 @@
+{
+  "artifact_kind": "sanitized-runtime-consumer-observation",
+  "schema_version": 1,
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "status": "runtime-read-hit-observed",
+  "probe": {
+    "emulator": "Gearsystem",
+    "emulator_version": "3.9.14",
+    "system": "gamegear",
+    "frames_per_slot": 1680,
+    "slots_attempted": [
+      0,
+      1,
+      2
+    ],
+    "breakpoint_ranges": [
+      {
+        "slot": 0,
+        "expected_bank": 0,
+        "logical_start": 2938,
+        "logical_end": 3118
+      },
+      {
+        "slot": 1,
+        "expected_bank": 0,
+        "logical_start": 19322,
+        "logical_end": 19502
+      },
+      {
+        "slot": 2,
+        "expected_bank": 0,
+        "logical_start": 35706,
+        "logical_end": 35886
+      }
+    ]
+  },
+  "hit": {
+    "slot": 2,
+    "expected_bank": 0,
+    "logical_start": 35706,
+    "logical_end": 35886,
+    "pc_after": 796,
+    "physical_pc_after": 796,
+    "executing_bank": 0,
+    "mapper_control": 8,
+    "slot0_bank": 0,
+    "slot1_bank": 1,
+    "slot2_bank": 2,
+    "registers": {
+      "af": 68,
+      "bc": 3971,
+      "de": 35709,
+      "hl": 35708,
+      "ix": 65535,
+      "iy": 65535,
+      "sp": 57087
+    },
+    "trace_entries": 256,
+    "call_stack_depth": 0
+  },
+  "read_hit_observed": true,
+  "consumer_evidence_confirmed": false,
+  "translation_build_eligible": false,
+  "next_checkpoint": "connect-hit-pc-to-selected-entry-and-bounded-decode"
+}

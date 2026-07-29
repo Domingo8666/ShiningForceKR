@@ -1,0 +1,47 @@
+{
+  "artifact_kind": "sanitized-runtime-consumer-resolution",
+  "schema_version": 2,
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "status": "runtime-hit-entry-ambiguous",
+  "hit": {
+    "slot": 2,
+    "logical_access": 35707,
+    "physical_table_byte": 2939,
+    "instruction_bank": 0,
+    "instruction_pc": 796,
+    "pc_after": 796,
+    "physical_pc_after": 796,
+    "expected_bank": 0,
+    "mapped_bank": 2
+  },
+  "alignment_resolutions": [
+    {
+      "format": "addr_le_bank",
+      "alignment_file_offset": 2939,
+      "entry_index": 0,
+      "entry_byte_index": 0,
+      "target_file_offset": 69341,
+      "bounded_decode": true,
+      "symbol_count": 7,
+      "roundtrip_exact": true,
+      "encoded_bits": 33
+    },
+    {
+      "format": "bank_addr_le",
+      "alignment_file_offset": 2938,
+      "entry_index": 0,
+      "entry_byte_index": 1,
+      "target_file_offset": 3805,
+      "bounded_decode": true,
+      "symbol_count": 46,
+      "roundtrip_exact": true,
+      "encoded_bits": 175
+    }
+  ],
+  "target_read": null,
+  "selected_alignment_format": null,
+  "selected_entry_index": null,
+  "consumer_evidence_confirmed": false,
+  "translation_build_eligible": false,
+  "next_checkpoint": "collect-additional-runtime-read-hits"
+}
