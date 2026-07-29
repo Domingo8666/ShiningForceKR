@@ -2,22 +2,23 @@
   "artifact_kind": "sanitized-s25u-test-display-review",
   "schema_version": 1,
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "test_target_sha256": "bba8cd2729f5f8ff1e83b0d7da19c2e530553c9e20e37e4e1adc85b9faee87ff",
+  "test_target_sha256": "d8a3ae0b813cad387b04bebe7db845f39dedf4373d9dd7fd7dfb9e0f4b51d8bd",
   "capture_png_sha256s": [
     "93ccdb1d3fc723412d2acecd1e8ec1738e8755b4d248ba6f980c9a304a2ce4a5",
-    "4ccc7c72dc820cac2d31b1a9bd8be8650077ff7ba53819e01aa764b190e09d9d",
-    "4dbf75d71ffbc7ca809106cc53c87a349decec07732932de419ad307bc7ccf95",
-    "d5c13354a093e652dd15257f265499af7f08ab0f34e140b0f20cb1a86874c08b",
-    "0d7294005257f149b8f19de061fb684cb99e93236c461c304225ef4eacd4d9ef"
+    "b922627baff59bcd31624809e4e7f48a54cdab76adc2f879fa2597a2c2858b42",
+    "05a798c0274e56f983fe8359e075bb91d022b74aae904304e72c4b80a8e8b3f0",
+    "bccf8fdf6bda32149eb80548c6ec66934e03a1d2e2a57248dfe5538c16075a90",
+    "9e69ec2f75b9340f7de031cf35eda2106ce4960bcc727a92b4dc40341aeef600"
   ],
   "reviewed_stream": {
-    "physical_start": 132072,
-    "logical_start": 17384,
+    "physical_start": 132167,
+    "logical_start": 17479,
     "mapped_bank": 8
   },
   "rejected_physical_starts": [
     132062,
-    132072
+    132072,
+    132167
   ],
   "result": "phrase-absent-fail",
   "observations": {
@@ -25,7 +26,7 @@
     "surrounding_text_readable": true,
     "portrait_intact": true,
     "dialogue_box_intact": true,
-    "post_advance_cleared": true
+    "post_advance_cleared": null
   },
   "translation_build_eligible": false,
   "next_checkpoint": "try-next-runtime-observed-stream"
