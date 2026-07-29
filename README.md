@@ -145,6 +145,12 @@ Huffman 벡터·트리 접근과 압축 스트림 후보를 구분합니다. 전
 두고 GitHub에는 호출 좌표·논리 주소·매퍼·레지스터 집계만 다음 파일로
 게시합니다.
 
+동기화된 무입력 attract intro에서 0x33FA execute hit와 PC 0x3406의
+slot 1·bank 8 source-region read를 확인했습니다. 첫 64개가 모두 원본
+영역 읽기여서, 후속 실행은 source-region 표본을 8개로 제한하되 최대
+1,024개 read를 계속 따라가 bank 0x20 Huffman 벡터·트리 접근을 우선
+보존합니다.
+
 - `analysis/device/v5_1_latest_renderer_observation.json`
 
 이 경로에서 벡터 read가 없으면 같은 wrapper가 부팅 대기, Start 직후,

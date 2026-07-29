@@ -70,6 +70,13 @@ attract intro 12,000프레임을 먼저 검사한 뒤 2번 확인 경로와 1번
 read와 짧은 trace를 수집합니다. 실제 0x080100..0x0802FF read와 mapper
 bank 0x20이 함께 확인되기 전에는 번역 빌드 게이트를 열지 않습니다.
 
+동기화된 S25U 무입력 attract intro에서 0x33FA가 실제 실행됐습니다.
+진입 시 slot 1은 bank 8이었고 PC 0x3406이 source-region을 읽었습니다.
+초기 64개 표본은 모두 bank 8이었으므로 후속 추적은 source-region을
+8개만 보존하고 최대 1,024개 read 동안 bank 0x20 벡터·트리를 우선
+수집합니다. 이 실행 증거도 아직 정확한 엔트리나 빌드 가능 상태를
+확정하지 않습니다.
+
 ## 첫 표시 시험 문장 사전검증
 
 `tools/v5_1_test_phrase.py`는 원본 ROM 없이 추적된 v5.1 BPS의

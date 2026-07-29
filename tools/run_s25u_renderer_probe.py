@@ -73,8 +73,10 @@ TEXT_ROUTE_PLANS = (
     ("start-confirm-1", ALT_TEXT_ROUTE_SCHEDULE),
 )
 ROM_READ_RANGES = ((0x4000, 0x7FFF), (0x8000, 0xBFFF))
-MAX_DECODER_READ_HITS = 96
+MAX_DECODER_READ_HITS = 1_024
 MAX_DECODER_READ_SAMPLES = 64
+MAX_SOURCE_READ_SAMPLES = 8
+MAX_HUFFMAN_READ_SAMPLES = 16
 MAX_REJECTED_VECTOR_HITS = 512
 
 
@@ -397,6 +399,8 @@ def _capture_decoder_reads(
     samples: list[dict[str, object]] = []
     local_events: list[dict[str, object]] = []
     seen: set[tuple[int, int, int]] = set()
+    source_samples = 0
+    huffman_samples = 0
     try:
         for _ in range(MAX_DECODER_READ_HITS):
             status = _step_frames_and_wait(client, 1)
@@ -412,14 +416,30 @@ def _capture_decoder_reads(
                 )
                 if key not in seen:
                     seen.add(key)
-                    samples.append(sample)
-                    local_events.append(
-                        {
-                            "sample": sample,
-                            "evidence": evidence,
-                        }
+                    classification = str(sample["classification"])
+                    retain = (
+                        classification != "source-region"
+                        or source_samples < MAX_SOURCE_READ_SAMPLES
                     )
-                    if len(samples) >= MAX_DECODER_READ_SAMPLES:
+                    if retain:
+                        samples.append(sample)
+                        local_events.append(
+                            {
+                                "sample": sample,
+                                "evidence": evidence,
+                            }
+                        )
+                    if classification == "source-region":
+                        source_samples += 1
+                    if classification in {
+                        "korean-huffman-vector",
+                        "korean-huffman-tree",
+                    }:
+                        huffman_samples += 1
+                    if (
+                        len(samples) >= MAX_DECODER_READ_SAMPLES
+                        or huffman_samples >= MAX_HUFFMAN_READ_SAMPLES
+                    ):
                         break
             disarm()
             _step_instruction_and_wait(client)

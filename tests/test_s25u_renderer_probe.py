@@ -90,6 +90,65 @@ class S25URendererProbeTests(unittest.TestCase):
             6,
         )
 
+    def test_decoder_read_capture_prioritizes_huffman_samples(self) -> None:
+        class FakeClient:
+            def call(
+                self,
+                name: str,
+                arguments: dict[str, object] | None = None,
+            ) -> dict[str, object]:
+                return {}
+
+        source_samples = [
+            {
+                "slot": 1,
+                "logical_access": 0x4300 + index,
+                "physical_file_offset": 0x20300 + index,
+                "mapped_bank": 8,
+                "instruction_bank": 0,
+                "instruction_pc": 0x3406,
+                "pc_after": 0x3407,
+                "physical_pc_after": 0x3407,
+                "classification": "source-region",
+            }
+            for index in range(9)
+        ]
+        huffman_sample = {
+            "slot": 1,
+            "logical_access": 0x4100,
+            "physical_file_offset": 0x80100,
+            "mapped_bank": 0x20,
+            "instruction_bank": 0,
+            "instruction_pc": 0x3438,
+            "pc_after": 0x3439,
+            "physical_pc_after": 0x3439,
+            "classification": "korean-huffman-vector",
+        }
+        with patch(
+            "tools.run_s25u_renderer_probe._step_frames_and_wait",
+            side_effect=[
+                *({"at_breakpoint": True} for _ in range(10)),
+                {"at_breakpoint": False},
+            ],
+        ), patch(
+            "tools.run_s25u_renderer_probe._capture_state",
+            return_value=({"pc_after": 0x3407}, {"trace": "local-only"}),
+        ), patch(
+            "tools.run_s25u_renderer_probe._last_rom_read",
+            side_effect=[*source_samples, huffman_sample],
+        ), patch(
+            "tools.run_s25u_renderer_probe._step_instruction_and_wait",
+        ):
+            captured, _ = _capture_decoder_reads(FakeClient(), 0x17C000)
+
+        self.assertEqual(
+            [item["classification"] for item in captured].count(
+                "source-region"
+            ),
+            8,
+        )
+        self.assertIn(huffman_sample, captured)
+
     def test_story_route_stops_on_patched_decoder_entry(self) -> None:
         mappings = _decoder_entry_mappings()
 
