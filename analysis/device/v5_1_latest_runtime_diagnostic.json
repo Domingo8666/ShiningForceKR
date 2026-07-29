@@ -1,10 +1,10 @@
 {
   "artifact_kind": "sanitized-runtime-stage-diagnostic",
-  "schema_version": 2,
+  "schema_version": 3,
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
   "exit_code": 1,
-  "attempt_utc": "2026-07-29T12:18:25Z",
+  "attempt_utc": "2026-07-29T12:24:08Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -18,5 +18,11 @@
   },
   "failed_stage": "runtime-command",
   "runtime_observation_present": true,
+  "runtime_failure": {
+    "schema_version": 1,
+    "failure_stage": "candidate-probe",
+    "failure_kind": "mcp-timeout",
+    "mcp_method": null
+  },
   "next_checkpoint": "repair-runtime-command"
 }
