@@ -45,7 +45,7 @@ class RuntimeBundleTests(unittest.TestCase):
     def test_loads_multiple_valid_safe_artifacts(self) -> None:
         diagnostic = {
             "artifact_kind": "sanitized-runtime-stage-diagnostic",
-            "schema_version": 2,
+            "schema_version": 3,
             "status": "runtime-stage-not-ready",
             "trigger": "setup",
             "exit_code": 1,
@@ -63,6 +63,7 @@ class RuntimeBundleTests(unittest.TestCase):
             },
             "failed_stage": "proot-available",
             "runtime_observation_present": False,
+            "runtime_failure": None,
             "next_checkpoint": "repair-first-failed-runtime-stage",
         }
         with tempfile.TemporaryDirectory() as directory:
@@ -189,7 +190,7 @@ class RuntimeBundleTests(unittest.TestCase):
     def test_skips_stale_artifact_when_another_is_valid(self) -> None:
         diagnostic = {
             "artifact_kind": "sanitized-runtime-stage-diagnostic",
-            "schema_version": 2,
+            "schema_version": 3,
             "status": "runtime-stage-not-ready",
             "trigger": "setup",
             "exit_code": 1,
@@ -207,6 +208,7 @@ class RuntimeBundleTests(unittest.TestCase):
             },
             "failed_stage": "proot-available",
             "runtime_observation_present": False,
+            "runtime_failure": None,
             "next_checkpoint": "repair-first-failed-runtime-stage",
         }
         with tempfile.TemporaryDirectory() as directory:

@@ -28,6 +28,7 @@
 | SFKR-020 | 무입력 attract intro에서도 0x003FD5·0x03FFB2의 0x5F 전용 한국어 페이지 렌더러 호출이 0회 | fixed-emulator | 전용 호출보다 앞선 공용 텍스트 디코더 0x003411도 같은 12,000프레임 경로에서 실행되지 않음을 S25U로 확인 |
 | SFKR-021 | 무입력 attract 경로는 추정 텍스트 디코더 0x003411에 도달하지 않고, 이전 새 게임 자동 조작은 확인이 아닌 1번 취소 버튼을 반복함 | revalidate-frame-sync | 초기 Start·2번 3,300프레임 무히트는 비동기 step 완료 장벽이 없어 폐기했으며 `debug_get_status.paused` 동기화로 재검증 |
 | SFKR-022 | 0x003411은 v5.1 BPS의 source-independent 확장 코드나 패치 호출부에서 검증된 진입점이 아닌데 공용 디코더로 가정됨 | fixed-static | 검증된 한국어 Huffman 벡터 물리 0x080100..0x0802FF를 slot 1·2, mapper bank 0x20 조건의 실제 read로 직접 추적 |
+| SFKR-023 | S25U 런타임 준비 검사는 모두 통과했지만 probe 종료 코드 1의 안전 요약이 `runtime-command`까지만 구분됨 | fixed-static | 로컬 전체 오류는 S25U에 보존하고 실패 단계·분류·마지막 MCP 메서드만 schema v3 진단으로 게시한 뒤 자동실행 재수집 |
 
 ## 테스트 원칙
 

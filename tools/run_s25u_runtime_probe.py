@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import queue
 import subprocess
+import sys
 import threading
 import time
 from typing import Any
@@ -51,6 +52,7 @@ except ImportError:  # direct script execution
 DEFAULT_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 DEFAULT_TRACE_PLAN = Path("reports/v5_1_emucap_trace_plan.json")
 LOCAL_REPORT = Path("reports/local/v5_1_gearsystem_probe.json")
+LOCAL_FAILURE_REPORT = Path("reports/local/v5_1_runtime_failure.json")
 GEARSYSTEM_COMMAND = (
     "export SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy; "
     "export XDG_RUNTIME_DIR=/tmp/sfkr-runtime; "
@@ -84,6 +86,30 @@ INPUT_SCHEDULE: tuple[tuple[int, str | None], ...] = (
 )
 MAX_REJECTED_BANK_HITS_PER_SLOT = 64
 MAX_RUNTIME_CANDIDATE_GROUPS = 2
+RUNTIME_FAILURE_STAGES = {
+    "mcp-start",
+    "mcp-initialize",
+    "load-media",
+    "media-identity",
+    "trace-enable",
+    "candidate-probe",
+    "target-followup",
+    "mcp-close",
+}
+RUNTIME_FAILURE_KINDS = {
+    "invalid-json",
+    "subprocess-timeout",
+    "process-io",
+    "invalid-runtime-data",
+    "mcp-timeout",
+    "mcp-error",
+    "tool-error",
+    "required-tools",
+    "media-identity",
+    "invalid-mcp-payload",
+    "runtime-error",
+    "unexpected-exception",
+}
 
 
 def _tool_payload(message: dict[str, object]) -> dict[str, Any]:
@@ -148,6 +174,7 @@ class McpStdioClient:
         self._stdout = self._process.stdout
         self._next_id = 1
         self._messages: queue.Queue[dict[str, object]] = queue.Queue()
+        self.last_request_method: str | None = None
         self.stderr_tail: deque[str] = deque(maxlen=80)
         threading.Thread(
             target=self._drain_stdout,
@@ -175,6 +202,7 @@ class McpStdioClient:
                 self._messages.put(message)
 
     def _request(self, method: str, params: dict[str, object]) -> dict[str, object]:
+        self.last_request_method = method
         request_id = self._next_id
         self._next_id += 1
         request = {
@@ -906,6 +934,96 @@ def _default_command() -> list[str]:
     ]
 
 
+def _runtime_failure_kind(error: Exception) -> str:
+    if isinstance(error, json.JSONDecodeError):
+        return "invalid-json"
+    if isinstance(error, subprocess.TimeoutExpired):
+        return "subprocess-timeout"
+    if isinstance(error, OSError):
+        return "process-io"
+    if isinstance(error, ValueError):
+        return "invalid-runtime-data"
+    message = str(error)
+    if "timed out" in message or "did not finish" in message:
+        return "mcp-timeout"
+    if message.startswith("MCP error:"):
+        return "mcp-error"
+    if message.startswith("Gearsystem tool error:"):
+        return "tool-error"
+    if "MCP tools missing" in message:
+        return "required-tools"
+    if "did not load the expected Game Gear ROM" in message:
+        return "media-identity"
+    if (
+        "MCP response" in message
+        or "tool response" in message
+        or "tool payload" in message
+    ):
+        return "invalid-mcp-payload"
+    if isinstance(error, RuntimeError):
+        return "runtime-error"
+    return "unexpected-exception"
+
+
+def _runtime_failure_receipt(
+    stage: str,
+    error: Exception,
+    client: McpStdioClient | None,
+) -> dict[str, object]:
+    if stage not in RUNTIME_FAILURE_STAGES:
+        stage = "candidate-probe"
+    method = client.last_request_method if client is not None else None
+    if method is not None and (
+        not method.replace("_", "").isalnum() or len(method) > 40
+    ):
+        method = None
+    receipt: dict[str, object] = {
+        "schema_version": 1,
+        "failure_stage": stage,
+        "failure_kind": _runtime_failure_kind(error),
+        "mcp_method": method,
+    }
+    validate_runtime_failure_receipt(receipt)
+    return receipt
+
+
+def validate_runtime_failure_receipt(receipt: dict[str, object]) -> None:
+    if set(receipt) != {
+        "schema_version",
+        "failure_stage",
+        "failure_kind",
+        "mcp_method",
+    }:
+        raise ValueError("runtime failure receipt fields do not match")
+    if receipt["schema_version"] != 1:
+        raise ValueError("unexpected runtime failure receipt schema")
+    if receipt["failure_stage"] not in RUNTIME_FAILURE_STAGES:
+        raise ValueError("unexpected runtime failure stage")
+    if receipt["failure_kind"] not in RUNTIME_FAILURE_KINDS:
+        raise ValueError("unexpected runtime failure kind")
+    method = receipt["mcp_method"]
+    if method is not None and (
+        not isinstance(method, str)
+        or not method.replace("_", "").isalnum()
+        or len(method) > 40
+    ):
+        raise ValueError("runtime failure MCP method is not a safe token")
+
+
+def _write_runtime_failure_receipt(
+    root: Path,
+    receipt: dict[str, object],
+) -> Path:
+    validate_runtime_failure_receipt(receipt)
+    path = root / LOCAL_FAILURE_REPORT
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(receipt, ensure_ascii=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--rom", type=Path, default=DEFAULT_ROM)
@@ -914,6 +1032,8 @@ def main() -> int:
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[1]
+    failure_path = root / LOCAL_FAILURE_REPORT
+    failure_path.unlink(missing_ok=True)
     rom_path = (root / args.rom).resolve() if not args.rom.is_absolute() else args.rom
     plan_path = (
         (root / args.trace_plan).resolve()
@@ -978,19 +1098,25 @@ def main() -> int:
         print(f"Safe observation: {safe_path}")
         return 0
 
-    client = McpStdioClient(_default_command())
+    client: McpStdioClient | None = None
     slots_attempted: list[int] = []
     ranges_attempted: list[dict[str, int]] = []
     safe_hit: dict[str, object] | None = None
     emulator_version = "unknown"
+    runtime_stage = "mcp-start"
+    runtime_error: Exception | None = None
     try:
+        client = McpStdioClient(_default_command())
+        runtime_stage = "mcp-initialize"
         tools = client.initialize()
         missing = sorted(REQUIRED_TOOLS - tools)
         if missing:
             raise RuntimeError(f"Gearsystem MCP tools missing: {missing}")
+        runtime_stage = "load-media"
         client.call("load_media", {"file_path": str(rom_path)})
         media = client.call("get_media_info")
         local_result["media"] = media
+        runtime_stage = "media-identity"
         if (
             media.get("ready") is not True
             or media.get("is_game_gear") is not True
@@ -998,6 +1124,7 @@ def main() -> int:
         ):
             raise RuntimeError("Gearsystem did not load the expected Game Gear ROM")
         emulator_version = str(media.get("emulator_version", "unknown"))
+        runtime_stage = "trace-enable"
         client.call(
             "set_trace_log",
             {
@@ -1024,6 +1151,7 @@ def main() -> int:
                 slot = int(mapping["slot"])
                 if slot not in slots_attempted:
                     slots_attempted.append(slot)
+                runtime_stage = "candidate-probe"
                 hit, evidence, rejected_bank_hits = _probe_slot(client, mapping)
                 attempt: dict[str, object] = {
                     "candidate_rank": int(group["rank"]),
@@ -1062,6 +1190,7 @@ def main() -> int:
                             {"selected_alignment_cluster": alignment_cluster},
                             physical_table_byte,
                         )
+                        runtime_stage = "target-followup"
                         attempt["target_followup"] = _follow_target_read(
                             client, candidates
                         )
@@ -1069,9 +1198,39 @@ def main() -> int:
                     break
             if safe_hit is not None:
                 break
+    except Exception as error:
+        runtime_error = error
     finally:
-        local_result["stderr_tail"] = list(client.stderr_tail)
-        client.close()
+        if client is not None:
+            local_result["stderr_tail"] = list(client.stderr_tail)
+            try:
+                client.close()
+            except Exception as close_error:
+                if runtime_error is None:
+                    runtime_stage = "mcp-close"
+                    runtime_error = close_error
+
+    if runtime_error is not None:
+        receipt = _runtime_failure_receipt(runtime_stage, runtime_error, client)
+        local_result["failure"] = receipt
+        local_result["failure_detail"] = {
+            "exception_type": type(runtime_error).__name__,
+            "message": str(runtime_error),
+        }
+        local_path = root / LOCAL_REPORT
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_text(
+            json.dumps(local_result, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        receipt_path = _write_runtime_failure_receipt(root, receipt)
+        print(
+            "SFKR runtime probe failed: "
+            f"{receipt['failure_stage']}/{receipt['failure_kind']}",
+            file=sys.stderr,
+        )
+        print(f"Local failure receipt: {receipt_path}", file=sys.stderr)
+        return 1
 
     local_path = root / LOCAL_REPORT
     local_path.parent.mkdir(parents=True, exist_ok=True)

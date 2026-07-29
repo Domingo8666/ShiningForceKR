@@ -104,6 +104,11 @@ bash tools/run_s25u_runtime_stage.sh \
 `reports/local/v5_1_gearsystem_probe.json`에만 저장합니다. GitHub에는
 PC·매퍼 레지스터·범위·집계 개수만 허용하는
 `analysis/device/v5_1_latest_runtime_observation.json`만 게시합니다.
+런타임 명령이 중간에 실패하면 전체 오류문·로컬 경로는 계속 S25U에만
+남기고, 실패 단계·종류·마지막 MCP 메서드의 고정 토큰만
+`analysis/device/v5_1_latest_runtime_diagnostic.json` schema v3에
+게시합니다. 따라서 자동실행 재시도 결과로 다음 수정 지점을 구분할 수
+있지만 비공개 ROM 경로나 에뮬레이터 stderr는 GitHub에 노출되지 않습니다.
 첫 범위 히트만으로 번역 삽입을 허용하지 않고, 히트 PC를 정확한 엔트리와
 bounded decode에 연결한 뒤 다음 게이트를 엽니다.
 같은 논리 주소라도 슬롯에 매핑된 물리 ROM 뱅크가 추적 계획과 다르면

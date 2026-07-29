@@ -13,12 +13,14 @@ from tools.run_s25u_runtime_probe import (
     _instruction_fetch_like,
     _parse_mapper,
     _probe_slot,
+    _runtime_failure_receipt,
     _runtime_candidate_groups,
     _target_candidates,
     _tool_payload,
     _step_frames_and_wait,
     _step_instruction_and_wait,
     _watch_ranges,
+    validate_runtime_failure_receipt,
 )
 
 
@@ -152,6 +154,30 @@ class S25URuntimeProbeTests(unittest.TestCase):
     def test_runtime_probe_follows_confirmed_story_route(self) -> None:
         self.assertEqual(INPUT_SCHEDULE[:2], ((180, None), (240, "start")))
         self.assertEqual(INPUT_SCHEDULE[2:], ((180, "2"),) * 16)
+
+    def test_runtime_failure_receipt_is_path_free_and_method_scoped(self) -> None:
+        class FakeClient:
+            last_request_method = "debug_step_frame"
+
+        receipt = _runtime_failure_receipt(
+            "candidate-probe",
+            RuntimeError(
+                "Gearsystem MCP timed out during tools/call; "
+                "stderr tail: /private/path"
+            ),
+            FakeClient(),  # type: ignore[arg-type]
+        )
+        self.assertEqual(
+            receipt,
+            {
+                "schema_version": 1,
+                "failure_stage": "candidate-probe",
+                "failure_kind": "mcp-timeout",
+                "mcp_method": "debug_step_frame",
+            },
+        )
+        self.assertNotIn("/", str(receipt))
+        validate_runtime_failure_receipt(receipt)
 
     def test_watch_ranges_require_trace_schema_five(self) -> None:
         plan = {

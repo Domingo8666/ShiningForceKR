@@ -14,24 +14,28 @@ import subprocess
 try:
     from .patch_io import sha256_file
     from .run_s25u_runtime_probe import (
+        LOCAL_FAILURE_REPORT,
         McpStdioClient,
         REQUIRED_TOOLS,
         _default_command,
+        validate_runtime_failure_receipt,
     )
     from .v5_1_consumer import verify_target_identity
     from .v5_1_safe_observation import _git, _normalized_remote
 except ImportError:  # direct script execution
     from patch_io import sha256_file
     from run_s25u_runtime_probe import (
+        LOCAL_FAILURE_REPORT,
         McpStdioClient,
         REQUIRED_TOOLS,
         _default_command,
+        validate_runtime_failure_receipt,
     )
     from v5_1_consumer import verify_target_identity
     from v5_1_safe_observation import _git, _normalized_remote
 
 ARTIFACT_KIND = "sanitized-runtime-stage-diagnostic"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_runtime_diagnostic.json"
 )
@@ -60,6 +64,7 @@ TOP_LEVEL_KEYS = {
     "checks",
     "failed_stage",
     "runtime_observation_present",
+    "runtime_failure",
     "next_checkpoint",
 }
 
@@ -109,6 +114,15 @@ def validate_runtime_diagnostic(diagnostic: dict[str, object]) -> None:
         raise ValueError("failed_stage must be a short safe token or null")
     if not isinstance(diagnostic["runtime_observation_present"], bool):
         raise ValueError("runtime_observation_present must be boolean")
+    runtime_failure = diagnostic["runtime_failure"]
+    if runtime_failure is not None:
+        if not isinstance(runtime_failure, dict):
+            raise ValueError("runtime_failure must be an object or null")
+        validate_runtime_failure_receipt(runtime_failure)
+        if failed_stage != "runtime-command":
+            raise ValueError(
+                "runtime_failure is only valid for a runtime command failure"
+            )
     next_checkpoint = diagnostic["next_checkpoint"]
     if (
         not isinstance(next_checkpoint, str)
@@ -127,6 +141,8 @@ def validate_runtime_diagnostic(diagnostic: dict[str, object]) -> None:
         expected_failed = "runtime-command"
     if failed_stage != expected_failed:
         raise ValueError("failed_stage does not identify the first failed check")
+    if exit_code == 0 and runtime_failure is not None:
+        raise ValueError("successful runtime stages cannot include a failure receipt")
 
 
 def _run_check(command: list[str], timeout: int = 30) -> bool:
@@ -230,6 +246,18 @@ def collect_runtime_diagnostic(
         failed_stage = failed_stage.replace("_", "-")
     elif exit_code != 0:
         failed_stage = "runtime-command"
+    runtime_failure: dict[str, object] | None = None
+    if trigger == "probe" and exit_code != 0 and checks_ready:
+        try:
+            value = json.loads(
+                (root / LOCAL_FAILURE_REPORT).read_text(encoding="utf-8")
+            )
+            if not isinstance(value, dict):
+                raise ValueError("runtime failure receipt must be an object")
+            validate_runtime_failure_receipt(value)
+            runtime_failure = value
+        except (OSError, ValueError, json.JSONDecodeError):
+            runtime_failure = None
     diagnostic: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
@@ -243,6 +271,7 @@ def collect_runtime_diagnostic(
             root
             / "analysis/device/v5_1_latest_runtime_observation.json"
         ).is_file(),
+        "runtime_failure": runtime_failure,
         "next_checkpoint": (
             "rerun-runtime-probe"
             if ready
