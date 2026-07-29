@@ -22,6 +22,11 @@ class RuntimeStageFailureTests(unittest.TestCase):
         self.assertNotIn("\\", str(receipt))
         validate_runtime_failure_receipt(receipt)
 
+    def test_baseline_capture_is_a_distinct_safe_stage(self) -> None:
+        receipt = build_stage_failure_receipt("baseline-display-capture")
+        self.assertEqual(receipt["failure_stage"], "baseline-display-capture")
+        validate_runtime_failure_receipt(receipt)
+
     def test_unknown_pipeline_substage_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             build_stage_failure_receipt("unknown-stage")

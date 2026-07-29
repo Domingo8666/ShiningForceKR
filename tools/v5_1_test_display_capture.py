@@ -25,8 +25,10 @@ try:
         McpStdioClient,
         _capture_state,
         _default_command,
+        _runtime_failure_receipt,
         _step_frames_and_wait,
         _step_instruction_and_wait,
+        _write_runtime_failure_receipt,
     )
     from .v5_1_decoder_stream_resolution import (
         validate_decoder_stream_resolution,
@@ -46,8 +48,10 @@ except ImportError:  # direct script execution
         McpStdioClient,
         _capture_state,
         _default_command,
+        _runtime_failure_receipt,
         _step_frames_and_wait,
         _step_instruction_and_wait,
+        _write_runtime_failure_receipt,
     )
     from v5_1_decoder_stream_resolution import (
         validate_decoder_stream_resolution,
@@ -557,6 +561,7 @@ def _capture_display(
     rom_size: int,
     target_read: dict[str, object],
     evidence_dir: Path,
+    failure_stage: str,
     schedule: tuple[tuple[int, str | None], ...] = INPUT_SCHEDULE,
 ) -> tuple[
     str,
@@ -698,6 +703,13 @@ def _capture_display(
                 "file": str(evidence_dir / filename),
                 **safe_post_advance,
             }
+    except Exception as error:
+        receipt = _runtime_failure_receipt(failure_stage, error, client)
+        _write_runtime_failure_receipt(
+            Path(__file__).resolve().parents[1],
+            receipt,
+        )
+        raise
     finally:
         if breakpoint_armed:
             try:
@@ -856,6 +868,7 @@ def main() -> int:
         rom_size=baseline_rom_path.stat().st_size,
         target_read=resolution["target_read"],
         evidence_dir=evidence_dir / "baseline",
+        failure_stage="baseline-display-capture",
         schedule=capture_schedule,
     )
     (
@@ -869,6 +882,7 @@ def main() -> int:
         rom_size=rom_path.stat().st_size,
         target_read=resolution["target_read"],
         evidence_dir=evidence_dir / "test",
+        failure_stage="test-display-capture",
         schedule=capture_schedule,
     )
     if baseline_emulator_version != emulator_version:
