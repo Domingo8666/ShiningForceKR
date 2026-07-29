@@ -1,211 +1,297 @@
 {
   "artifact_kind": "sanitized-runtime-trace-observation",
-  "schema_version": 1,
-  "trace_plan_schema_version": 3,
+  "schema_version": 2,
+  "trace_plan_schema_version": 4,
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "status": "runtime-trace-plan-ready",
   "ranked_hypotheses": [
     {
-      "combined_candidate_score": 409.28,
-      "control_flow_shape_count": 0,
       "mapper_coupled_pointer_load_count": 0,
-      "generic_slot_base_discounted": false,
-      "scanner_score": 409.28,
-      "file_offset": 2939,
-      "bank_coupled_pointer_load_count": 0,
+      "pointer_load_shape_count": 0,
       "logical_mappings": [
         {
-          "slot": 0,
           "bank": 0,
+          "extent_truncated_at_bank_end": false,
           "mapping_note": "slot0-mapper-state-required",
-          "logical_end": 3118,
+          "slot": 0,
           "logical_start": 2939,
-          "extent_truncated_at_bank_end": false
+          "logical_end": 3118
         },
         {
-          "slot": 1,
           "bank": 0,
+          "extent_truncated_at_bank_end": false,
           "mapping_note": "slot1-mapper-state-required",
-          "logical_end": 19502,
+          "slot": 1,
           "logical_start": 19323,
-          "extent_truncated_at_bank_end": false
+          "logical_end": 19502
         },
         {
-          "slot": 2,
           "bank": 0,
+          "extent_truncated_at_bank_end": false,
           "mapping_note": "slot2-mapper-state-required",
-          "logical_end": 35886,
+          "slot": 2,
           "logical_start": 35707,
-          "extent_truncated_at_bank_end": false
+          "logical_end": 35886
         }
       ],
-      "end_exclusive": 3119,
-      "format": "addr_le_bank",
-      "absolute_memory_shape_count": 0,
-      "reference_shape_count": 0,
-      "pointer_load_shape_count": 0,
       "family": "triplet",
+      "end_exclusive": 3119,
+      "original_512k_target_ratio": 1.0,
+      "file_offset": 2939,
+      "control_flow_shape_count": 0,
+      "generic_slot_base_discounted": false,
+      "decode_probe": {
+        "median_symbols": 23.0,
+        "attempted": 24,
+        "termination_ratio": 0.9167,
+        "bounded_terminations": 22
+      },
+      "unique_ratio": 1.0,
+      "bank_coupled_pointer_load_count": 0,
+      "monotonic_ratio": 0.322,
+      "reference_shape_count": 0,
+      "absolute_memory_shape_count": 0,
+      "format": "addr_le_bank",
       "entries": 60,
+      "combined_candidate_score": 409.28,
+      "scanner_score": 409.28,
       "rank": 1
     },
     {
-      "combined_candidate_score": 396.0,
-      "control_flow_shape_count": 0,
       "mapper_coupled_pointer_load_count": 0,
-      "generic_slot_base_discounted": false,
-      "scanner_score": 396.0,
-      "file_offset": 2938,
-      "bank_coupled_pointer_load_count": 0,
+      "pointer_load_shape_count": 0,
       "logical_mappings": [
         {
-          "slot": 0,
           "bank": 0,
+          "extent_truncated_at_bank_end": false,
           "mapping_note": "slot0-mapper-state-required",
-          "logical_end": 3117,
+          "slot": 0,
           "logical_start": 2938,
-          "extent_truncated_at_bank_end": false
+          "logical_end": 3117
         },
         {
-          "slot": 1,
           "bank": 0,
+          "extent_truncated_at_bank_end": false,
           "mapping_note": "slot1-mapper-state-required",
-          "logical_end": 19501,
+          "slot": 1,
           "logical_start": 19322,
-          "extent_truncated_at_bank_end": false
+          "logical_end": 19501
         },
         {
-          "slot": 2,
           "bank": 0,
+          "extent_truncated_at_bank_end": false,
           "mapping_note": "slot2-mapper-state-required",
-          "logical_end": 35885,
+          "slot": 2,
           "logical_start": 35706,
-          "extent_truncated_at_bank_end": false
+          "logical_end": 35885
         }
       ],
-      "end_exclusive": 3118,
-      "format": "bank_addr_le",
-      "absolute_memory_shape_count": 0,
-      "reference_shape_count": 0,
-      "pointer_load_shape_count": 0,
       "family": "triplet",
+      "end_exclusive": 3118,
+      "original_512k_target_ratio": 1.0,
+      "file_offset": 2938,
+      "control_flow_shape_count": 0,
+      "generic_slot_base_discounted": false,
+      "decode_probe": {
+        "median_symbols": 10.0,
+        "attempted": 24,
+        "termination_ratio": 0.9167,
+        "bounded_terminations": 22
+      },
+      "unique_ratio": 0.9,
+      "bank_coupled_pointer_load_count": 0,
+      "monotonic_ratio": 0.0,
+      "reference_shape_count": 0,
+      "absolute_memory_shape_count": 0,
+      "format": "bank_addr_le",
       "entries": 60,
+      "combined_candidate_score": 396.0,
+      "scanner_score": 396.0,
       "rank": 2
     },
     {
-      "combined_candidate_score": 355.56,
-      "control_flow_shape_count": 2,
       "mapper_coupled_pointer_load_count": 0,
-      "generic_slot_base_discounted": true,
-      "scanner_score": 415.56,
-      "file_offset": 65536,
-      "bank_coupled_pointer_load_count": 1,
+      "pointer_load_shape_count": 35,
       "logical_mappings": [
         {
-          "slot": 1,
           "bank": 4,
+          "extent_truncated_at_bank_end": false,
           "mapping_note": "slot1-mapper-state-required",
-          "logical_end": 16763,
+          "slot": 1,
           "logical_start": 16384,
-          "extent_truncated_at_bank_end": false
+          "logical_end": 16763
         },
         {
-          "slot": 2,
           "bank": 4,
+          "extent_truncated_at_bank_end": false,
           "mapping_note": "slot2-mapper-state-required",
-          "logical_end": 33147,
+          "slot": 2,
           "logical_start": 32768,
-          "extent_truncated_at_bank_end": false
+          "logical_end": 33147
         }
       ],
-      "end_exclusive": 65916,
-      "format": "addr_le_bank_unresolved",
-      "absolute_memory_shape_count": 9,
-      "reference_shape_count": 46,
-      "pointer_load_shape_count": 35,
       "family": "pair",
+      "end_exclusive": 65916,
+      "original_512k_target_ratio": null,
+      "file_offset": 65536,
+      "control_flow_shape_count": 2,
+      "generic_slot_base_discounted": true,
+      "decode_probe": null,
+      "unique_ratio": 0.9789,
+      "bank_coupled_pointer_load_count": 1,
+      "monotonic_ratio": 0.8889,
+      "reference_shape_count": 46,
+      "absolute_memory_shape_count": 9,
+      "format": "addr_le_bank_unresolved",
       "entries": 190,
+      "combined_candidate_score": 355.56,
+      "scanner_score": 415.56,
       "rank": 3
     },
     {
-      "combined_candidate_score": 349.0,
-      "control_flow_shape_count": 0,
       "mapper_coupled_pointer_load_count": 0,
-      "generic_slot_base_discounted": false,
-      "scanner_score": 317.0,
-      "file_offset": 98941,
-      "bank_coupled_pointer_load_count": 0,
+      "pointer_load_shape_count": 8,
       "logical_mappings": [
         {
-          "slot": 1,
           "bank": 6,
+          "extent_truncated_at_bank_end": false,
           "mapping_note": "slot1-mapper-state-required",
-          "logical_end": 17128,
+          "slot": 1,
           "logical_start": 17021,
-          "extent_truncated_at_bank_end": false
+          "logical_end": 17128
         },
         {
-          "slot": 2,
           "bank": 6,
+          "extent_truncated_at_bank_end": false,
           "mapping_note": "slot2-mapper-state-required",
-          "logical_end": 33512,
+          "slot": 2,
           "logical_start": 33405,
-          "extent_truncated_at_bank_end": false
+          "logical_end": 33512
         }
       ],
-      "end_exclusive": 99049,
-      "format": "bank_addr_le",
-      "absolute_memory_shape_count": 0,
-      "reference_shape_count": 8,
-      "pointer_load_shape_count": 8,
       "family": "triplet",
+      "end_exclusive": 99049,
+      "original_512k_target_ratio": 0.6667,
+      "file_offset": 98941,
+      "control_flow_shape_count": 0,
+      "generic_slot_base_discounted": false,
+      "decode_probe": {
+        "median_symbols": 13,
+        "attempted": 24,
+        "termination_ratio": 0.875,
+        "bounded_terminations": 21
+      },
+      "unique_ratio": 1.0,
+      "bank_coupled_pointer_load_count": 0,
+      "monotonic_ratio": 0.0,
+      "reference_shape_count": 8,
+      "absolute_memory_shape_count": 0,
+      "format": "bank_addr_le",
       "entries": 36,
+      "combined_candidate_score": 349.0,
+      "scanner_score": 317.0,
       "rank": 4
     },
     {
-      "combined_candidate_score": 300.26,
-      "control_flow_shape_count": 0,
       "mapper_coupled_pointer_load_count": 0,
-      "generic_slot_base_discounted": false,
-      "scanner_score": 300.26,
-      "file_offset": 271769,
-      "bank_coupled_pointer_load_count": 0,
+      "pointer_load_shape_count": 0,
       "logical_mappings": [
         {
-          "slot": 0,
           "bank": 16,
+          "extent_truncated_at_bank_end": false,
           "mapping_note": "slot0-mapper-state-required",
-          "logical_end": 9684,
+          "slot": 0,
           "logical_start": 9625,
-          "extent_truncated_at_bank_end": false
+          "logical_end": 9684
         },
         {
-          "slot": 1,
           "bank": 16,
+          "extent_truncated_at_bank_end": false,
           "mapping_note": "slot1-mapper-state-required",
-          "logical_end": 26068,
+          "slot": 1,
           "logical_start": 26009,
-          "extent_truncated_at_bank_end": false
+          "logical_end": 26068
         },
         {
-          "slot": 2,
           "bank": 16,
+          "extent_truncated_at_bank_end": false,
           "mapping_note": "slot2-mapper-state-required",
-          "logical_end": 42452,
+          "slot": 2,
           "logical_start": 42393,
-          "extent_truncated_at_bank_end": false
+          "logical_end": 42452
         }
       ],
-      "end_exclusive": 271829,
-      "format": "bank_addr_le",
-      "absolute_memory_shape_count": 0,
-      "reference_shape_count": 0,
-      "pointer_load_shape_count": 0,
       "family": "triplet",
+      "end_exclusive": 271829,
+      "original_512k_target_ratio": 1.0,
+      "file_offset": 271769,
+      "control_flow_shape_count": 0,
+      "generic_slot_base_discounted": false,
+      "decode_probe": {
+        "median_symbols": 15.5,
+        "attempted": 20,
+        "termination_ratio": 1.0,
+        "bounded_terminations": 20
+      },
+      "unique_ratio": 1.0,
+      "bank_coupled_pointer_load_count": 0,
+      "monotonic_ratio": 0.5789,
+      "reference_shape_count": 0,
+      "absolute_memory_shape_count": 0,
+      "format": "bank_addr_le",
       "entries": 20,
+      "combined_candidate_score": 300.26,
+      "scanner_score": 300.26,
       "rank": 5
     }
   ],
   "selected_rank": 1,
+  "selected_alignment_cluster": [
+    {
+      "format": "addr_le_bank",
+      "end_exclusive": 3119,
+      "entries": 60,
+      "combined_candidate_score": 409.28,
+      "file_offset": 2939
+    },
+    {
+      "format": "bank_addr_le",
+      "end_exclusive": 3118,
+      "entries": 60,
+      "combined_candidate_score": 396.0,
+      "file_offset": 2938
+    }
+  ],
+  "selected_watch": {
+    "file_start": 2938,
+    "end_exclusive": 3119,
+    "logical_mappings": [
+      {
+        "bank": 0,
+        "extent_truncated_at_bank_end": false,
+        "mapping_note": "slot0-mapper-state-required",
+        "slot": 0,
+        "logical_start": 2938,
+        "logical_end": 3118
+      },
+      {
+        "bank": 0,
+        "extent_truncated_at_bank_end": false,
+        "mapping_note": "slot1-mapper-state-required",
+        "slot": 1,
+        "logical_start": 19322,
+        "logical_end": 19502
+      },
+      {
+        "bank": 0,
+        "extent_truncated_at_bank_end": false,
+        "mapping_note": "slot2-mapper-state-required",
+        "slot": 2,
+        "logical_start": 35706,
+        "logical_end": 35886
+      }
+    ]
+  },
   "consumer_evidence_confirmed": false,
   "translation_build_eligible": false,
   "next_checkpoint": "runtime-read-hit-with-matching-mapper-state"
