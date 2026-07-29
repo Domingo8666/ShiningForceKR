@@ -81,7 +81,7 @@ class S25URuntimeProbeTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             _watch_ranges(plan)
 
-    def test_mcp_tool_payload_is_json_only(self) -> None:
+    def test_mcp_tool_payload_accepts_json_text(self) -> None:
         message = {
             "result": {
                 "content": [{"type": "text", "text": '{"pc":"8123"}'}],
@@ -89,6 +89,24 @@ class S25URuntimeProbeTests(unittest.TestCase):
             }
         }
         self.assertEqual(_tool_payload(message), {"pc": "8123"})
+
+    def test_mcp_tool_payload_accepts_image_content(self) -> None:
+        message = {
+            "result": {
+                "content": [
+                    {
+                        "type": "image",
+                        "data": "aW1hZ2U=",
+                        "mimeType": "image/png",
+                    }
+                ],
+                "isError": False,
+            }
+        }
+        self.assertEqual(
+            _tool_payload(message),
+            {"data": "aW1hZ2U=", "mimeType": "image/png"},
+        )
 
     def test_next_runtime_groups_skip_the_exhausted_selected_extent(self) -> None:
         def candidate(

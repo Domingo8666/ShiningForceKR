@@ -50,6 +50,17 @@ class TestDisplayCaptureTests(unittest.TestCase):
         self.assertEqual(metadata["height"], 1)
         self.assertEqual(metadata["png_sha256"], sha256_bytes(PNG_1X1))
 
+    def test_png_dimensions_are_recovered_from_image_content(self) -> None:
+        png, metadata = _parse_screenshot(
+            {
+                "mimeType": "image/png",
+                "data": base64.b64encode(PNG_1X1).decode("ascii"),
+            }
+        )
+        self.assertEqual(png, PNG_1X1)
+        self.assertEqual(metadata["width"], 1)
+        self.assertEqual(metadata["height"], 1)
+
     def test_malformed_or_mismatched_png_fails_closed(self) -> None:
         with self.assertRaisesRegex(PatchError, "PNG header"):
             _parse_screenshot(

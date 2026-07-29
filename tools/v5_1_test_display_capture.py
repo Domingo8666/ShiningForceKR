@@ -261,15 +261,6 @@ def _parse_screenshot(payload: dict[str, object]) -> tuple[bytes, dict[str, obje
     height = payload.get("height")
     if not isinstance(encoded, str):
         raise PatchError("Gearsystem screenshot has no base64 data")
-    if (
-        not isinstance(width, int)
-        or isinstance(width, bool)
-        or not 1 <= width <= 1024
-        or not isinstance(height, int)
-        or isinstance(height, bool)
-        or not 1 <= height <= 1024
-    ):
-        raise PatchError("Gearsystem screenshot dimensions are invalid")
     try:
         png = base64.b64decode(encoded, validate=True)
     except (ValueError, binascii.Error) as error:
@@ -278,7 +269,21 @@ def _parse_screenshot(payload: dict[str, object]) -> tuple[bytes, dict[str, obje
         raise PatchError("Gearsystem screenshot PNG header is invalid")
     header_width = int.from_bytes(png[16:20], "big")
     header_height = int.from_bytes(png[20:24], "big")
-    if (header_width, header_height) != (width, height):
+    if not 1 <= header_width <= 1024 or not 1 <= header_height <= 1024:
+        raise PatchError("Gearsystem screenshot PNG dimensions are invalid")
+    if width is None and height is None:
+        width = header_width
+        height = header_height
+    elif (
+        not isinstance(width, int)
+        or isinstance(width, bool)
+        or not 1 <= width <= 1024
+        or not isinstance(height, int)
+        or isinstance(height, bool)
+        or not 1 <= height <= 1024
+    ):
+        raise PatchError("Gearsystem screenshot dimensions are invalid")
+    elif (header_width, header_height) != (width, height):
         raise PatchError("Gearsystem screenshot dimensions disagree with PNG")
     return png, {
         "width": width,

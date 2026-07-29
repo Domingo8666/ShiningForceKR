@@ -114,12 +114,30 @@ def _tool_payload(message: dict[str, object]) -> dict[str, Any]:
         ),
         None,
     )
-    if text is None:
-        raise RuntimeError("Gearsystem tool response has no JSON text")
-    payload = json.loads(text)
-    if not isinstance(payload, dict):
-        raise RuntimeError("Gearsystem tool payload must be an object")
-    return payload
+    if text is not None:
+        payload = json.loads(text)
+        if not isinstance(payload, dict):
+            raise RuntimeError("Gearsystem tool payload must be an object")
+        return payload
+    image = next(
+        (
+            item
+            for item in content
+            if (
+                isinstance(item, dict)
+                and item.get("type") == "image"
+                and isinstance(item.get("data"), str)
+                and isinstance(item.get("mimeType"), str)
+            )
+        ),
+        None,
+    )
+    if image is not None:
+        return {
+            "data": image["data"],
+            "mimeType": image["mimeType"],
+        }
+    raise RuntimeError("Gearsystem tool response has no JSON text or image")
 
 
 class McpStdioClient:
