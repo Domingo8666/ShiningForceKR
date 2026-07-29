@@ -37,6 +37,7 @@
 | SFKR-029 | 디코더 진입 뒤 첫 64개 표본이 모두 bank 8 source-region read여서 한국어 Huffman bank 0x20 전환 전에 수집 종료 | fixed-emulator | source-region 표본을 8개로 제한한 후 mapper bank 0x20의 Huffman vector/tree 실제 읽기를 수집 |
 | SFKR-030 | 실제 stream·vector·tree read 좌표는 확보했지만 공개 증거에 피연산자 역할이 없어 정확한 압축 엔트리 경계를 확정할 수 없음 | fixed-static | opcode는 S25U 로컬에만 두고 고정 operand-kind와 BPS 제한 왕복으로 겹치지 않는 실제 인트로 스트림 4개를 확정 |
 | SFKR-031 | 런타임 확정 인트로 스트림의 첫 시험 문장 화면 증거가 아직 없음 | investigating | 54비트 첫 스트림에 39비트 `한다`를 Expected Write로 넣고 동일 attract 경로의 S25U PNG를 로컬 캡처 |
+| SFKR-032 | 첫 시험 ROM 캡처가 목표 논리 주소의 mapper bank 7 선행 히트를 bank 8 목표로 오인하고 탐색을 종료 | fixed-emulator | 뱅크·디코더 PC가 모두 일치할 때만 승인하고 오탐은 breakpoint 해제·한 명령 진행·재설정 후 계속 탐색 |
 
 ## 테스트 원칙
 

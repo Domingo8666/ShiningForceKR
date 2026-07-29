@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -8,6 +11,7 @@ from tools.run_s25u_renderer_probe import (
     TEXT_ROUTE_PLANS,
     _capture_decoder_reads,
     _classify_decoder_read,
+    _consumer_already_confirmed,
     _decoder_entry_mappings,
     _frame_budget,
     _last_rom_read,
@@ -19,6 +23,22 @@ from tools.run_s25u_renderer_probe import (
 
 
 class S25URendererProbeTests(unittest.TestCase):
+    def test_confirmed_stream_resolution_skips_redundant_renderer_replay(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = (
+                root
+                / "analysis/device/v5_1_latest_decoder_stream_resolution.json"
+            )
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                json.dumps({"consumer_evidence_confirmed": True}),
+                encoding="utf-8",
+            )
+            self.assertTrue(_consumer_already_confirmed(root))
+
     def test_decoder_read_capture_steps_past_each_breakpoint(self) -> None:
         class FakeClient:
             def __init__(self) -> None:

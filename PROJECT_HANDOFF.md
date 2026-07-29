@@ -70,6 +70,7 @@ v5.1은 최종판이 아니라 재작업용 진단 기준입니다.
 42. 동기화된 무입력 attract intro에서 물리 0x0033FA 디코더 execute hit를 확정했습니다. 진입 시 slot 1은 bank 8이었고 PC 0x3406의 source-region read 64개를 수집했으나 Huffman bank 0x20 전환 전 표본 한도에 도달했습니다. 다음 실행은 source-region 표본을 8개만 보존하면서 최대 1,024개 read를 따라가 한국어 벡터·트리 표본을 우선 수집합니다.
 43. 같은 attract intro를 최대 1,024개 read로 연장해 mapper bank 0x20의 한국어 Huffman vector 3개와 tree 16개를 실제로 확인했습니다. 다음 실행은 원시 opcode를 게시하지 않고 각 read의 고정 operand-kind만 기록해 stream·vector·tree 경계를 연결합니다.
 44. 실제 인트로 source-region 시작점 0x0203DE·0x0203E8·0x0203FB·0x02041E가 BPS만으로 종료 심벌까지 정확히 디코드·재인코딩되고 서로 겹치지 않음을 확인했습니다. 첫 54비트 스트림은 39비트 시험 문장 `한다`를 수용하므로 새 안전 해석기가 조회표 추정 없이 이를 S25U 시험 빌더와 attract 화면 캡처에 전달합니다.
+45. S25U가 `한다` 시험 ROM과 IPS를 로컬에 생성했고 기준/시험 SHA-256도 기록했습니다. 첫 캡처는 같은 논리 주소의 mapper bank 7 선행 오탐에서 멈췄으므로, 후속 실행은 bank 8과 디코더 PC가 함께 일치할 때까지 breakpoint를 한 명령씩 안전하게 넘겨 재시도합니다.
 
 ## 현재 체크포인트
 

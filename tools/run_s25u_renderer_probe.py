@@ -459,15 +459,22 @@ def _capture_decoder_reads(
 
 
 def _consumer_already_confirmed(root: Path) -> bool:
-    path = root / CONSUMER_RESOLUTION
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return False
-    return (
-        isinstance(value, dict)
-        and value.get("consumer_evidence_confirmed") is True
+    paths = (
+        root / CONSUMER_RESOLUTION,
+        root
+        / "analysis/device/v5_1_latest_decoder_stream_resolution.json",
     )
+    for path in paths:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if (
+            isinstance(value, dict)
+            and value.get("consumer_evidence_confirmed") is True
+        ):
+            return True
+    return False
 
 
 def main() -> int:

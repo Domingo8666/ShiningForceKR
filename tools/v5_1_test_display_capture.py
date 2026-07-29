@@ -26,6 +26,7 @@ try:
         _capture_state,
         _default_command,
         _step_frames_and_wait,
+        _step_instruction_and_wait,
     )
     from .v5_1_decoder_stream_resolution import (
         validate_decoder_stream_resolution,
@@ -40,6 +41,7 @@ except ImportError:  # direct script execution
         _capture_state,
         _default_command,
         _step_frames_and_wait,
+        _step_instruction_and_wait,
     )
     from v5_1_decoder_stream_resolution import (
         validate_decoder_stream_resolution,
@@ -69,6 +71,7 @@ CAPTURE_FRAMES_AFTER_HIT = (1, 8, 30, 90)
 ATTRACT_CAPTURE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
     *((1_000, None),) * 12,
 )
+MAX_REJECTED_TARGET_HITS = 64
 REQUIRED_TOOLS = {
     "controller_button",
     "debug_get_status",
@@ -423,6 +426,18 @@ def _build_safe_capture(
     return safe
 
 
+def _target_hit_matches(
+    state: dict[str, object],
+    target_read: dict[str, object],
+) -> bool:
+    slot = int(target_read["slot"])
+    expected_pc_after = int(target_read["instruction_pc"]) + 1
+    return (
+        int(state[f"slot{slot}_bank"]) == int(target_read["expected_bank"])
+        and abs(int(state["pc_after"]) - expected_pc_after) <= 4
+    )
+
+
 def _capture_display(
     *,
     rom_path: Path,
@@ -449,6 +464,34 @@ def _capture_display(
     safe_post_advance: dict[str, object] | None = None
     start = f"{int(target_read['logical_access']):04X}"
     breakpoint_armed = False
+
+    def arm_breakpoint() -> None:
+        nonlocal breakpoint_armed
+        client.call(
+            "set_breakpoint_range",
+            {
+                "start_address": start,
+                "end_address": start,
+                "memory_area": "rom_ram",
+                "execute": False,
+                "read": True,
+                "write": False,
+            },
+        )
+        breakpoint_armed = True
+
+    def disarm_breakpoint() -> None:
+        nonlocal breakpoint_armed
+        client.call(
+            "remove_breakpoint",
+            {
+                "address": start,
+                "end_address": start,
+                "memory_area": "rom_ram",
+            },
+        )
+        breakpoint_armed = False
+
     try:
         tools = client.initialize()
         missing = sorted(REQUIRED_TOOLS - tools)
@@ -466,18 +509,9 @@ def _capture_display(
         emulator_version = str(media.get("emulator_version", "unknown"))
         client.call("debug_reset")
         client.call("debug_pause")
-        client.call(
-            "set_breakpoint_range",
-            {
-                "start_address": start,
-                "end_address": start,
-                "memory_area": "rom_ram",
-                "execute": False,
-                "read": True,
-                "write": False,
-            },
-        )
-        breakpoint_armed = True
+        arm_breakpoint()
+        target_found = False
+        rejected_hits: list[dict[str, int]] = []
         for frames, button in schedule:
             if button is not None:
                 client.call(
@@ -488,24 +522,34 @@ def _capture_display(
                         "action": "press_and_release",
                     },
                 )
-            status = _step_frames_and_wait(client, frames)
-            if status.get("at_breakpoint") is not True:
-                continue
-            state, hit_evidence = _capture_state(client)
-            local["target_hit"] = state
-            local["target_hit_evidence"] = hit_evidence
-            slot = int(target_read["slot"])
-            mapped_bank = int(state[f"slot{slot}_bank"])
-            break
-        client.call(
-            "remove_breakpoint",
-            {
-                "address": start,
-                "end_address": start,
-                "memory_area": "rom_ram",
-            },
-        )
-        breakpoint_armed = False
+            for _ in range(MAX_REJECTED_TARGET_HITS):
+                status = _step_frames_and_wait(client, frames)
+                if status.get("at_breakpoint") is not True:
+                    break
+                state, hit_evidence = _capture_state(client)
+                slot = int(target_read["slot"])
+                candidate_bank = int(state[f"slot{slot}_bank"])
+                pc_after = int(state["pc_after"])
+                if _target_hit_matches(state, target_read):
+                    mapped_bank = candidate_bank
+                    local["target_hit"] = state
+                    local["target_hit_evidence"] = hit_evidence
+                    target_found = True
+                    break
+                rejected_hits.append(
+                    {
+                        "mapped_bank": candidate_bank,
+                        "pc_after": pc_after,
+                        "physical_pc_after": int(state["physical_pc_after"]),
+                    }
+                )
+                disarm_breakpoint()
+                _step_instruction_and_wait(client)
+                arm_breakpoint()
+            if target_found:
+                break
+        local["rejected_target_hits"] = rejected_hits
+        disarm_breakpoint()
 
         if mapped_bank == int(target_read["expected_bank"]):
             previous = 0

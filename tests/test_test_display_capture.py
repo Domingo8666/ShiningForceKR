@@ -9,6 +9,7 @@ from tools.v5_1_test_display_capture import (
     ATTRACT_CAPTURE_SCHEDULE,
     _build_safe_capture,
     _parse_screenshot,
+    _target_hit_matches,
     validate_display_capture,
 )
 
@@ -43,6 +44,23 @@ class TestDisplayCaptureTests(unittest.TestCase):
             sum(frames for frames, _ in ATTRACT_CAPTURE_SCHEDULE),
             12_000,
         )
+
+    def test_target_hit_requires_mapper_bank_and_decoder_pc(self) -> None:
+        target = {
+            "slot": 1,
+            "expected_bank": 8,
+            "instruction_pc": 0x3406,
+        }
+        state = {
+            "slot1_bank": 8,
+            "pc_after": 0x3407,
+        }
+        self.assertTrue(_target_hit_matches(state, target))
+        state["slot1_bank"] = 7
+        self.assertFalse(_target_hit_matches(state, target))
+        state["slot1_bank"] = 8
+        state["pc_after"] = 0x5000
+        self.assertFalse(_target_hit_matches(state, target))
 
     def test_png_payload_is_verified_before_hashing(self) -> None:
         png, metadata = _parse_screenshot(
