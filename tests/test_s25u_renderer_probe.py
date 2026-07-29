@@ -22,6 +22,7 @@ class S25URendererProbeTests(unittest.TestCase):
             def __init__(self) -> None:
                 self.calls: list[tuple[str, dict[str, object]]] = []
                 self.step_requests = 0
+                self.break_on_step = 180 + 240 + 3
 
             def call(
                 self,
@@ -33,8 +34,10 @@ class S25URendererProbeTests(unittest.TestCase):
                     self.step_requests += 1
                 if name == "debug_get_status":
                     return {
-                        "at_breakpoint": self.step_requests >= 3,
-                        "paused": self.step_requests < 3,
+                        "at_breakpoint": (
+                            self.step_requests >= self.break_on_step
+                        ),
+                        "paused": self.step_requests < self.break_on_step,
                     }
                 return {}
 
