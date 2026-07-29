@@ -1,0 +1,60 @@
+{
+  "artifact_kind": "sanitized-story-route-capture",
+  "schema_version": 1,
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "status": "route-frames-captured-human-review-required",
+  "probe": {
+    "emulator": "Gearsystem",
+    "emulator_version": "3.9.14",
+    "system": "gamegear",
+    "route": "cold-boot-start-confirm-story",
+    "frame_budget": 3300
+  },
+  "captures": [
+    {
+      "stage": "boot-idle",
+      "frame_total": 180,
+      "input_count": 0,
+      "width": 160,
+      "height": 144,
+      "png_sha256": "20f834530c7cab0db8a37d201dcb03766e70991f978737c6cbbf5eac6a560087"
+    },
+    {
+      "stage": "post-start",
+      "frame_total": 420,
+      "input_count": 1,
+      "width": 160,
+      "height": 144,
+      "png_sha256": "20f834530c7cab0db8a37d201dcb03766e70991f978737c6cbbf5eac6a560087"
+    },
+    {
+      "stage": "confirm-01",
+      "frame_total": 600,
+      "input_count": 2,
+      "width": 160,
+      "height": 144,
+      "png_sha256": "20f834530c7cab0db8a37d201dcb03766e70991f978737c6cbbf5eac6a560087"
+    },
+    {
+      "stage": "confirm-04",
+      "frame_total": 1140,
+      "input_count": 5,
+      "width": 160,
+      "height": 144,
+      "png_sha256": "20f834530c7cab0db8a37d201dcb03766e70991f978737c6cbbf5eac6a560087"
+    },
+    {
+      "stage": "confirm-16",
+      "frame_total": 3300,
+      "input_count": 17,
+      "width": 160,
+      "height": 144,
+      "png_sha256": "d051fec8417ea0f70157f14047a4619942ebe0f405e1d7545846c1aa94a76d25"
+    }
+  ],
+  "distinct_frame_count": 2,
+  "stable_tail": false,
+  "route_state_verified": false,
+  "translation_build_eligible": false,
+  "next_checkpoint": "human-identify-route-screen"
+}

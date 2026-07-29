@@ -2,9 +2,9 @@
   "artifact_kind": "sanitized-runtime-stage-diagnostic",
   "schema_version": 2,
   "status": "runtime-stage-ready",
-  "trigger": "probe",
-  "exit_code": 1,
-  "attempt_utc": "2026-07-29T10:44:31Z",
+  "trigger": "manual",
+  "exit_code": 0,
+  "attempt_utc": "2026-07-29T10:52:29Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
