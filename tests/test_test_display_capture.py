@@ -141,7 +141,10 @@ class TestDisplayCaptureTests(unittest.TestCase):
         )
         broken = copy.deepcopy(capture)
         broken["captures"] = []
-        with self.assertRaisesRegex(ValueError, "status and evidence"):
+        with self.assertRaisesRegex(
+            ValueError,
+            "post-advance capture requires confirmed display captures",
+        ):
             validate_display_capture(broken)
 
 
