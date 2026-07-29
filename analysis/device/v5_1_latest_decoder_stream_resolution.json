@@ -1,0 +1,66 @@
+{
+  "artifact_kind": "sanitized-runtime-decoder-stream-resolution",
+  "schema_version": 1,
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "status": "decoder-stream-resolved",
+  "streams": [
+    {
+      "physical_start": 132062,
+      "logical_start": 17374,
+      "mapped_bank": 8,
+      "instruction_bank": 0,
+      "instruction_pc": 13318,
+      "operand_kind": "hl-indirect",
+      "decoded_end_exclusive": 132069,
+      "next_stream_start": 132072,
+      "symbol_count": 12,
+      "encoded_bits": 54,
+      "roundtrip_exact": true
+    },
+    {
+      "physical_start": 132072,
+      "logical_start": 17384,
+      "mapped_bank": 8,
+      "instruction_bank": 0,
+      "instruction_pc": 13318,
+      "operand_kind": "hl-indirect",
+      "decoded_end_exclusive": 132079,
+      "next_stream_start": 132082,
+      "symbol_count": 12,
+      "encoded_bits": 54,
+      "roundtrip_exact": true
+    },
+    {
+      "physical_start": 132091,
+      "logical_start": 17403,
+      "mapped_bank": 8,
+      "instruction_bank": 0,
+      "instruction_pc": 13318,
+      "operand_kind": "hl-indirect",
+      "decoded_end_exclusive": 132096,
+      "next_stream_start": 132101,
+      "symbol_count": 8,
+      "encoded_bits": 38,
+      "roundtrip_exact": true
+    },
+    {
+      "physical_start": 132126,
+      "logical_start": 17438,
+      "mapped_bank": 8,
+      "instruction_bank": 0,
+      "instruction_pc": 13318,
+      "operand_kind": "hl-indirect",
+      "decoded_end_exclusive": 132130,
+      "next_stream_start": null,
+      "symbol_count": 6,
+      "encoded_bits": 27,
+      "roundtrip_exact": true
+    }
+  ],
+  "selected_stream_index": 0,
+  "huffman_vector_read_count": 3,
+  "huffman_tree_read_count": 13,
+  "consumer_evidence_confirmed": true,
+  "translation_build_eligible": false,
+  "next_checkpoint": "build-runtime-selected-test-phrase"
+}

@@ -1,0 +1,30 @@
+{
+  "artifact_kind": "sanitized-s25u-test-display-capture",
+  "schema_version": 1,
+  "status": "runtime-target-read-not-observed",
+  "purpose": "technical-poc-only",
+  "phrase_codepoints": [
+    "U+D55C",
+    "U+B2E4"
+  ],
+  "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "test_target_sha256": "003ce3261505dfdd134be49991c98e5f811b4c617bdfc5a77e39055c0f6b1bc8",
+  "emulator_version": "3.9.14",
+  "cold_boot": true,
+  "target_read": {
+    "slot": 1,
+    "logical_access": 17374,
+    "expected_bank": 8,
+    "mapped_bank": 7,
+    "confirmed": false
+  },
+  "captures": [],
+  "post_advance_capture": null,
+  "visual_review": {
+    "required": true,
+    "result": null,
+    "evidence_storage": "s25u-local-only"
+  },
+  "translation_build_eligible": false,
+  "next_checkpoint": "repair-test-display-target-reachability"
+}
