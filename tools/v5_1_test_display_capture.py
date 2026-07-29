@@ -85,6 +85,7 @@ DEFAULT_LOCAL_REPORT = Path(
     "reports/local/v5_1_test_display_capture.json"
 )
 DEFAULT_EVIDENCE_DIR = Path("evidence/local/v5_1_test_phrase")
+DEFAULT_REVIEW_DIR = Path("reports/HUMAN_REVIEW")
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_display_capture.json"
 )
@@ -527,17 +528,11 @@ def _next_step_text(
             "지금 사용자가 할 일은 없습니다.\n"
         )
     if result == "visible-pixel-change-human-review-required":
-        relative = evidence_dir.relative_to(root)
-        base = "내부 저장공간 > ShiningForceKR > " + " > ".join(
-            relative.parts
-        )
         return (
             "Shining Force KR 다음 할 일\n\n"
             "기준 화면과 시험 화면의 픽셀 차이가 발견됐습니다.\n"
-            "아래 PNG 3개를 Codex 대화에 올려주세요.\n\n"
-            f"1. {base} > baseline > frame_0090.png\n"
-            f"2. {base} > test > frame_0090.png\n"
-            f"3. {base} > test > after_advance.png\n\n"
+            "내부 저장공간 > ShiningForceKR > reports > HUMAN_REVIEW에서\n"
+            "README.txt를 읽고 PNG 3개를 Codex 대화에 올려주세요.\n\n"
             "ROM 또는 생성 ROM은 올리지 마세요.\n"
         )
     return (
@@ -546,6 +541,106 @@ def _next_step_text(
         "reports/AUTOPILOT_STATUS.txt와 이 파일의 글자 내용만 보내주세요.\n"
         "ROM 또는 생성 ROM은 올리지 마세요.\n"
     )
+
+
+def _human_review_item(
+    captures: object,
+    frame: int,
+    label: str,
+) -> dict[str, object]:
+    if not isinstance(captures, list):
+        raise PatchError(f"{label} capture list is missing")
+    item = next(
+        (
+            value
+            for value in captures
+            if isinstance(value, dict)
+            and value.get("frame_after_hit") == frame
+        ),
+        None,
+    )
+    if (
+        not isinstance(item, dict)
+        or not isinstance(item.get("file"), str)
+        or not _is_sha256(item.get("png_sha256"))
+    ):
+        raise PatchError(f"{label} review capture is missing")
+    return item
+
+
+def _copy_verified_review_png(item: dict[str, object], target: Path) -> None:
+    source = Path(str(item["file"]))
+    data = source.read_bytes()
+    if sha256_bytes(data) != item["png_sha256"]:
+        raise PatchError("human-review PNG identity mismatch")
+    _write_bytes_atomic(target, data)
+
+
+def _write_human_review_bundle(
+    comparison: dict[str, object],
+    *,
+    baseline_local: dict[str, object],
+    test_local: dict[str, object],
+    review_dir: Path,
+) -> tuple[Path, ...]:
+    if comparison.get("result") != "visible-pixel-change-human-review-required":
+        return ()
+    frames = comparison.get("frame_comparisons")
+    if not isinstance(frames, list) or not frames:
+        raise PatchError("visible comparison has no review frame")
+    selected = max(
+        (
+            item
+            for item in frames
+            if isinstance(item, dict)
+            and isinstance(item.get("frame_after_hit"), int)
+            and isinstance(item.get("changed_pixels"), int)
+        ),
+        key=lambda item: int(item["changed_pixels"]),
+        default=None,
+    )
+    if not isinstance(selected, dict) or int(selected["changed_pixels"]) <= 0:
+        raise PatchError("visible comparison has no changed review frame")
+    frame = int(selected["frame_after_hit"])
+    baseline_item = _human_review_item(
+        baseline_local.get("captures"),
+        frame,
+        "baseline",
+    )
+    test_item = _human_review_item(
+        test_local.get("captures"),
+        frame,
+        "test",
+    )
+    post_item = test_local.get("post_advance_capture")
+    if (
+        not isinstance(post_item, dict)
+        or not isinstance(post_item.get("file"), str)
+        or not _is_sha256(post_item.get("png_sha256"))
+    ):
+        raise PatchError("post-advance review capture is missing")
+
+    review_dir.mkdir(parents=True, exist_ok=True)
+    baseline_path = review_dir / "1_BASELINE.png"
+    test_path = review_dir / "2_TEST.png"
+    post_path = review_dir / "3_AFTER_ADVANCE.png"
+    readme_path = review_dir / "README.txt"
+    _copy_verified_review_png(baseline_item, baseline_path)
+    _copy_verified_review_png(test_item, test_path)
+    _copy_verified_review_png(post_item, post_path)
+    _write_bytes_atomic(
+        readme_path,
+        (
+            "Shining Force KR 화면 확인\n\n"
+            "1_BASELINE.png와 2_TEST.png를 비교하세요.\n"
+            "2_TEST.png에 시험 문구 '한다'가 또렷하게 보여야 합니다.\n"
+            "초상화, 대화창 테두리와 주변 글자가 깨지지 않아야 합니다.\n"
+            "3_AFTER_ADVANCE.png에서는 대사 진행 뒤 화면이 정상이어야 합니다.\n\n"
+            "Codex 대화에는 이 폴더의 PNG 3개만 올려주세요.\n"
+            "ROM 또는 생성 ROM은 올리지 마세요.\n"
+        ).encode("utf-8"),
+    )
+    return baseline_path, test_path, post_path, readme_path
 
 
 def _target_hit_matches(
@@ -781,6 +876,12 @@ def main() -> int:
         root / "evidence" / "local",
         "display capture evidence",
     )
+    review_dir = _absolute(root, DEFAULT_REVIEW_DIR)
+    _require_within(
+        review_dir,
+        root / "reports",
+        "human review bundle",
+    )
     missing = [
         path
         for path in (rom_path, baseline_rom_path, build_report_path)
@@ -913,6 +1014,12 @@ def main() -> int:
         ),
     )
     comparison_path = write_display_comparison(root, comparison)
+    _write_human_review_bundle(
+        comparison,
+        baseline_local=baseline_local,
+        test_local=test_local,
+        review_dir=review_dir,
+    )
     _write_bytes_atomic(
         root / "reports" / "NEXT_STEP.txt",
         _next_step_text(

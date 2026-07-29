@@ -11,6 +11,7 @@ from tools.v5_1_test_display_capture import (
     ATTRACT_CAPTURE_SCHEDULE,
     CAPTURE_FRAMES_AFTER_HIT,
     _build_safe_capture,
+    _write_human_review_bundle,
     _next_step_text,
     _paired_pixel_comparisons,
     _parse_screenshot,
@@ -245,10 +246,85 @@ class TestDisplayCaptureTests(unittest.TestCase):
             evidence_dir=Path("C:/project/evidence/local/run"),
             root=Path("C:/project"),
         )
-        self.assertIn("baseline > frame_0090.png", text)
-        self.assertIn("test > frame_0090.png", text)
-        self.assertIn("test > after_advance.png", text)
+        self.assertIn("reports > HUMAN_REVIEW", text)
+        self.assertIn("PNG 3개", text)
         self.assertIn("ROM 또는 생성 ROM은 올리지 마세요", text)
+
+    def test_visible_change_stages_a_verified_human_review_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            baseline_path = root / "baseline.png"
+            test_path = root / "test.png"
+            post_path = root / "post.png"
+            for path in (baseline_path, test_path, post_path):
+                path.write_bytes(PNG_1X1)
+            staged = _write_human_review_bundle(
+                {
+                    "result": "visible-pixel-change-human-review-required",
+                    "frame_comparisons": [
+                        {
+                            "frame_after_hit": 30,
+                            "changed_pixels": 2,
+                        },
+                        {
+                            "frame_after_hit": 90,
+                            "changed_pixels": 5,
+                        },
+                    ],
+                },
+                baseline_local={
+                    "captures": [
+                        {
+                            "file": str(baseline_path),
+                            "frame_after_hit": 90,
+                            "png_sha256": sha256_bytes(PNG_1X1),
+                        }
+                    ],
+                },
+                test_local={
+                    "captures": [
+                        {
+                            "file": str(test_path),
+                            "frame_after_hit": 90,
+                            "png_sha256": sha256_bytes(PNG_1X1),
+                        }
+                    ],
+                    "post_advance_capture": {
+                        "file": str(post_path),
+                        "png_sha256": sha256_bytes(PNG_1X1),
+                    },
+                },
+                review_dir=root / "review",
+            )
+            self.assertEqual(
+                [path.name for path in staged],
+                [
+                    "1_BASELINE.png",
+                    "2_TEST.png",
+                    "3_AFTER_ADVANCE.png",
+                    "README.txt",
+                ],
+            )
+            self.assertTrue(all(path.is_file() for path in staged))
+            self.assertIn(
+                "시험 문구 '한다'",
+                staged[-1].read_text(encoding="utf-8"),
+            )
+
+    def test_review_bundle_is_not_written_without_visible_change(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            review_dir = Path(directory) / "review"
+            staged = _write_human_review_bundle(
+                {
+                    "result": "no-visible-pixel-change",
+                    "frame_comparisons": [],
+                },
+                baseline_local={},
+                test_local={},
+                review_dir=review_dir,
+            )
+            self.assertEqual(staged, ())
+            self.assertFalse(review_dir.exists())
 
     def test_next_step_requires_no_user_action_for_exact_no_change(self) -> None:
         text = _next_step_text(

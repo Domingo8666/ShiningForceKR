@@ -234,6 +234,14 @@ v5.1 BPS에서 기준 이미지를 메모리로 다시 만들고, `한다`가 �
 - `evidence/local/v5_1_test_phrase/`
 - `reports/local/v5_1_test_display_capture.json`
 
+기준·시험 화면에 픽셀 차이가 있으면 변경 픽셀이 가장 많은 짝과 진행 후
+화면을 SHA-256으로 다시 확인한 뒤 아래 폴더에도 쉬운 이름으로 복사합니다.
+
+- `reports/HUMAN_REVIEW/1_BASELINE.png`
+- `reports/HUMAN_REVIEW/2_TEST.png`
+- `reports/HUMAN_REVIEW/3_AFTER_ADVANCE.png`
+- `reports/HUMAN_REVIEW/README.txt`
+
 PNG와 로컬 경로는 Git에서 제외합니다. GitHub에는 ROM·화면 없이 빌드
 해시, read·뱅크 일치 여부, PNG 해시·크기와 사람 시각 확인 대기 상태만
 `analysis/device/v5_1_latest_display_capture.json`에 게시합니다. 자동
