@@ -123,7 +123,8 @@ class RuntimeBundleTests(unittest.TestCase):
         observation = build_renderer_observation(
             target_sha256="5" * 64,
             emulator_version="3.9.14",
-            frame_budget=12_000,
+            route="cold-boot-start-confirm-story",
+            frame_budget=3_300,
             mappings_attempted=[],
             hit=None,
             decoder_reads=[],

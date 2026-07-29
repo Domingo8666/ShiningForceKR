@@ -260,6 +260,7 @@ def build_renderer_observation(
     *,
     target_sha256: str,
     emulator_version: str,
+    route: str,
     frame_budget: int,
     mappings_attempted: list[dict[str, int]],
     hit: dict[str, object] | None,
@@ -279,7 +280,7 @@ def build_renderer_observation(
             "emulator": "Gearsystem",
             "emulator_version": emulator_version,
             "system": "gamegear",
-            "route": "cold-boot-idle-attract-introduction",
+            "route": route,
             "anchor_kind": "text-decoder-entry",
             "frame_budget": frame_budget,
             "mappings_attempted": mappings_attempted,
@@ -294,7 +295,7 @@ def build_renderer_observation(
             if observed and decoder_reads
             else "extend-decoder-read-capture"
             if observed
-            else "verify-attract-route-screen"
+            else "extend-story-route-or-resolve-decoder-entry"
         ),
     }
     validate_renderer_observation(observation)

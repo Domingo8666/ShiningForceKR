@@ -46,14 +46,19 @@ CONSUMER_RESOLUTION = Path(
     "analysis/device/v5_1_latest_consumer_resolution.json"
 )
 TEXT_DECODER_ENTRY = 0x003411
-IDLE_FRAME_CHUNKS = (300,) * 40
+TEXT_ROUTE = "cold-boot-start-confirm-story"
+TEXT_ROUTE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
+    (180, None),
+    (240, "start"),
+    *((180, "2"),) * 16,
+)
 ROM_READ_RANGES = ((0x4000, 0x7FFF), (0x8000, 0xBFFF))
 MAX_DECODER_READ_HITS = 96
 MAX_DECODER_READ_SAMPLES = 64
 
 
 def _frame_budget() -> int:
-    return sum(IDLE_FRAME_CHUNKS)
+    return sum(frames for frames, _ in TEXT_ROUTE_SCHEDULE)
 
 
 def _decoder_mappings() -> list[dict[str, int]]:
@@ -114,7 +119,16 @@ def _probe_mappings(
         )
     rejected: list[dict[str, int]] = []
     try:
-        for frames in IDLE_FRAME_CHUNKS:
+        for frames, button in TEXT_ROUTE_SCHEDULE:
+            if button is not None:
+                client.call(
+                    "controller_button",
+                    {
+                        "player": 1,
+                        "button": button,
+                        "action": "press_and_release",
+                    },
+                )
             while True:
                 client.call("debug_step_frame", {"frames": frames})
                 status = client.call("debug_get_status")
@@ -360,7 +374,7 @@ def main() -> int:
             )
         local_result["attempts"].append(
             {
-                "route": "cold-boot-idle-attract-introduction",
+                "route": TEXT_ROUTE,
                 "frame_budget": _frame_budget(),
                 "mappings": mappings,
                 "hit": hit,
@@ -382,6 +396,7 @@ def main() -> int:
     observation = build_renderer_observation(
         target_sha256=target_sha256,
         emulator_version=emulator_version,
+        route=TEXT_ROUTE,
         frame_budget=_frame_budget(),
         mappings_attempted=mappings,
         hit=safe_hit,
@@ -389,7 +404,7 @@ def main() -> int:
     )
     safe_path = write_renderer_observation(root, observation)
     if safe_hit is None:
-        print("SFKR text decoder was not reached during the idle attract intro.")
+        print("SFKR text decoder was not reached on the Start/confirm story route.")
     else:
         print(
             "SFKR text decoder reached at "

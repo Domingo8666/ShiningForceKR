@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from tools.run_s25u_renderer_probe import (
+    TEXT_ROUTE_SCHEDULE,
     _classify_decoder_read,
     _decoder_mappings,
     _frame_budget,
@@ -14,12 +15,13 @@ from tools.run_s25u_renderer_probe import (
 
 
 class S25URendererProbeTests(unittest.TestCase):
-    def test_idle_attract_route_uses_one_reset_and_all_breakpoints(self) -> None:
+    def test_story_route_uses_start_then_confirm_and_all_breakpoints(self) -> None:
         mappings = _decoder_mappings()
 
         class FakeClient:
             def __init__(self) -> None:
                 self.calls: list[tuple[str, dict[str, object]]] = []
+                self.status_checks = 0
 
             def call(
                 self,
@@ -28,7 +30,8 @@ class S25URendererProbeTests(unittest.TestCase):
             ) -> dict[str, object]:
                 self.calls.append((name, arguments or {}))
                 if name == "debug_get_status":
-                    return {"at_breakpoint": True}
+                    self.status_checks += 1
+                    return {"at_breakpoint": self.status_checks >= 3}
                 return {}
 
         client = FakeClient()
@@ -61,8 +64,28 @@ class S25URendererProbeTests(unittest.TestCase):
             [name for name, _ in client.calls].count("remove_breakpoint"),
             3,
         )
-        self.assertNotIn("controller_button", [name for name, _ in client.calls])
-        self.assertEqual(_frame_budget(), 12_000)
+        controller_calls = [
+            arguments
+            for name, arguments in client.calls
+            if name == "controller_button"
+        ]
+        self.assertEqual(controller_calls[0]["button"], "start")
+        self.assertTrue(
+            all(item["button"] == "2" for item in controller_calls[1:])
+        )
+        self.assertNotIn("1", [item["button"] for item in controller_calls])
+        self.assertEqual(_frame_budget(), 3_300)
+
+    def test_story_route_has_one_start_and_multiple_confirm_inputs(self) -> None:
+        buttons = [
+            button
+            for _, button in TEXT_ROUTE_SCHEDULE
+            if button is not None
+        ]
+        self.assertEqual(buttons[0], "start")
+        self.assertEqual(buttons.count("start"), 1)
+        self.assertGreaterEqual(buttons.count("2"), 8)
+        self.assertNotIn("1", buttons)
 
     def test_decoder_entry_expands_to_three_mapper_hypotheses(self) -> None:
         mappings = _decoder_mappings()
