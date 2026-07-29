@@ -32,7 +32,7 @@
 | SFKR-024 | S25U proot의 180프레임 실행을 PAL 실시간 속도로 가정한 8.6초 완료 제한이 정상 실행을 중단 | fixed-static | 프레임 수와 저속 실행 하한으로 계산하되 180프레임에 최소 60초를 허용하는 bounded 완료 장벽으로 S25U 재실행 |
 | SFKR-025 | 장거리 후보 탐색 전체에 CPU trace를 켜 모든 Z80 명령을 기록해 60초 프레임 제한도 소진 | fixed-static | 첫 경로는 trace 없이 mapper 일치·실행 범위 비중첩 read hit를 수집하고 정확한 접근 명령은 짧은 후속 replay로 분리 |
 | SFKR-026 | Gearsystem 3.9.14의 multi-frame 예약이 완료되지 않을 때 `debug_pause`로 pending count를 취소할 수 없어 probe가 복구 불가 | fixed-static | 브레이크포인트 감시 구간을 1프레임 단위로 실행하고 매번 paused/breakpoint 완료를 확인 |
-| SFKR-027 | 단일 프레임 장벽으로 완료한 Start·2번 3,300프레임 경로에서 상위 정적 조회표 후보와 패치된 디코더 execute 후보가 모두 무히트 | investigating | 2번 확인과 1번 확인을 별도 콜드 부팅으로 자동 비교하고, execute 진입 직후의 짧은 slot 1·2 ROM read를 수집 |
+| SFKR-027 | 단일 프레임 장벽으로 완료한 Start·2번 3,300프레임 경로에서 상위 정적 조회표 후보와 패치된 디코더 execute 후보가 모두 무히트 | investigating | 무입력 attract intro를 동기화해 먼저 재검증한 뒤 2번 확인과 1번 확인을 별도 콜드 부팅으로 비교하고, execute 진입 직후의 짧은 slot 1·2 ROM read를 수집 |
 
 ## 테스트 원칙
 

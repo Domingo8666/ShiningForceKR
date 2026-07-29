@@ -49,7 +49,10 @@ HUFFMAN_VECTOR_START = 0x080100
 HUFFMAN_VECTOR_END = 0x0802FF
 HUFFMAN_VECTOR_BANK = 0x20
 DECODER_ENTRY_CANDIDATES = (0x33FA, 0x3411, 0x3431)
-TEXT_ROUTE = "cold-boot-start-button-matrix"
+TEXT_ROUTE = "cold-boot-attract-button-matrix"
+ATTRACT_ROUTE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
+    (12_000, None),
+)
 TEXT_ROUTE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
     (180, None),
     (240, "start"),
@@ -61,6 +64,7 @@ ALT_TEXT_ROUTE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
     *((180, "1"),) * 16,
 )
 TEXT_ROUTE_PLANS = (
+    ("attract-intro", ATTRACT_ROUTE_SCHEDULE),
     ("start-confirm-2", TEXT_ROUTE_SCHEDULE),
     ("start-confirm-1", ALT_TEXT_ROUTE_SCHEDULE),
 )

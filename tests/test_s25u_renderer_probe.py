@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from tools.run_s25u_renderer_probe import (
     TEXT_ROUTE_SCHEDULE,
+    TEXT_ROUTE_PLANS,
     _capture_decoder_reads,
     _classify_decoder_read,
     _decoder_entry_mappings,
@@ -222,7 +223,7 @@ class S25URendererProbeTests(unittest.TestCase):
             all(item["button"] == "2" for item in controller_calls[1:])
         )
         self.assertNotIn("1", [item["button"] for item in controller_calls])
-        self.assertEqual(_frame_budget(), 6_600)
+        self.assertEqual(_frame_budget(), 18_600)
 
     def test_story_route_has_one_start_and_multiple_confirm_inputs(self) -> None:
         buttons = [
@@ -234,6 +235,11 @@ class S25URendererProbeTests(unittest.TestCase):
         self.assertEqual(buttons.count("start"), 1)
         self.assertGreaterEqual(buttons.count("2"), 8)
         self.assertNotIn("1", buttons)
+
+    def test_attract_intro_runs_before_button_routes(self) -> None:
+        name, schedule = TEXT_ROUTE_PLANS[0]
+        self.assertEqual(name, "attract-intro")
+        self.assertEqual(schedule, ((12_000, None),))
 
     def test_vector_range_expands_to_two_switchable_slot_mappings(self) -> None:
         mappings = _vector_mappings()
