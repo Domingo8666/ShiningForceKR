@@ -25,6 +25,7 @@ patch/fcpatch_070706.zip
 # Generated
 build/*
 analysis/local/
+reports/*
 backup/*
 logs/*.log
 __pycache__/
@@ -34,3 +35,4 @@ __pycache__/
 !build/.gitkeep
 !backup/.gitkeep
 !logs/.gitkeep
+!reports/.gitkeep

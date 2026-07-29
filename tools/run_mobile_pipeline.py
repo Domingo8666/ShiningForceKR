@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the safe S25U preparation pipeline for ShiningForceKR in one command."""
+"""Run the safe S25U preparation and candidate-analysis pipeline in one command."""
 
 from __future__ import annotations
 
@@ -18,6 +18,11 @@ try:
     )
     from .patch_io import apply_bps, sha256_bytes
     from .sfgfc_huffman import verified_overlay
+    from .v5_1_consumer import (
+        analyze_rom as analyze_consumer,
+        to_korean_summary,
+        to_markdown as consumer_to_markdown,
+    )
     from .v5_1_engine import analyze_patch, to_markdown
 except ImportError:  # direct script execution
     from analyze_v5_1 import (
@@ -29,6 +34,11 @@ except ImportError:  # direct script execution
     )
     from patch_io import apply_bps, sha256_bytes
     from sfgfc_huffman import verified_overlay
+    from v5_1_consumer import (
+        analyze_rom as analyze_consumer,
+        to_korean_summary,
+        to_markdown as consumer_to_markdown,
+    )
     from v5_1_engine import analyze_patch, to_markdown
 
 
@@ -60,17 +70,27 @@ def main() -> int:
     parser.add_argument(
         "--verification-report",
         type=Path,
-        default=root / "analysis" / "local" / "v5_1_mobile_verification.md",
+        default=root / "reports" / "v5_1_mobile_verification.md",
     )
     parser.add_argument(
         "--engine-report",
         type=Path,
-        default=root / "analysis" / "local" / "v5_1_engine_report.md",
+        default=root / "reports" / "v5_1_engine_report.md",
+    )
+    parser.add_argument(
+        "--consumer-report",
+        type=Path,
+        default=root / "reports" / "v5_1_script_lookup_candidates.md",
+    )
+    parser.add_argument(
+        "--summary-report",
+        type=Path,
+        default=root / "reports" / "NEXT_STEP.txt",
     )
     parser.add_argument(
         "--status-json",
         type=Path,
-        default=root / "analysis" / "local" / "pipeline_status.json",
+        default=root / "reports" / "pipeline_status.json",
     )
     parser.add_argument(
         "--no-rom-output",
@@ -94,16 +114,16 @@ def main() -> int:
     engine = analyze_patch(patch)
     target = apply_bps(source, patch)
     target_sha256 = sha256_bytes(target)
+    consumer = analyze_consumer(target)
 
     if not args.no_rom_output:
         args.output_rom.parent.mkdir(parents=True, exist_ok=True)
         args.output_rom.write_bytes(target)
 
-    _write_text(
-        args.verification_report,
-        make_report(source, target, patch, args.rom),
-    )
+    _write_text(args.verification_report, make_report(source, target, patch, args.rom))
     _write_text(args.engine_report, to_markdown(engine))
+    _write_text(args.consumer_report, consumer_to_markdown(consumer))
+    _write_text(args.summary_report, to_korean_summary(consumer))
 
     english: dict[str, object]
     if args.english_ips.exists():
@@ -120,6 +140,8 @@ def main() -> int:
             "reason": "verified English IPS not present; run tools/fetch_fc_english_patch.py",
         }
 
+    pointer_tables = consumer["pointer_table_candidates"]
+    assert isinstance(pointer_tables, dict)
     status = {
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "source": {
@@ -140,27 +162,33 @@ def main() -> int:
             "korean_huffman_vector": "pass",
             "korean_font_runtime": "pass",
             "english_reference": english,
-            "script_lookup": "investigating",
+            "script_lookup_candidate_scan": "pass",
+            "script_lookup_runtime_consumer": "investigating",
             "token_semantics": "investigating",
             "emulator_cold_boot": "not_run",
         },
+        "script_lookup_candidates": {
+            "triplet_runs_found": pointer_tables["triplet_runs_found"],
+            "pair_runs_found": pointer_tables["pair_runs_found"],
+            "report": args.consumer_report.name,
+        },
         "translation_build_eligible": False,
-        "next_checkpoint": "trace the v5.1 script consumer and prove entry lookup coordinates",
+        "next_checkpoint": (
+            "trace the highest-ranked lookup candidate with mapper state in the emulator"
+        ),
     }
-    _write_text(
-        args.status_json,
-        json.dumps(status, ensure_ascii=False, indent=2) + "\n",
-    )
+    _write_text(args.status_json, json.dumps(status, ensure_ascii=False, indent=2) + "\n")
 
-    print("S25U pipeline checks passed.")
+    print("S25U pipeline and script-candidate scan passed.")
     if args.no_rom_output:
         print("Patched ROM was validated in memory and not written.")
     else:
         print(f"Built local ROM: {args.output_rom}")
-    print(f"Verification report: {args.verification_report}")
-    print(f"Engine report: {args.engine_report}")
+    print(f"Readable summary: {args.summary_report}")
+    print(f"Script candidate report: {args.consumer_report}")
     print(f"Pipeline status: {args.status_json}")
-    print("Script lookup remains investigating; no translation was marked build-eligible.")
+    print("Open in My Files: Internal storage > ShiningForceKR > reports > NEXT_STEP.txt")
+    print("Runtime consumer proof remains pending; no translation was marked build-eligible.")
     return 0
 
 

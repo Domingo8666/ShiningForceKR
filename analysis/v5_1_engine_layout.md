@@ -42,9 +42,20 @@
 
 244엔트리 매핑과 61개 글꼴 데이터 뱅크의 관계는 런타임의 페이지 선택 규칙을 추적할 때 쓰는 확정 기준입니다. 같은 바이트 값이라도 영어 엔진의 토큰 의미를 한국어 엔진에 그대로 적용하지 않습니다.
 
+## 전체 ROM 소비 후보 스캐너
+
+tools/v5_1_consumer.py는 S25U에서 빌드된 전체 v5.1 ROM의 크기와 CRC32를 먼저 확인한 뒤 다음을 자동 기록합니다.
+
+- 논리 주소 0x4100, 0x7000, 0x7A00 및 매퍼 레지스터 0xFFFE/0xFFFF의 Z80 모양 리터럴 좌표
+- bank+addr 및 addr+bank 순서의 연속 3바이트 포인터 후보
+- 같은 슬롯 안에서 단조 증가하는 보수적 2바이트 주소표 후보
+- 3바이트 후보가 한국어 문맥 트리로 제한 안에서 종료되는 비율
+
+출력에는 ROM 원문, 압축 바이트나 디코딩 문자열을 넣지 않습니다. 리터럴과 포인터 모양은 실행 중 소비 증거가 아니므로 candidate 상태로만 기록합니다.
+
 ## 아직 완료가 아닌 항목
 
-- 실제 스크립트 엔트리 조회표와 뱅크 선택 소비 코드
+- 상위 조회표 후보를 읽는 실제 소비 코드와 실행 중 뱅크 상태
 - 0x00..0x20 및 제어 심벌의 화면 의미 전체
 - 엔트리별 왕복 인코딩
 - 목표 인트로 문장과 기존 한국어 문장의 정확한 엔트리 ID
@@ -63,5 +74,5 @@ python tools/v5_1_engine.py \
 또는 S25U 전체 준비 파이프라인을 한 번에 실행합니다.
 
 ~~~sh
-python tools/run_mobile_pipeline.py --rom "original/원본파일.gg"
+python tools/run_mobile_pipeline.py --rom "/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg"
 ~~~

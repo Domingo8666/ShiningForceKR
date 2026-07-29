@@ -11,7 +11,7 @@
 
 ## 기준 자료
 
-- 깨끗한 일본판 ROM: S25U original/ 로컬 전용
+- 깨끗한 일본판 ROM: S25U 내부 저장공간/ROM 로컬 전용
 - 진단 기준 패치: patch/Final_Conflict_Japan_to_Korean_v5.1.bps
 - 외부 영어 참조: fcpatch_070706.ips, S25U 로컬 전용
 - 압축 조사: analysis/compression_research.md
@@ -36,10 +36,12 @@ v5.1은 최종판이 아니라 재작업용 진단 기준입니다.
 8. 한국어 심벌/트리 구간 0x80300..0x808D3 확정
 9. 244엔트리 글꼴 페이지 매핑과 뱅크 0x22..0x5E 배치 확인
 10. S25U 원클릭 검증 파이프라인과 실제 BPS 회귀 테스트 추가
+11. 전체 v5.1 ROM의 코드 리터럴 및 2·3바이트 조회표 후보 자동 점수화 추가
+12. 내 파일 앱에서 바로 보이는 reports/NEXT_STEP.txt 생성 경로 추가
 
 ## 현재 체크포인트
 
-- v5.1 실제 스크립트 조회표와 뱅크 선택 소비 코드
+- 자동 점수화된 상위 조회표 후보를 읽는 실제 소비 코드와 실행 중 뱅크 상태
 - 한국어 문맥 0x00..0x20과 제어 심벌의 화면 의미
 - And so began Mishaela's new ambition... 및 기존 한국어 문장의 정확한 엔트리 ID
 
@@ -50,15 +52,15 @@ v5.1은 최종판이 아니라 재작업용 진단 기준입니다.
 ~~~sh
 cd ~/storage/shared/ShiningForceKR
 git pull --ff-only
-python tools/run_mobile_pipeline.py --rom "original/원본파일.gg"
+python tools/run_mobile_pipeline.py --rom "/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg"
 ~~~
 
-이 명령은 ROM과 보고서를 S25U 로컬의 build/ 및 analysis/local/에만 생성합니다. 원본 ROM은 덮어쓰지 않으며 Git 대상에서 제외됩니다.
+이 명령은 ROM과 보고서를 S25U 로컬의 build/ 및 reports/에만 생성합니다. 내 파일에서 ShiningForceKR/reports/NEXT_STEP.txt를 먼저 확인합니다. 원본 ROM은 덮어쓰지 않으며 Git 대상에서 제외됩니다.
 
 ## 다음 순서
 
-1. S25U 원클릭 파이프라인으로 v5.1 대상 ROM과 로컬 보고서를 생성합니다.
-2. 0x87000 런타임과 기존 호출부를 역추적해 조회표를 확정합니다.
+1. S25U 원클릭 파이프라인으로 코드/포인터 후보를 점수화합니다.
+2. 최상위 후보와 0x87000 런타임의 실제 소비를 추적해 조회표를 확정합니다.
 3. 한국어 문맥 심벌과 글꼴 페이지 선택 규칙을 엔트리별로 연결합니다.
 4. 목표 인트로 문장과 기존 한국어 문장을 정확한 엔트리 ID로 재현합니다.
 5. 왕복 인코딩과 사람 검수 뒤 한국어 삽입을 재개합니다.
