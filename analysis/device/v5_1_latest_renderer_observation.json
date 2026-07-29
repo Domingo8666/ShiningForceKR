@@ -7,9 +7,9 @@
     "emulator": "Gearsystem",
     "emulator_version": "3.9.14",
     "system": "gamegear",
-    "route": "cold-boot-idle-attract-introduction",
+    "route": "cold-boot-start-confirm-story",
     "anchor_kind": "text-decoder-entry",
-    "frame_budget": 12000,
+    "frame_budget": 3300,
     "mappings_attempted": [
       {
         "probe_file_offset": 13329,
@@ -36,5 +36,5 @@
   "renderer_hook_reached": false,
   "text_decoder_reached": false,
   "translation_build_eligible": false,
-  "next_checkpoint": "verify-attract-route-screen"
+  "next_checkpoint": "extend-story-route-or-resolve-decoder-entry"
 }
