@@ -53,7 +53,7 @@ class TracePlanTests(unittest.TestCase):
         self.assertEqual(selected["control_flow_shape_count"], 0)
         self.assertEqual(selected["bank_coupled_pointer_load_count"], 1)
         self.assertEqual(selected["mapper_coupled_pointer_load_count"], 1)
-        self.assertEqual(plan["schema_version"], 4)
+        self.assertEqual(plan["schema_version"], 5)
 
         steps = plan["emucap"]["before_resume"]
         self.assertEqual(steps[0], {"tool": "set_trace", "args": {"enabled": True}})

@@ -230,6 +230,7 @@ def _table_hypotheses(consumer: dict[str, object]) -> list[dict[str, object]]:
                         "original_512k_target_ratio"
                     ),
                     "decode_probe": item.get("decode_probe"),
+                    "full_decode_probe": item.get("full_decode_probe"),
                 }
             )
     return output
@@ -393,7 +394,7 @@ def build_trace_plan(rom: bytes, consumer: dict[str, object]) -> dict[str, objec
             )
 
     return {
-        "schema_version": 4,
+        "schema_version": 5,
         "status": "runtime-trace-plan-ready",
         "source_analysis_sha256": consumer["input"]["sha256"],
         "ranked_consumer_hypotheses": ranked,
@@ -550,7 +551,7 @@ def to_korean_summary(plan: dict[str, object]) -> str:
     if not selected:
         return "\n".join(
             [
-                "[소비 코드 4차 분석]",
+                "[소비 코드 5차 분석]",
                 "- 실행 추적 대상으로 승격할 후보가 없습니다.",
                 "- 후보 필터를 다시 설계해야 합니다.",
                 "",
@@ -567,7 +568,7 @@ def to_korean_summary(plan: dict[str, object]) -> str:
     )
     return "\n".join(
         [
-            "[소비 코드 4차 분석]",
+            "[소비 코드 5차 분석]",
             f"- 선택된 물리 ROM 후보: {_hex(selected['file_offset'])}",
             f"- 구조: {selected['family']} / {selected['entries']}개 항목",
             f"- 데이터 포인터 적재 모양: {selected['pointer_load_shape_count']}개",
@@ -576,6 +577,18 @@ def to_korean_summary(plan: dict[str, object]) -> str:
             f"- 슬롯 매퍼 쓰기 결합 포인터: {selected['mapper_coupled_pointer_load_count']}개",
             f"- 슬롯 시작 주소 할인 적용: {'예' if selected['generic_slot_base_discounted'] else '아니요'}",
             f"- 겹치는 정렬 후보: {alignments}",
+            (
+                "- 전체 항목 디코드: "
+                + (
+                    "집계 없음"
+                    if selected["full_decode_probe"] is None
+                    else (
+                        f"{selected['full_decode_probe']['bounded_terminations']}/"
+                        f"{selected['full_decode_probe']['attempted']} 종료, "
+                        f"고유 대상 {selected['full_decode_probe']['distinct_targets']}개"
+                    )
+                )
+            ),
             (
                 f"- 통합 물리 감시 범위: "
                 f"{_hex(selected_watch['file_start'])}.."

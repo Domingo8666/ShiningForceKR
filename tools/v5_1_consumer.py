@@ -41,6 +41,7 @@ BANK_SIZE = 0x4000
 MAX_RANKED_TABLES = 24
 MAX_DECODED_TABLES = 96
 DECODE_SAMPLES = 24
+FULL_DECODED_TABLES = 4
 
 
 def _hex(value: int, width: int = 6) -> str:
@@ -183,6 +184,51 @@ def _decode_metrics(
     }
 
 
+def _full_decode_metrics(
+    rom: bytes,
+    known: bytes,
+    trees: dict[int, object],
+    target_offsets: list[int],
+) -> dict[str, object]:
+    """Decode every entry while returning aggregate, ROM-safe metrics only."""
+
+    lengths: list[int] = []
+    for target in target_offsets:
+        try:
+            symbols, _ = decode_symbols(
+                rom,
+                known,
+                trees,
+                target,
+                initial_symbol=CANDIDATE_END_SYMBOL,
+                end_symbol=CANDIDATE_END_SYMBOL,
+                max_symbols=256,
+                max_bytes=256,
+            )
+        except PatchError:
+            continue
+        lengths.append(len(symbols))
+    attempted = len(target_offsets)
+    distinct_targets = len(set(target_offsets))
+    return {
+        "attempted": attempted,
+        "bounded_terminations": len(lengths),
+        "termination_ratio": (
+            0.0 if not attempted else round(len(lengths) / attempted, 4)
+        ),
+        "min_symbols": None if not lengths else min(lengths),
+        "median_symbols": None if not lengths else statistics.median(lengths),
+        "max_symbols": None if not lengths else max(lengths),
+        "distinct_targets": distinct_targets,
+        "distinct_target_ratio": (
+            0.0 if not attempted else round(distinct_targets / attempted, 4)
+        ),
+        "target_span": (
+            0 if not target_offsets else max(target_offsets) - min(target_offsets)
+        ),
+    }
+
+
 def _append_triplet_run(
     output: list[dict[str, object]],
     start: int,
@@ -270,9 +316,14 @@ def find_triplet_tables(
             + metrics["bounded_terminations"] * 4,
             2,
         )
+    candidates.sort(key=lambda item: item["score"], reverse=True)
+    for candidate in candidates[:FULL_DECODED_TABLES]:
+        candidate["full_decode_probe"] = _full_decode_metrics(
+            rom, known, trees or {}, candidate["_targets"]
+        )
+    for candidate in candidates:
         del candidate["_targets"]
         del candidate["_pre_score"]
-    candidates.sort(key=lambda item: item["score"], reverse=True)
     return candidates[:MAX_RANKED_TABLES], raw_count
 
 

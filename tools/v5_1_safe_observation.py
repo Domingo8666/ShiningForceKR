@@ -10,7 +10,7 @@ import re
 import subprocess
 
 ARTIFACT_KIND = "sanitized-runtime-trace-observation"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 MAX_SHARED_HYPOTHESES = 5
 MAX_ALIGNMENT_ALTERNATIVES = 6
 PUBLISH_RELATIVE_PATH = Path("analysis/device/v5_1_latest_observation.json")
@@ -45,6 +45,7 @@ CANDIDATE_KEYS = {
     "monotonic_ratio",
     "original_512k_target_ratio",
     "decode_probe",
+    "full_decode_probe",
     "reference_shape_count",
     "pointer_load_shape_count",
     "control_flow_shape_count",
@@ -67,6 +68,17 @@ DECODE_KEYS = {
     "bounded_terminations",
     "termination_ratio",
     "median_symbols",
+}
+FULL_DECODE_KEYS = {
+    "attempted",
+    "bounded_terminations",
+    "termination_ratio",
+    "min_symbols",
+    "median_symbols",
+    "max_symbols",
+    "distinct_targets",
+    "distinct_target_ratio",
+    "target_span",
 }
 ALIGNMENT_KEYS = {
     "file_offset",
@@ -98,6 +110,13 @@ def _shared_candidate(rank: int, item: dict[str, object]) -> dict[str, object]:
         if not isinstance(decode_probe, dict):
             raise ValueError("decode_probe must be an object or null")
         output["decode_probe"] = {key: decode_probe[key] for key in DECODE_KEYS}
+    full_decode_probe = item["full_decode_probe"]
+    if full_decode_probe is not None:
+        if not isinstance(full_decode_probe, dict):
+            raise ValueError("full_decode_probe must be an object or null")
+        output["full_decode_probe"] = {
+            key: full_decode_probe[key] for key in FULL_DECODE_KEYS
+        }
     return output
 
 
@@ -259,6 +278,26 @@ def validate_safe_observation(observation: dict[str, object]) -> None:
                 _require_int(decode_probe[key], key)
             _require_number(decode_probe["termination_ratio"], "termination_ratio")
             _require_optional_number(decode_probe["median_symbols"], "median_symbols")
+        full_decode_probe = candidate["full_decode_probe"]
+        if full_decode_probe is not None:
+            if (
+                not isinstance(full_decode_probe, dict)
+                or set(full_decode_probe) != FULL_DECODE_KEYS
+            ):
+                raise ValueError(
+                    "full_decode_probe fields do not match the safe schema"
+                )
+            for key in (
+                "attempted",
+                "bounded_terminations",
+                "distinct_targets",
+                "target_span",
+            ):
+                _require_int(full_decode_probe[key], key)
+            for key in ("termination_ratio", "distinct_target_ratio"):
+                _require_number(full_decode_probe[key], key)
+            for key in ("min_symbols", "median_symbols", "max_symbols"):
+                _require_optional_number(full_decode_probe[key], key)
 
     selected_rank = observation["selected_rank"]
     if selected_rank is not None:

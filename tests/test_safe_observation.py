@@ -37,6 +37,17 @@ def synthetic_trace_plan() -> dict[str, object]:
                         "termination_ratio": 0.8333,
                         "median_symbols": 24.0,
                     },
+                    "full_decode_probe": {
+                        "attempted": 12,
+                        "bounded_terminations": 10,
+                        "termination_ratio": 0.8333,
+                        "min_symbols": 3,
+                        "median_symbols": 24.0,
+                        "max_symbols": 80,
+                        "distinct_targets": 11,
+                        "distinct_target_ratio": 0.9167,
+                        "target_span": 0x4000,
+                    },
                 },
                 {
                     "file_offset": 0x0B7C,
@@ -82,6 +93,9 @@ class SafeObservationTests(unittest.TestCase):
         self.assertEqual(selected_safe["file_offset"], 0x0B7D)
         self.assertEqual(selected_safe["mapper_coupled_pointer_load_count"], 1)
         self.assertEqual(selected_safe["decode_probe"]["bounded_terminations"], 10)
+        self.assertEqual(
+            selected_safe["full_decode_probe"]["distinct_targets"], 11
+        )
         self.assertEqual(len(observation["selected_alignment_cluster"]), 2)
         self.assertEqual(observation["selected_watch"]["file_start"], 0x0B7C)
         self.assertIn("selected=0x000B7D", compact_summary(observation))
