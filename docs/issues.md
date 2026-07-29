@@ -19,6 +19,7 @@
 | SFKR-011 | 추적 계획 추가 뒤 모바일 파이프라인 SyntaxError | fixed-static | compileall 및 파이프라인 import 회귀 통과 후 S25U 재실행 |
 | SFKR-012 | 0x4000/0x8000의 흔한 JP/CALL이 0x010000 후보를 과대평가 | fixed-static | 제어 흐름 점수 제외와 슬롯 시작 주소 감점 뒤 S25U 후보 재산정 |
 | SFKR-013 | S25U Ubuntu 패키지 처리 exit 100 뒤 Gearsystem 바이너리 미설치 | fixed-static | 불필요한 GL 패키지 제거, apt 복구·재시도와 단계별 종료 코드 적용 뒤 S25U 재실행 |
+| SFKR-014 | 같은 진단 결과가 반복되면 새 모바일 실행 여부를 GitHub에서 구분할 수 없음 | fixed-static | 경로 없는 UTC 실행 시각을 진단 스키마 v2에 추가해 실행마다 검증된 영수증 게시 |
 
 ## 테스트 원칙
 

@@ -36,10 +36,11 @@ class RuntimeBundleTests(unittest.TestCase):
     def test_loads_multiple_valid_safe_artifacts(self) -> None:
         diagnostic = {
             "artifact_kind": "sanitized-runtime-stage-diagnostic",
-            "schema_version": 1,
+            "schema_version": 2,
             "status": "runtime-stage-not-ready",
             "trigger": "setup",
             "exit_code": 1,
+            "attempt_utc": "2026-07-29T05:00:00Z",
             "checks": {
                 "proot_available": False,
                 "ubuntu_available": False,
@@ -71,10 +72,11 @@ class RuntimeBundleTests(unittest.TestCase):
     def test_skips_stale_artifact_when_another_is_valid(self) -> None:
         diagnostic = {
             "artifact_kind": "sanitized-runtime-stage-diagnostic",
-            "schema_version": 1,
+            "schema_version": 2,
             "status": "runtime-stage-not-ready",
             "trigger": "setup",
             "exit_code": 1,
+            "attempt_utc": "2026-07-29T05:00:00Z",
             "checks": {
                 "proot_available": False,
                 "ubuntu_available": False,

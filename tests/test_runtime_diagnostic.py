@@ -21,15 +21,21 @@ class RuntimeDiagnosticTests(unittest.TestCase):
         self.assertEqual(diagnostic["failed_stage"], "proot-available")
         self.assertEqual(set(diagnostic["checks"]), CHECK_KEYS)
         self.assertNotIn("/", str(diagnostic))
+        self.assertRegex(
+            diagnostic["attempt_utc"],
+            r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+            r"[0-9]{2}:[0-9]{2}:[0-9]{2}Z$",
+        )
         validate_runtime_diagnostic(diagnostic)
 
     def test_extra_fields_are_rejected(self) -> None:
         diagnostic = {
             "artifact_kind": "sanitized-runtime-stage-diagnostic",
-            "schema_version": 1,
+            "schema_version": 2,
             "status": "runtime-stage-not-ready",
             "trigger": "probe",
             "exit_code": 1,
+            "attempt_utc": "2026-07-29T05:00:00Z",
             "checks": {
                 "proot_available": True,
                 "ubuntu_available": False,

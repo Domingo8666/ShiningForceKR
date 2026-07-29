@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
@@ -30,7 +31,7 @@ except ImportError:  # direct script execution
     from v5_1_safe_observation import _git, _normalized_remote
 
 ARTIFACT_KIND = "sanitized-runtime-stage-diagnostic"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_runtime_diagnostic.json"
 )
@@ -55,6 +56,7 @@ TOP_LEVEL_KEYS = {
     "status",
     "trigger",
     "exit_code",
+    "attempt_utc",
     "checks",
     "failed_stage",
     "runtime_observation_present",
@@ -76,6 +78,17 @@ def validate_runtime_diagnostic(diagnostic: dict[str, object]) -> None:
         raise ValueError("unexpected runtime diagnostic status")
     if diagnostic["trigger"] not in ALLOWED_TRIGGERS:
         raise ValueError("unexpected runtime diagnostic trigger")
+    attempt_utc = diagnostic["attempt_utc"]
+    if (
+        not isinstance(attempt_utc, str)
+        or re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+            r"[0-9]{2}:[0-9]{2}:[0-9]{2}Z",
+            attempt_utc,
+        )
+        is None
+    ):
+        raise ValueError("attempt_utc must be a sanitized UTC timestamp")
     exit_code = diagnostic["exit_code"]
     if (
         not isinstance(exit_code, int)
@@ -217,6 +230,7 @@ def collect_runtime_diagnostic(
         "status": "runtime-stage-ready" if ready else "runtime-stage-not-ready",
         "trigger": trigger,
         "exit_code": exit_code,
+        "attempt_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "checks": checks,
         "failed_stage": failed_stage,
         "runtime_observation_present": (
