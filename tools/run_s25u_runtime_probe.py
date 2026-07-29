@@ -86,9 +86,7 @@ INPUT_SCHEDULE: tuple[tuple[int, str | None], ...] = (
 )
 MAX_REJECTED_BANK_HITS_PER_SLOT = 64
 MAX_RUNTIME_CANDIDATE_GROUPS = 2
-MIN_FRAME_STEP_TIMEOUT_SECONDS = 60.0
-FRAME_STEP_RATE_FLOOR = 5.0
-FRAME_STEP_TIMEOUT_GRACE_SECONDS = 15.0
+MIN_SINGLE_FRAME_TIMEOUT_SECONDS = 5.0
 RUNTIME_FAILURE_STAGES = {
     "mcp-start",
     "mcp-initialize",
@@ -286,38 +284,36 @@ def _step_frames_and_wait(
     client: McpStdioClient,
     frames: int,
 ) -> dict[str, object]:
-    """Wait until an asynchronous Gearsystem frame step stops or hits a breakpoint."""
+    """Advance exact frames with a recoverable completion barrier per frame."""
 
     if not 1 <= frames <= 1000:
         raise ValueError("frame step must be between 1 and 1000")
-    client.call("debug_step_frame", {"frames": frames})
-    # Gearsystem acknowledges debug_step_frame when it schedules the work, not
-    # after all frames have executed. Polling paused/at_breakpoint is the
-    # adapter-supported completion barrier. A proot-hosted S25U emulator may
-    # run well below real time, so a PAL wall-clock estimate is not a safe
-    # lower bound. Keep the wait bounded but allow at least one minute.
-    deadline = time.monotonic() + _frame_step_timeout_seconds(frames)
-    while True:
-        status = client.call("debug_get_status")
-        if (
-            status.get("at_breakpoint") is True
-            or status.get("paused") is True
-        ):
-            return status
-        if time.monotonic() >= deadline:
-            raise RuntimeError(
-                f"Gearsystem frame step did not finish within {frames} frames"
-            )
-        time.sleep(0.02)
+    status: dict[str, object] = {}
+    for _ in range(frames):
+        # Gearsystem 3.9.14 acknowledges a multi-frame request before the final
+        # frame and cannot cancel its pending count through debug_pause. A
+        # one-frame request reaches Debug_Command_None after a single main-loop
+        # update, so every iteration has a bounded and recoverable barrier.
+        client.call("debug_step_frame", {"frames": 1})
+        deadline = time.monotonic() + _frame_step_timeout_seconds(1)
+        while True:
+            status = client.call("debug_get_status")
+            if status.get("at_breakpoint") is True:
+                return status
+            if status.get("paused") is True:
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError(
+                    "Gearsystem frame step did not finish within 1 frame"
+                )
+            time.sleep(0.01)
+    return status
 
 
 def _frame_step_timeout_seconds(frames: int) -> float:
     if not 1 <= frames <= 1000:
         raise ValueError("frame step must be between 1 and 1000")
-    return max(
-        MIN_FRAME_STEP_TIMEOUT_SECONDS,
-        (frames / FRAME_STEP_RATE_FLOOR) + FRAME_STEP_TIMEOUT_GRACE_SECONDS,
-    )
+    return max(MIN_SINGLE_FRAME_TIMEOUT_SECONDS, (frames / 50.0) + 2.0)
 
 
 def _step_instruction_and_wait(client: McpStdioClient) -> dict[str, object]:

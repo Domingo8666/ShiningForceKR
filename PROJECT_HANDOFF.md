@@ -63,6 +63,7 @@ v5.1은 최종판이 아니라 재작업용 진단 기준입니다.
 35. 자동실행 첫 작업이 Gearsystem 준비·대상 식별을 모두 통과한 뒤 `runtime-command`에서 종료 코드 1을 게시했습니다. 경로·stderr를 공유하지 않고 실패 단계·종류·마지막 MCP 메서드만 schema v3 진단에 포함하도록 런타임 probe의 실패 영수증을 추가했습니다. 새 소스 커밋은 같은 S25U 자동실행에서 원인 분류를 다시 수집합니다.
 36. 재수집 결과 실제 실패가 `candidate-probe/frame-step-timeout`임을 확인했습니다. proot의 S25U 실행을 PAL 실시간 속도로 가정한 8.6초 제한을 폐기하고, 180프레임은 최소 60초·240프레임은 63초를 허용하는 bounded 완료 장벽으로 수정했습니다.
 37. 60초 제한에서도 같은 실패가 재현되어 Gearsystem 3.9.14 소스를 대조했습니다. 장거리 경로 전체의 CPU trace가 모든 Z80 명령을 기록하는 비용을 원인 경계로 보고, 첫 단계는 trace 없이 mapper 일치·실행 범위 비중첩 read hit만 수집하며 정확한 접근 명령은 확정 구간의 짧은 후속 replay로 분리했습니다.
+38. CPU trace를 꺼도 60초 multi-frame 완료가 돌아오지 않아 Gearsystem의 pending frame·pause 구현을 추가 확인했습니다. 브레이크포인트 감시 중에는 취소할 수 없는 multi-frame 예약을 쓰지 않고, 1프레임마다 `debug_get_status.paused` 또는 breakpoint를 확인하는 정확하고 bounded한 경로로 교체했습니다.
 
 ## 현재 체크포인트
 

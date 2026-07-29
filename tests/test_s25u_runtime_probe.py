@@ -108,6 +108,8 @@ class S25URuntimeProbeTests(unittest.TestCase):
                     (
                         {"paused": False, "at_breakpoint": False},
                         {"paused": True, "at_breakpoint": False},
+                        {"paused": False, "at_breakpoint": False},
+                        {"paused": True, "at_breakpoint": False},
                     )
                 )
                 self.calls: list[str] = []
@@ -124,17 +126,38 @@ class S25URuntimeProbeTests(unittest.TestCase):
 
         client = FakeClient()
         with patch("tools.run_s25u_runtime_probe.time.sleep"):
-            status = _step_frames_and_wait(client, 180)
+            status = _step_frames_and_wait(client, 2)
         self.assertTrue(status["paused"])
         self.assertEqual(client.calls[0], "debug_step_frame")
-        self.assertEqual(client.calls.count("debug_get_status"), 2)
+        self.assertEqual(client.calls.count("debug_step_frame"), 2)
+        self.assertEqual(client.calls.count("debug_get_status"), 4)
 
-    def test_frame_step_timeout_allows_slow_s25u_execution(self) -> None:
-        self.assertEqual(_frame_step_timeout_seconds(180), 60.0)
-        self.assertEqual(_frame_step_timeout_seconds(240), 63.0)
-        self.assertEqual(_frame_step_timeout_seconds(1000), 215.0)
+    def test_frame_step_timeout_is_bounded_per_single_frame(self) -> None:
+        self.assertEqual(_frame_step_timeout_seconds(1), 5.0)
+        self.assertEqual(_frame_step_timeout_seconds(240), 6.8)
+        self.assertEqual(_frame_step_timeout_seconds(1000), 22.0)
         with self.assertRaises(ValueError):
             _frame_step_timeout_seconds(0)
+
+    def test_frame_step_stops_early_on_breakpoint(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def call(
+                self,
+                name: str,
+                arguments: dict[str, object] | None = None,
+            ) -> dict[str, object]:
+                self.calls.append(name)
+                if name == "debug_get_status":
+                    return {"paused": True, "at_breakpoint": True}
+                return {}
+
+        client = FakeClient()
+        status = _step_frames_and_wait(client, 180)
+        self.assertTrue(status["at_breakpoint"])
+        self.assertEqual(client.calls.count("debug_step_frame"), 1)
 
     def test_instruction_step_waits_for_paused_completion_barrier(self) -> None:
         class FakeClient:
