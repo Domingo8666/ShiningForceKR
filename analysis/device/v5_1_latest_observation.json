@@ -1,0 +1,212 @@
+{
+  "artifact_kind": "sanitized-runtime-trace-observation",
+  "schema_version": 1,
+  "trace_plan_schema_version": 3,
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "status": "runtime-trace-plan-ready",
+  "ranked_hypotheses": [
+    {
+      "combined_candidate_score": 409.28,
+      "control_flow_shape_count": 0,
+      "mapper_coupled_pointer_load_count": 0,
+      "generic_slot_base_discounted": false,
+      "scanner_score": 409.28,
+      "file_offset": 2939,
+      "bank_coupled_pointer_load_count": 0,
+      "logical_mappings": [
+        {
+          "slot": 0,
+          "bank": 0,
+          "mapping_note": "slot0-mapper-state-required",
+          "logical_end": 3118,
+          "logical_start": 2939,
+          "extent_truncated_at_bank_end": false
+        },
+        {
+          "slot": 1,
+          "bank": 0,
+          "mapping_note": "slot1-mapper-state-required",
+          "logical_end": 19502,
+          "logical_start": 19323,
+          "extent_truncated_at_bank_end": false
+        },
+        {
+          "slot": 2,
+          "bank": 0,
+          "mapping_note": "slot2-mapper-state-required",
+          "logical_end": 35886,
+          "logical_start": 35707,
+          "extent_truncated_at_bank_end": false
+        }
+      ],
+      "end_exclusive": 3119,
+      "format": "addr_le_bank",
+      "absolute_memory_shape_count": 0,
+      "reference_shape_count": 0,
+      "pointer_load_shape_count": 0,
+      "family": "triplet",
+      "entries": 60,
+      "rank": 1
+    },
+    {
+      "combined_candidate_score": 396.0,
+      "control_flow_shape_count": 0,
+      "mapper_coupled_pointer_load_count": 0,
+      "generic_slot_base_discounted": false,
+      "scanner_score": 396.0,
+      "file_offset": 2938,
+      "bank_coupled_pointer_load_count": 0,
+      "logical_mappings": [
+        {
+          "slot": 0,
+          "bank": 0,
+          "mapping_note": "slot0-mapper-state-required",
+          "logical_end": 3117,
+          "logical_start": 2938,
+          "extent_truncated_at_bank_end": false
+        },
+        {
+          "slot": 1,
+          "bank": 0,
+          "mapping_note": "slot1-mapper-state-required",
+          "logical_end": 19501,
+          "logical_start": 19322,
+          "extent_truncated_at_bank_end": false
+        },
+        {
+          "slot": 2,
+          "bank": 0,
+          "mapping_note": "slot2-mapper-state-required",
+          "logical_end": 35885,
+          "logical_start": 35706,
+          "extent_truncated_at_bank_end": false
+        }
+      ],
+      "end_exclusive": 3118,
+      "format": "bank_addr_le",
+      "absolute_memory_shape_count": 0,
+      "reference_shape_count": 0,
+      "pointer_load_shape_count": 0,
+      "family": "triplet",
+      "entries": 60,
+      "rank": 2
+    },
+    {
+      "combined_candidate_score": 355.56,
+      "control_flow_shape_count": 2,
+      "mapper_coupled_pointer_load_count": 0,
+      "generic_slot_base_discounted": true,
+      "scanner_score": 415.56,
+      "file_offset": 65536,
+      "bank_coupled_pointer_load_count": 1,
+      "logical_mappings": [
+        {
+          "slot": 1,
+          "bank": 4,
+          "mapping_note": "slot1-mapper-state-required",
+          "logical_end": 16763,
+          "logical_start": 16384,
+          "extent_truncated_at_bank_end": false
+        },
+        {
+          "slot": 2,
+          "bank": 4,
+          "mapping_note": "slot2-mapper-state-required",
+          "logical_end": 33147,
+          "logical_start": 32768,
+          "extent_truncated_at_bank_end": false
+        }
+      ],
+      "end_exclusive": 65916,
+      "format": "addr_le_bank_unresolved",
+      "absolute_memory_shape_count": 9,
+      "reference_shape_count": 46,
+      "pointer_load_shape_count": 35,
+      "family": "pair",
+      "entries": 190,
+      "rank": 3
+    },
+    {
+      "combined_candidate_score": 349.0,
+      "control_flow_shape_count": 0,
+      "mapper_coupled_pointer_load_count": 0,
+      "generic_slot_base_discounted": false,
+      "scanner_score": 317.0,
+      "file_offset": 98941,
+      "bank_coupled_pointer_load_count": 0,
+      "logical_mappings": [
+        {
+          "slot": 1,
+          "bank": 6,
+          "mapping_note": "slot1-mapper-state-required",
+          "logical_end": 17128,
+          "logical_start": 17021,
+          "extent_truncated_at_bank_end": false
+        },
+        {
+          "slot": 2,
+          "bank": 6,
+          "mapping_note": "slot2-mapper-state-required",
+          "logical_end": 33512,
+          "logical_start": 33405,
+          "extent_truncated_at_bank_end": false
+        }
+      ],
+      "end_exclusive": 99049,
+      "format": "bank_addr_le",
+      "absolute_memory_shape_count": 0,
+      "reference_shape_count": 8,
+      "pointer_load_shape_count": 8,
+      "family": "triplet",
+      "entries": 36,
+      "rank": 4
+    },
+    {
+      "combined_candidate_score": 300.26,
+      "control_flow_shape_count": 0,
+      "mapper_coupled_pointer_load_count": 0,
+      "generic_slot_base_discounted": false,
+      "scanner_score": 300.26,
+      "file_offset": 271769,
+      "bank_coupled_pointer_load_count": 0,
+      "logical_mappings": [
+        {
+          "slot": 0,
+          "bank": 16,
+          "mapping_note": "slot0-mapper-state-required",
+          "logical_end": 9684,
+          "logical_start": 9625,
+          "extent_truncated_at_bank_end": false
+        },
+        {
+          "slot": 1,
+          "bank": 16,
+          "mapping_note": "slot1-mapper-state-required",
+          "logical_end": 26068,
+          "logical_start": 26009,
+          "extent_truncated_at_bank_end": false
+        },
+        {
+          "slot": 2,
+          "bank": 16,
+          "mapping_note": "slot2-mapper-state-required",
+          "logical_end": 42452,
+          "logical_start": 42393,
+          "extent_truncated_at_bank_end": false
+        }
+      ],
+      "end_exclusive": 271829,
+      "format": "bank_addr_le",
+      "absolute_memory_shape_count": 0,
+      "reference_shape_count": 0,
+      "pointer_load_shape_count": 0,
+      "family": "triplet",
+      "entries": 20,
+      "rank": 5
+    }
+  ],
+  "selected_rank": 1,
+  "consumer_evidence_confirmed": false,
+  "translation_build_eligible": false,
+  "next_checkpoint": "runtime-read-hit-with-matching-mapper-state"
+}
