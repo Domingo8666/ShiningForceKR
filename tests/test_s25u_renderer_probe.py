@@ -365,6 +365,7 @@ class S25URendererProbeTests(unittest.TestCase):
         self.assertIsNotNone(sample)
         assert sample is not None
         self.assertEqual(sample["physical_file_offset"], 0x80100)
+        self.assertEqual(sample["operand_kind"], "hl-indirect")
         self.assertEqual(sample["classification"], "korean-huffman-vector")
 
     def test_decoder_read_classification_distinguishes_runtime_layers(self) -> None:

@@ -149,7 +149,10 @@ Huffman 벡터·트리 접근과 압축 스트림 후보를 구분합니다. 전
 slot 1·bank 8 source-region read를 확인했습니다. 첫 64개가 모두 원본
 영역 읽기여서, 후속 실행은 source-region 표본을 8개로 제한하되 최대
 1,024개 read를 계속 따라가 bank 0x20 Huffman 벡터·트리 접근을 우선
-보존합니다.
+보존했습니다. 그 결과 벡터 0x0802B6·0x0801BE·0x08010E와 관련 트리를
+mapper bank 0x20에서 실제로 읽는 경로를 확인했습니다. 다음 실행은
+원시 opcode를 S25U 로컬에만 두고 `hl-indirect`, `absolute-word` 같은
+고정 operand-kind 토큰만 게시해 압축 stream과 조회 경계를 연결합니다.
 
 - `analysis/device/v5_1_latest_renderer_observation.json`
 

@@ -20,7 +20,11 @@ try:
         _write_runtime_failure_receipt,
     )
     from .v5_1_consumer import verify_target_identity
-    from .v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
+    from .v5_1_runtime_hit_resolver import (
+        _parse_trace_line,
+        _read_addresses,
+        _read_operand_kind,
+    )
     from .v5_1_renderer_observation import (
         build_renderer_observation,
         write_renderer_observation,
@@ -38,7 +42,11 @@ except ImportError:  # direct script execution
         _write_runtime_failure_receipt,
     )
     from v5_1_consumer import verify_target_identity
-    from v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
+    from v5_1_runtime_hit_resolver import (
+        _parse_trace_line,
+        _read_addresses,
+        _read_operand_kind,
+    )
     from v5_1_renderer_observation import (
         build_renderer_observation,
         write_renderer_observation,
@@ -356,6 +364,7 @@ def _last_rom_read(
                 "instruction_pc": int(parsed["pc"]),
                 "pc_after": int(state["pc_after"]),
                 "physical_pc_after": int(state["physical_pc_after"]),
+                "operand_kind": _read_operand_kind(parsed["opcodes"]),
                 "classification": _classify_decoder_read(physical),
             }
     return None

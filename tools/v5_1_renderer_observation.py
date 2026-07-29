@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 
 ARTIFACT_KIND = "sanitized-text-engine-observation"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 FRAME_SYNC = "debug-status-paused"
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_renderer_observation.json"
@@ -64,6 +64,7 @@ DECODER_READ_KEYS = {
     "instruction_pc",
     "pc_after",
     "physical_pc_after",
+    "operand_kind",
     "classification",
 }
 REGISTER_KEYS = {
@@ -236,6 +237,26 @@ def validate_renderer_observation(
             item["classification"],
             f"decoder_reads[{index}].classification",
         )
+        _require_token(
+            item["operand_kind"],
+            f"decoder_reads[{index}].operand_kind",
+        )
+        if item["operand_kind"] not in {
+            "bc-indirect",
+            "de-indirect",
+            "absolute-byte",
+            "absolute-word",
+            "hl-indirect",
+            "hl-bit",
+            "ix-indexed",
+            "iy-indexed",
+            "ix-indexed-bit",
+            "iy-indexed-bit",
+            "block-forward",
+            "block-backward",
+            "unknown",
+        }:
+            raise ValueError("decoder read operand kind is not allowed")
 
     hit = observation["hit"]
     if hit is None:

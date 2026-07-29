@@ -222,6 +222,77 @@ def _read_addresses(
     return []
 
 
+def _read_operand_kind(opcodes: bytes) -> str:
+    """Describe a supported ROM-read operand without publishing opcodes."""
+
+    if not opcodes:
+        return "unknown"
+    first = opcodes[0]
+    if first == 0x0A:
+        return "bc-indirect"
+    if first == 0x1A:
+        return "de-indirect"
+    if first == 0x3A and len(opcodes) >= 3:
+        return "absolute-byte"
+    if first == 0x2A and len(opcodes) >= 3:
+        return "absolute-word"
+    if first in {
+        0x34,
+        0x35,
+        0x46,
+        0x4E,
+        0x56,
+        0x5E,
+        0x66,
+        0x6E,
+        0x7E,
+        0x86,
+        0x8E,
+        0x96,
+        0x9E,
+        0xA6,
+        0xAE,
+        0xB6,
+        0xBE,
+    }:
+        return "hl-indirect"
+    if first == 0xCB and len(opcodes) >= 2 and opcodes[1] & 0x07 == 0x06:
+        return "hl-bit"
+    if first in (0xDD, 0xFD) and len(opcodes) >= 3:
+        second = opcodes[1]
+        if second == 0xCB and len(opcodes) >= 4:
+            return "ix-indexed-bit" if first == 0xDD else "iy-indexed-bit"
+        if second in {
+            0x34,
+            0x35,
+            0x46,
+            0x4E,
+            0x56,
+            0x5E,
+            0x66,
+            0x6E,
+            0x7E,
+            0x86,
+            0x8E,
+            0x96,
+            0x9E,
+            0xA6,
+            0xAE,
+            0xB6,
+            0xBE,
+        }:
+            return "ix-indexed" if first == 0xDD else "iy-indexed"
+    if first == 0xED and len(opcodes) >= 2:
+        second = opcodes[1]
+        if second in (0x4B, 0x5B, 0x6B, 0x7B) and len(opcodes) >= 4:
+            return "absolute-word"
+        if second in (0xA0, 0xA1, 0xB0, 0xB1):
+            return "block-forward"
+        if second in (0xA8, 0xA9, 0xB8, 0xB9):
+            return "block-backward"
+    return "unknown"
+
+
 def _actual_slot_bank(hit: dict[str, object]) -> int:
     slot = int(hit["slot"])
     return int(hit[f"slot{slot}_bank"])

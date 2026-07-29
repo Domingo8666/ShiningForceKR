@@ -68,6 +68,7 @@ v5.1은 최종판이 아니라 재작업용 진단 기준입니다.
 40. Start·2번 확인 3,300프레임에서 세 execute 후보가 모두 무히트임을 동기화된 S25U 실행으로 확인했습니다. 오프닝 소개가 무입력 대기에서 시작된다는 게임 진행 자료에 맞춰, 다음 실행은 동기화된 무입력 12,000프레임을 먼저 검사한 뒤 2번 확인과 1번 확인을 각각 별도 콜드 부팅으로 비교합니다.
 41. 무입력·버튼 경로 매트릭스 첫 실행의 `candidate-probe/invalid-runtime-data`를 분석해, 단일 호출의 12,000프레임이 안전 상한 1,000을 넘긴 것이 원인임을 확인했습니다. 무입력 총예산은 유지하되 1,000프레임 12구간으로 나눴고, renderer 단계의 schema v3 실패 영수증도 유지합니다.
 42. 동기화된 무입력 attract intro에서 물리 0x0033FA 디코더 execute hit를 확정했습니다. 진입 시 slot 1은 bank 8이었고 PC 0x3406의 source-region read 64개를 수집했으나 Huffman bank 0x20 전환 전 표본 한도에 도달했습니다. 다음 실행은 source-region 표본을 8개만 보존하면서 최대 1,024개 read를 따라가 한국어 벡터·트리 표본을 우선 수집합니다.
+43. 같은 attract intro를 최대 1,024개 read로 연장해 mapper bank 0x20의 한국어 Huffman vector 3개와 tree 16개를 실제로 확인했습니다. 다음 실행은 원시 opcode를 게시하지 않고 각 read의 고정 operand-kind만 기록해 stream·vector·tree 경계를 연결합니다.
 
 ## 현재 체크포인트
 
@@ -104,8 +105,8 @@ ROM 바이트, 대사와 로컬 경로는 스키마에 포함할 수 없습니�
 2. 완료: 공식 Gearsystem 3.9.14 ARM64를 S25U 격리 환경에 설치했습니다.
 3. 완료: 물리 뱅크 0·6·16의 정적 상위 조회표 후보를 slot 0/1/2에서 순차 추적했으나 현재 입력 구간의 뱅크 일치 read는 0회였습니다.
 4. 완료: 동기화된 무입력 attract intro에서 0x33FA 디코더 진입과 bank 8 source-region read를 확인했습니다.
-5. source-region 표본은 8개만 보존하고 최대 1,024개 read를 따라가 한국어 Huffman 벡터·트리 및 bank 0x20 전환을 수집합니다.
-6. 자동 hit resolver로 마지막 Z80 읽기 주소를 물리 표 바이트·정렬 후보·엔트리 번호·bounded decode에 연결합니다.
+5. 완료: source-region 표본을 8개로 제한한 후 최대 1,024개 read를 따라가 한국어 Huffman 벡터·트리 및 bank 0x20 전환을 수집했습니다.
+6. 각 read의 고정 operand-kind를 수집하고 자동 resolver로 압축 stream·벡터·트리 경계를 정확히 연결합니다.
 7. 확정 후보가 가리키는 압축 대상 주소에 두 번째 read breakpoint를 걸고 실제 매퍼 뱅크가 포인터의 뱅크와 일치할 때만 확정합니다.
 8. 히트 PC와 0x87000 런타임의 호출·데이터 흐름을 연결해 조회표 전체를 확정합니다.
 9. 완료: 첫 화면 경로 시험 표식 `한다`의 글리프·페이지 선택·Huffman 왕복을 ROM 없이 검증했습니다.

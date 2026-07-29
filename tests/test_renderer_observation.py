@@ -65,6 +65,7 @@ def decoder_reads() -> list[dict[str, object]]:
             "instruction_pc": 0x3420,
             "pc_after": 0x3421,
             "physical_pc_after": 0x3421,
+            "operand_kind": "hl-indirect",
             "classification": "korean-huffman-vector",
         }
     ]
