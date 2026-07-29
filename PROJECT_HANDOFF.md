@@ -42,6 +42,7 @@ v5.1은 최종판이 아니라 재작업용 진단 기준입니다.
 14. 상위 후보의 Z80 slot 가설과 emucap read breakpoint/매퍼 스냅샷 계획 자동 생성
 15. 0x010000 후보를 과대평가한 0x4000/0x8000 제어 흐름 오탐을 격리하고 점수식 v2로 수정
 16. 뱅크 리터럴 단독 출현과 슬롯별 Sega mapper 쓰기를 분리하고 점수식 v3 회귀 테스트 추가
+17. ROM·대사·로컬 경로를 제외한 S25U 관측 요약의 GitHub 자동 게시 경로 추가
 
 ## 현재 체크포인트
 
@@ -61,9 +62,14 @@ python tools/run_mobile_pipeline.py --rom "/storage/emulated/0/ROM/Shining Force
 
 이 명령은 ROM과 보고서를 S25U 로컬의 build/ 및 reports/에만 생성합니다. 내 파일에서 ShiningForceKR/reports/NEXT_STEP.txt를 먼저 확인합니다. 원본 ROM은 덮어쓰지 않으며 Git 대상에서 제외됩니다.
 
+캡처 없이 안전 요약을 GitHub에 공유할 때는
+`--publish-safe-observation`을 붙입니다. 이 옵션은
+`analysis/device/v5_1_latest_observation.json`만 검증·커밋·푸시하며,
+ROM 바이트, 대사와 로컬 경로는 스키마에 포함할 수 없습니다.
+
 ## 다음 순서
 
-1. S25U 원클릭 파이프라인으로 v3 후보 교차 참조와 emucap 추적 계획을 다시 생성합니다.
+1. S25U 원클릭 파이프라인으로 v3 후보 교차 참조를 생성하고 안전 관측 요약을 게시합니다.
 2. 선택 후보의 slot 0/1/2 read breakpoint 중 실제 히트와 매퍼 상태를 기록합니다.
 3. 히트 PC와 0x87000 런타임의 호출·데이터 흐름을 연결해 조회표를 확정합니다.
 4. 한국어 문맥 심벌과 글꼴 페이지 선택 규칙을 엔트리별로 연결합니다.

@@ -49,6 +49,20 @@ python tools/run_mobile_pipeline.py --rom "/storage/emulated/0/ROM/Shining Force
 
 이 명령은 원본/BPS/대상 CRC, 한국어 Huffman 블록과 글꼴 런타임을 검증하고 스크립트 소비 후보 탐색 및 emucap 실행 추적 계획 생성까지 이어서 수행합니다.
 
+사진 대신 ROM 비포함 후보 요약을 GitHub에 자동 기록하려면 다음 옵션을
+붙입니다. 게시 파일은 허용된 좌표·점수·매퍼 범위만 포함하며, ROM 바이트,
+대사와 로컬 경로가 들어오면 게시를 거부합니다.
+
+~~~sh
+python tools/run_mobile_pipeline.py \
+  --rom "/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg" \
+  --publish-safe-observation
+~~~
+
+결과는 `analysis/device/v5_1_latest_observation.json`에 커밋됩니다. 모바일
+Git 인증이 아직 없으면 짧은 `SFKR safe observation` 결과까지는 터미널에
+표시되고 Git 게시 단계에서 멈춥니다.
+
 - build/Final_Conflict_Korean_v5.1.gg
 - reports/NEXT_STEP.txt
 - reports/v5_1_mobile_verification.md
@@ -57,6 +71,7 @@ python tools/run_mobile_pipeline.py --rom "/storage/emulated/0/ROM/Shining Force
 - reports/v5_1_emucap_trace_plan.md
 - reports/v5_1_emucap_trace_plan.json
 - reports/pipeline_status.json
+- analysis/device/v5_1_latest_observation.json (`--publish-safe-observation` 사용 시)
 
 내 파일 앱에서는 내부 저장공간 > ShiningForceKR > reports > NEXT_STEP.txt를 먼저 열면 됩니다. reports와 build는 S25U 로컬 전용이며 Git에 올라가지 않습니다.
 
@@ -68,4 +83,5 @@ ROM을 쓰지 않고 메모리 검증만 하려면 --no-rom-output을 붙입니�
 - 생성 ROM은 build/에만 씁니다.
 - 변경 전후 해시를 기록합니다.
 - 바이트 모양 후보, 정적 분석, 실제 에뮬레이터 소비 증거를 구분합니다.
+- 모바일 공유 데이터는 고정된 안전 스키마를 통과한 필드만 GitHub에 게시합니다.
 - 해결되지 않은 문제를 해결됐다고 보고하지 않습니다.

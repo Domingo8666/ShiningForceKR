@@ -24,6 +24,12 @@ try:
         to_markdown as consumer_to_markdown,
     )
     from .v5_1_engine import analyze_patch, to_markdown
+    from .v5_1_safe_observation import (
+        build_safe_observation,
+        compact_summary as safe_observation_summary,
+        publish_safe_observation,
+        write_safe_observation,
+    )
     from .v5_1_trace_plan import (
         build_trace_plan,
         to_korean_summary as trace_to_korean_summary,
@@ -45,6 +51,12 @@ except ImportError:  # direct script execution
         to_markdown as consumer_to_markdown,
     )
     from v5_1_engine import analyze_patch, to_markdown
+    from v5_1_safe_observation import (
+        build_safe_observation,
+        compact_summary as safe_observation_summary,
+        publish_safe_observation,
+        write_safe_observation,
+    )
     from v5_1_trace_plan import (
         build_trace_plan,
         to_korean_summary as trace_to_korean_summary,
@@ -117,6 +129,14 @@ def main() -> int:
         action="store_true",
         help="validate in memory without writing the patched ROM",
     )
+    parser.add_argument(
+        "--publish-safe-observation",
+        action="store_true",
+        help=(
+            "commit and push a ROM-free candidate summary to the canonical "
+            "GitHub repository"
+        ),
+    )
     args = parser.parse_args()
 
     source_path = args.rom.resolve()
@@ -136,6 +156,7 @@ def main() -> int:
     target_sha256 = sha256_bytes(target)
     consumer = analyze_consumer(target)
     trace_plan = build_trace_plan(target, consumer)
+    safe_observation = build_safe_observation(trace_plan)
 
     if not args.no_rom_output:
         args.output_rom.parent.mkdir(parents=True, exist_ok=True)
@@ -227,6 +248,10 @@ def main() -> int:
     }
     _write_text(args.status_json, json.dumps(status, ensure_ascii=False, indent=2) + "\n")
 
+    safe_path: Path | None = None
+    if args.publish_safe_observation:
+        safe_path = write_safe_observation(root, safe_observation)
+
     print("S25U pipeline and script-candidate scan passed.")
     if args.no_rom_output:
         print("Patched ROM was validated in memory and not written.")
@@ -236,6 +261,13 @@ def main() -> int:
     print(f"Script candidate report: {args.consumer_report}")
     print(f"emucap trace plan: {args.trace_plan_report}")
     print(f"Pipeline status: {args.status_json}")
+    print(safe_observation_summary(safe_observation))
+    if safe_path is not None:
+        publish_result = publish_safe_observation(root, safe_path)
+        print(
+            "Published safe observation: "
+            f"{publish_result['path']} @ {publish_result['commit']}"
+        )
     print("Open in My Files: Internal storage > ShiningForceKR > reports > NEXT_STEP.txt")
     print("Runtime consumer proof remains pending; no translation was marked build-eligible.")
     return 0
