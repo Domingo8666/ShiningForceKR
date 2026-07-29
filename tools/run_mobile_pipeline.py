@@ -24,6 +24,11 @@ try:
         to_markdown as consumer_to_markdown,
     )
     from .v5_1_engine import analyze_patch, to_markdown
+    from .v5_1_trace_plan import (
+        build_trace_plan,
+        to_korean_summary as trace_to_korean_summary,
+        to_markdown as trace_to_markdown,
+    )
 except ImportError:  # direct script execution
     from analyze_v5_1 import (
         EXPECTED_PATCH_SHA256,
@@ -40,6 +45,11 @@ except ImportError:  # direct script execution
         to_markdown as consumer_to_markdown,
     )
     from v5_1_engine import analyze_patch, to_markdown
+    from v5_1_trace_plan import (
+        build_trace_plan,
+        to_korean_summary as trace_to_korean_summary,
+        to_markdown as trace_to_markdown,
+    )
 
 
 def _write_text(path: Path, text: str) -> None:
@@ -83,6 +93,16 @@ def main() -> int:
         default=root / "reports" / "v5_1_script_lookup_candidates.md",
     )
     parser.add_argument(
+        "--trace-plan-report",
+        type=Path,
+        default=root / "reports" / "v5_1_emucap_trace_plan.md",
+    )
+    parser.add_argument(
+        "--trace-plan-json",
+        type=Path,
+        default=root / "reports" / "v5_1_emucap_trace_plan.json",
+    )
+    parser.add_argument(
         "--summary-report",
         type=Path,
         default=root / "reports" / "NEXT_STEP.txt",
@@ -115,6 +135,7 @@ def main() -> int:
     target = apply_bps(source, patch)
     target_sha256 = sha256_bytes(target)
     consumer = analyze_consumer(target)
+    trace_plan = build_trace_plan(target, consumer)
 
     if not args.no_rom_output:
         args.output_rom.parent.mkdir(parents=True, exist_ok=True)
@@ -123,7 +144,17 @@ def main() -> int:
     _write_text(args.verification_report, make_report(source, target, patch, args.rom))
     _write_text(args.engine_report, to_markdown(engine))
     _write_text(args.consumer_report, consumer_to_markdown(consumer))
-    _write_text(args.summary_report, to_korean_summary(consumer))
+    _write_text(args.trace_plan_report, trace_to_markdown(trace_plan))
+    _write_text(
+        args.trace_plan_json,
+        json.dumps(trace_plan, ensure_ascii=False, indent=2) + "
+",
+    )
+    _write_text(
+        args.summary_report,
+        to_korean_summary(consumer) + "
+" + trace_to_korean_summary(trace_plan),
+    )
 
     english: dict[str, object]
     if args.english_ips.exists():
@@ -163,6 +194,7 @@ def main() -> int:
             "korean_font_runtime": "pass",
             "english_reference": english,
             "script_lookup_candidate_scan": "pass",
+            "script_consumer_cross_reference_plan": "pass",
             "script_lookup_runtime_consumer": "investigating",
             "token_semantics": "investigating",
             "emulator_cold_boot": "not_run",
@@ -171,6 +203,16 @@ def main() -> int:
             "triplet_runs_found": pointer_tables["triplet_runs_found"],
             "pair_runs_found": pointer_tables["pair_runs_found"],
             "report": args.consumer_report.name,
+        },
+        "runtime_trace_plan": {
+            "status": trace_plan["status"],
+            "selected_file_offset": (
+                None
+                if trace_plan["selected_hypothesis"] is None
+                else trace_plan["selected_hypothesis"]["file_offset"]
+            ),
+            "report": args.trace_plan_report.name,
+            "json": args.trace_plan_json.name,
         },
         "translation_build_eligible": False,
         "next_checkpoint": (
@@ -186,6 +228,7 @@ def main() -> int:
         print(f"Built local ROM: {args.output_rom}")
     print(f"Readable summary: {args.summary_report}")
     print(f"Script candidate report: {args.consumer_report}")
+    print(f"emucap trace plan: {args.trace_plan_report}")
     print(f"Pipeline status: {args.status_json}")
     print("Open in My Files: Internal storage > ShiningForceKR > reports > NEXT_STEP.txt")
     print("Runtime consumer proof remains pending; no translation was marked build-eligible.")

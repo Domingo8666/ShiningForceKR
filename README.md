@@ -30,6 +30,7 @@ Android 내 파일 앱: 내부 저장공간/ShiningForceKR
 - 한국어 심벌/트리 데이터 0x80300..0x808D3과 244엔트리 글꼴 페이지 매핑을 독립 파서로 재현합니다.
 - 영어판 IPS의 별도 Huffman 벡터 0x29C3F에는 221개 트리가 있습니다.
 - 전체 v5.1 ROM에서 코드 리터럴과 2·3바이트 조회표 후보를 자동 점수화합니다.
+- 상위 후보의 가능한 Z80 버스 주소와 emucap read breakpoint 계획을 자동 생성합니다.
 - 후보는 실행 중 소비 증거가 생기기 전까지 확정 조회표로 승격하지 않습니다.
 - 조회표가 확정되기 전에는 기존 1,492개 추정 목록을 번역 완료 근거로 쓰지 않습니다.
 
@@ -45,13 +46,15 @@ git pull --ff-only
 python tools/run_mobile_pipeline.py --rom "/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg"
 ~~~
 
-이 명령은 원본/BPS/대상 CRC, 한국어 Huffman 블록과 글꼴 런타임을 검증하고 스크립트 소비 후보 탐색까지 이어서 수행합니다.
+이 명령은 원본/BPS/대상 CRC, 한국어 Huffman 블록과 글꼴 런타임을 검증하고 스크립트 소비 후보 탐색 및 emucap 실행 추적 계획 생성까지 이어서 수행합니다.
 
 - build/Final_Conflict_Korean_v5.1.gg
 - reports/NEXT_STEP.txt
 - reports/v5_1_mobile_verification.md
 - reports/v5_1_engine_report.md
 - reports/v5_1_script_lookup_candidates.md
+- reports/v5_1_emucap_trace_plan.md
+- reports/v5_1_emucap_trace_plan.json
 - reports/pipeline_status.json
 
 내 파일 앱에서는 내부 저장공간 > ShiningForceKR > reports > NEXT_STEP.txt를 먼저 열면 됩니다. reports와 build는 S25U 로컬 전용이며 Git에 올라가지 않습니다.
