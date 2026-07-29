@@ -39,6 +39,7 @@
 | SFKR-031 | 런타임 확정 인트로 스트림의 첫 시험 문장 화면 증거가 아직 없음 | investigating | 54비트 첫 스트림에 39비트 `한다`를 Expected Write로 넣고 동일 attract 경로의 S25U PNG를 로컬 캡처 |
 | SFKR-032 | 첫 시험 ROM 캡처가 목표 논리 주소의 mapper bank 7 선행 히트를 bank 8 목표로 오인하고 탐색을 종료 | fixed-emulator | 뱅크·디코더 PC가 모두 일치할 때만 승인하고 오탐은 breakpoint 해제·한 명령 진행·재설정 후 계속 탐색 |
 | SFKR-033 | 확정 디코더 stream이 있는데도 자동 비교 실행이 초기 탐색을 반복하고 실패 시 `runtime-command`만 기록 | fixed-static | 기준 ROM SHA-256과 검증된 stream resolution이 일치하면 초기 탐색을 건너뛰며 하위 실패 단계를 안전 영수증으로 남긴 뒤 S25U 재실행 |
+| SFKR-034 | Gearsystem PNG의 유효한 IEND 뒤 2바이트 NUL 패딩을 엄격 비교기가 구조 불완전으로 거부 | fixed-static | CRC와 IEND를 검증한 뒤 최대 16바이트의 0 패딩만 허용하고 비영·과도한 후행 데이터는 거부한 상태로 S25U 픽셀 비교 재실행 |
 
 ## 테스트 원칙
 

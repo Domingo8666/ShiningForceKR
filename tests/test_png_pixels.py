@@ -88,6 +88,19 @@ class PngPixelTests(unittest.TestCase):
         with self.assertRaisesRegex(PatchError, "CRC"):
             decode_png_rgba(bytes(png))
 
+    def test_bounded_zero_padding_after_iend_is_ignored(self) -> None:
+        png = rgba_png(1, 1, bytes((10, 20, 30, 255)))
+        plain = decode_png_rgba(png)
+        padded = decode_png_rgba(png + b"\x00\x00")
+        self.assertEqual(padded, plain)
+
+    def test_nonzero_or_excessive_trailing_data_fails_closed(self) -> None:
+        png = rgba_png(1, 1, bytes((10, 20, 30, 255)))
+        for trailing in (b"\x00\x01", b"\x00" * 17):
+            with self.subTest(trailing=trailing):
+                with self.assertRaisesRegex(PatchError, "trailing data"):
+                    decode_png_rgba(png + trailing)
+
 
 if __name__ == "__main__":
     unittest.main()

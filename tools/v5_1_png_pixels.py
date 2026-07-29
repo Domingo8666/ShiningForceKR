@@ -28,6 +28,7 @@ CHANNELS_BY_COLOR_TYPE = {
     4: 2,  # grayscale + alpha
     6: 4,  # RGBA
 }
+MAX_TRAILING_ZERO_PADDING = 16
 
 
 @dataclass(frozen=True)
@@ -163,7 +164,6 @@ def decode_png_rgba(png: bytes) -> PixelImage:
         offset = crc_end
     if (
         not saw_end
-        or offset != len(png)
         or width is None
         or height is None
         or bit_depth is None
@@ -171,6 +171,12 @@ def decode_png_rgba(png: bytes) -> PixelImage:
         or not compressed
     ):
         raise PatchError("PNG structure is incomplete")
+    trailing = png[offset:]
+    if (
+        len(trailing) > MAX_TRAILING_ZERO_PADDING
+        or any(byte != 0 for byte in trailing)
+    ):
+        raise PatchError("PNG has unsupported trailing data")
     try:
         filtered = zlib.decompress(bytes(compressed))
     except zlib.error as error:
