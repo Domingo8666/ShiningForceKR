@@ -4,7 +4,7 @@
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
   "exit_code": 1,
-  "attempt_utc": "2026-07-29T12:29:52Z",
+  "attempt_utc": "2026-07-29T12:36:26Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -22,7 +22,7 @@
     "schema_version": 1,
     "failure_stage": "candidate-probe",
     "failure_kind": "frame-step-timeout",
-    "mcp_method": "remove_breakpoint"
+    "mcp_method": "debug_get_status"
   },
   "next_checkpoint": "repair-runtime-command"
 }
