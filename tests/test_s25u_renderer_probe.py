@@ -239,7 +239,8 @@ class S25URendererProbeTests(unittest.TestCase):
     def test_attract_intro_runs_before_button_routes(self) -> None:
         name, schedule = TEXT_ROUTE_PLANS[0]
         self.assertEqual(name, "attract-intro")
-        self.assertEqual(schedule, ((12_000, None),))
+        self.assertEqual(schedule, ((1_000, None),) * 12)
+        self.assertEqual(sum(frames for frames, _ in schedule), 12_000)
 
     def test_vector_range_expands_to_two_switchable_slot_mappings(self) -> None:
         mappings = _vector_mappings()

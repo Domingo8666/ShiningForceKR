@@ -55,7 +55,7 @@ HUFFMAN_VECTOR_BANK = 0x20
 DECODER_ENTRY_CANDIDATES = (0x33FA, 0x3411, 0x3431)
 TEXT_ROUTE = "cold-boot-attract-button-matrix"
 ATTRACT_ROUTE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
-    (12_000, None),
+    *((1_000, None),) * 12,
 )
 TEXT_ROUTE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
     (180, None),
