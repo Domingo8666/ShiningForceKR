@@ -65,21 +65,50 @@ else
       fi
     fi
     if [ "$stage_status" -eq 0 ] && [ -n "$source_rom" ]; then
-      python tools/v5_1_test_patch.py \
-        --source-rom "$source_rom" \
-        --if-ready
-      test_build_status=$?
-      if [ "$test_build_status" -ne 0 ]; then
-        stage_status="$test_build_status"
-        diagnostic_trigger=probe
-      else
+      comparison_attempt=1
+      comparison_attempt_limit=8
+      while [ "$comparison_attempt" -le "$comparison_attempt_limit" ]; do
+        selection_ready="$(
+          python -c 'import json; from pathlib import Path; value=json.loads(Path("analysis/device/v5_1_latest_decoder_stream_resolution.json").read_text(encoding="utf-8")); print("yes" if value.get("consumer_evidence_confirmed") is True and isinstance(value.get("selected_stream_index"), int) else "no")'
+        )"
+        if [ "$selection_ready" != "yes" ]; then
+          break
+        fi
+
+        python tools/v5_1_test_patch.py \
+          --source-rom "$source_rom" \
+          --if-ready
+        test_build_status=$?
+        if [ "$test_build_status" -ne 0 ]; then
+          stage_status="$test_build_status"
+          diagnostic_trigger=probe
+          break
+        fi
+
         python tools/v5_1_test_display_capture.py --if-ready
         display_capture_status=$?
         if [ "$display_capture_status" -ne 0 ]; then
           stage_status="$display_capture_status"
           diagnostic_trigger=probe
+          break
         fi
-      fi
+
+        comparison_result="$(
+          python tools/v5_1_test_display_comparison.py --result-only
+        )"
+        if [ "$comparison_result" != "no-visible-pixel-change" ]; then
+          break
+        fi
+
+        python tools/v5_1_decoder_stream_resolution.py
+        stream_resolver_status=$?
+        if [ "$stream_resolver_status" -ne 0 ]; then
+          stage_status="$stream_resolver_status"
+          diagnostic_trigger=probe
+          break
+        fi
+        comparison_attempt=$((comparison_attempt + 1))
+      done
     fi
   fi
 fi

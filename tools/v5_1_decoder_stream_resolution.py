@@ -27,6 +27,7 @@ try:
         KO_VECTOR_OFFSET,
     )
     from .v5_1_renderer_observation import validate_renderer_observation
+    from .v5_1_test_display_comparison import validate_display_comparison
     from .v5_1_test_display_review import validate_display_review
     from .v5_1_test_phrase import build_test_phrase_plan
 except ImportError:  # direct script execution
@@ -44,6 +45,7 @@ except ImportError:  # direct script execution
         KO_VECTOR_OFFSET,
     )
     from v5_1_renderer_observation import validate_renderer_observation
+    from v5_1_test_display_comparison import validate_display_comparison
     from v5_1_test_display_review import validate_display_review
     from v5_1_test_phrase import build_test_phrase_plan
 
@@ -56,6 +58,9 @@ DEFAULT_OBSERVATION = Path(
 )
 DEFAULT_DISPLAY_REVIEW = Path(
     "analysis/device/v5_1_latest_display_review.json"
+)
+DEFAULT_DISPLAY_COMPARISON = Path(
+    "analysis/device/v5_1_latest_display_comparison.json"
 )
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_decoder_stream_resolution.json"
@@ -349,6 +354,11 @@ def main() -> int:
         type=Path,
         default=DEFAULT_DISPLAY_REVIEW,
     )
+    parser.add_argument(
+        "--display-comparison",
+        type=Path,
+        default=DEFAULT_DISPLAY_COMPARISON,
+    )
     args = parser.parse_args()
 
     def absolute(path: Path) -> Path:
@@ -374,6 +384,23 @@ def main() -> int:
             == observation["target_sha256"]
         ):
             rejected = display_review["rejected_physical_starts"]
+            assert isinstance(rejected, list)
+            rejected_physical_starts.update(int(value) for value in rejected)
+    display_comparison_path = absolute(args.display_comparison)
+    if display_comparison_path.is_file():
+        display_comparison = json.loads(
+            display_comparison_path.read_text(encoding="utf-8")
+        )
+        if not isinstance(display_comparison, dict):
+            raise ValueError("display comparison must be a JSON object")
+        validate_display_comparison(display_comparison)
+        if (
+            display_comparison["baseline_target_sha256"]
+            == observation["target_sha256"]
+        ):
+            rejected = display_comparison[
+                "automatic_rejected_physical_starts"
+            ]
             assert isinstance(rejected, list)
             rejected_physical_starts.update(int(value) for value in rejected)
     patch_bytes = absolute(args.patch).read_bytes()

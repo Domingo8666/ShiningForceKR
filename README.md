@@ -83,6 +83,12 @@ Git 인증이 아직 없으면 짧은 `SFKR safe observation` 결과까지는 �
 
 내 파일 앱에서는 내부 저장공간 > ShiningForceKR > reports > NEXT_STEP.txt를 먼저 열면 됩니다. reports와 build는 S25U 로컬 전용이며 Git에 올라가지 않습니다.
 
+휴대폰에서 실행할 명령과 사진을 올려야 하는 경우는
+`docs/S25U_EASY_GUIDE.md`에 짧은 순서로 정리했습니다. 자동실행기의
+기본 GitHub 확인 주기는 60초이며, 기준·시험 화면이 완전히 같은 후보는
+한 작업에서 최대 8개까지 자동으로 다음 후보로 넘어갑니다. 픽셀이 하나라도
+달라지면 자동 판정을 멈추고 사람 확인을 기다립니다.
+
 ROM을 쓰지 않고 메모리 검증만 하려면 --no-rom-output을 붙입니다. 영어 참조 IPS가 없으면 그 단계만 skipped로 기록됩니다. 실행 추적으로 스크립트 소비자가 확정되기 전에는 translation_build_eligible을 false로 유지합니다.
 
 ## S25U 실제 읽기 추적

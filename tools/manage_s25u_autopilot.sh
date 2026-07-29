@@ -3,7 +3,7 @@ set -uo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_rom="${SFKR_SOURCE_ROM:-/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg}"
-interval="${SFKR_AUTOPILOT_INTERVAL:-300}"
+interval="${SFKR_AUTOPILOT_INTERVAL:-60}"
 state_dir="${SFKR_AUTOPILOT_STATE_DIR:-$HOME/.local/state/shiningforcekr}"
 status_file="$root/reports/AUTOPILOT_STATUS.txt"
 action="status"
@@ -21,7 +21,7 @@ Actions:
 
 Options:
   --source-rom PATH  S25U-local original ROM path
-  --interval SEC     GitHub poll interval (minimum 60, default 300)
+  --interval SEC     GitHub poll interval (minimum/default 60)
   --state-dir PATH   Termux-private state directory
   --status-file PATH Human-readable status file
   --help             Show this help

@@ -32,6 +32,12 @@ try:
         validate_decoder_stream_resolution,
     )
     from .v5_1_runtime_hit_resolver import validate_consumer_resolution
+    from .v5_1_png_pixels import compare_png_pixels
+    from .v5_1_test_display_comparison import (
+        build_display_comparison,
+        prior_automatic_rejections,
+        write_display_comparison,
+    )
     from .v5_1_test_phrase import TEST_PHRASE
 except ImportError:  # direct script execution
     from patch_io import PatchError, sha256_bytes, sha256_file
@@ -47,12 +53,19 @@ except ImportError:  # direct script execution
         validate_decoder_stream_resolution,
     )
     from v5_1_runtime_hit_resolver import validate_consumer_resolution
+    from v5_1_png_pixels import compare_png_pixels
+    from v5_1_test_display_comparison import (
+        build_display_comparison,
+        prior_automatic_rejections,
+        write_display_comparison,
+    )
     from v5_1_test_phrase import TEST_PHRASE
 
 
 ARTIFACT_KIND = "sanitized-s25u-test-display-capture"
 SCHEMA_VERSION = 1
 DEFAULT_TEST_ROM = Path("build/Final_Conflict_Korean_test_phrase.gg")
+DEFAULT_BASELINE_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 DEFAULT_BUILD_REPORT = Path("reports/local/v5_1_test_patch_build.json")
 DEFAULT_RESOLUTION = Path(
     "analysis/device/v5_1_latest_consumer_resolution.json"
@@ -426,6 +439,70 @@ def _build_safe_capture(
     return safe
 
 
+def _paired_pixel_comparisons(
+    baseline_local: dict[str, object],
+    test_local: dict[str, object],
+) -> tuple[list[dict[str, object]], dict[str, object] | None]:
+    baseline_captures = baseline_local.get("captures")
+    test_captures = test_local.get("captures")
+    if not isinstance(baseline_captures, list) or not isinstance(test_captures, list):
+        return [], None
+    baseline_by_frame = {
+        int(item["frame_after_hit"]): item
+        for item in baseline_captures
+        if isinstance(item, dict)
+        and isinstance(item.get("frame_after_hit"), int)
+        and isinstance(item.get("file"), str)
+    }
+    test_by_frame = {
+        int(item["frame_after_hit"]): item
+        for item in test_captures
+        if isinstance(item, dict)
+        and isinstance(item.get("frame_after_hit"), int)
+        and isinstance(item.get("file"), str)
+    }
+    if (
+        not baseline_by_frame
+        or set(baseline_by_frame) != set(test_by_frame)
+        or set(baseline_by_frame) != set(CAPTURE_FRAMES_AFTER_HIT)
+    ):
+        return [], None
+    comparisons: list[dict[str, object]] = []
+    for frame in sorted(baseline_by_frame):
+        baseline_item = baseline_by_frame[frame]
+        test_item = test_by_frame[frame]
+        comparison = compare_png_pixels(
+            Path(str(baseline_item["file"])).read_bytes(),
+            Path(str(test_item["file"])).read_bytes(),
+        )
+        comparisons.append(
+            {
+                "frame_after_hit": frame,
+                **comparison,
+                "baseline_png_sha256": str(baseline_item["png_sha256"]),
+                "test_png_sha256": str(test_item["png_sha256"]),
+            }
+        )
+    baseline_post = baseline_local.get("post_advance_capture")
+    test_post = test_local.get("post_advance_capture")
+    if (
+        not isinstance(baseline_post, dict)
+        or not isinstance(baseline_post.get("file"), str)
+        or not isinstance(test_post, dict)
+        or not isinstance(test_post.get("file"), str)
+    ):
+        return comparisons, None
+    post_comparison = compare_png_pixels(
+        Path(str(baseline_post["file"])).read_bytes(),
+        Path(str(test_post["file"])).read_bytes(),
+    )
+    return comparisons, {
+        **post_comparison,
+        "baseline_png_sha256": str(baseline_post["png_sha256"]),
+        "test_png_sha256": str(test_post["png_sha256"]),
+    }
+
+
 def _target_hit_matches(
     state: dict[str, object],
     target_read: dict[str, object],
@@ -613,6 +690,11 @@ def main() -> int:
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--test-rom", type=Path, default=DEFAULT_TEST_ROM)
+    parser.add_argument(
+        "--baseline-rom",
+        type=Path,
+        default=DEFAULT_BASELINE_ROM,
+    )
     parser.add_argument("--build-report", type=Path, default=DEFAULT_BUILD_REPORT)
     parser.add_argument("--resolution", type=Path, default=DEFAULT_RESOLUTION)
     parser.add_argument(
@@ -626,12 +708,14 @@ def main() -> int:
     args = parser.parse_args()
 
     rom_path = _absolute(root, args.test_rom)
+    baseline_rom_path = _absolute(root, args.baseline_rom)
     build_report_path = _absolute(root, args.build_report)
     resolution_path = _absolute(root, args.resolution)
     stream_resolution_path = _absolute(root, args.stream_resolution)
     local_report_path = _absolute(root, args.local_report)
     evidence_dir = _absolute(root, args.evidence_dir)
     _require_within(rom_path, root / "build", "test ROM")
+    _require_within(baseline_rom_path, root / "build", "baseline ROM")
     _require_within(
         local_report_path,
         root / "reports" / "local",
@@ -643,7 +727,9 @@ def main() -> int:
         "display capture evidence",
     )
     missing = [
-        path for path in (rom_path, build_report_path) if not path.is_file()
+        path
+        for path in (rom_path, baseline_rom_path, build_report_path)
+        if not path.is_file()
     ]
     if not resolution_path.is_file() and not stream_resolution_path.is_file():
         missing.append(resolution_path)
@@ -662,6 +748,8 @@ def main() -> int:
         or not _is_sha256(build_report.get("baseline_target_sha256"))
         or not _is_sha256(build_report.get("test_target_sha256"))
         or sha256_file(rom_path) != build_report["test_target_sha256"]
+        or sha256_file(baseline_rom_path)
+        != build_report["baseline_target_sha256"]
     ):
         raise PatchError("S25U-local test build identity or status mismatch")
     if args.evidence_dir == DEFAULT_EVIDENCE_DIR:
@@ -722,18 +810,56 @@ def main() -> int:
             )
 
     (
+        baseline_emulator_version,
+        baseline_mapped_bank,
+        _,
+        _,
+        baseline_local,
+    ) = _capture_display(
+        rom_path=baseline_rom_path,
+        rom_size=baseline_rom_path.stat().st_size,
+        target_read=resolution["target_read"],
+        evidence_dir=evidence_dir / "baseline",
+        schedule=capture_schedule,
+    )
+    (
         emulator_version,
         mapped_bank,
         captures,
         post_advance_capture,
-        local,
+        test_local,
     ) = _capture_display(
         rom_path=rom_path,
         rom_size=rom_path.stat().st_size,
         target_read=resolution["target_read"],
-        evidence_dir=evidence_dir,
+        evidence_dir=evidence_dir / "test",
         schedule=capture_schedule,
     )
+    if baseline_emulator_version != emulator_version:
+        raise PatchError("baseline and test captures used different emulator versions")
+    frame_comparisons, post_comparison = _paired_pixel_comparisons(
+        baseline_local,
+        test_local,
+    )
+    comparison = build_display_comparison(
+        build_report=build_report,
+        frame_comparisons=frame_comparisons,
+        post_advance_comparison=post_comparison,
+        prior_rejected_physical_starts=prior_automatic_rejections(
+            root,
+            str(build_report["baseline_target_sha256"]),
+        ),
+    )
+    comparison_path = write_display_comparison(root, comparison)
+    local = {
+        "baseline": baseline_local,
+        "test": test_local,
+        "comparison": comparison,
+        "baseline_target_reached": (
+            baseline_mapped_bank
+            == int(resolution["target_read"]["expected_bank"])
+        ),
+    }
     local.update(
         {
             "artifact_kind": "s25u-local-test-display-capture",
@@ -758,6 +884,10 @@ def main() -> int:
         "SFKR display capture: "
         f"{safe['status']} ({len(captures) + int(post_advance_capture is not None)} "
         "local PNG frame(s))"
+    )
+    print(
+        "SFKR pixel comparison: "
+        f"{comparison['result']} ({comparison_path})"
     )
     if captures:
         relative_evidence = evidence_dir.relative_to(root)

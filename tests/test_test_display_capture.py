@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import base64
 import copy
+from pathlib import Path
+import tempfile
 import unittest
 
 from tools.patch_io import PatchError, sha256_bytes
 from tools.v5_1_test_display_capture import (
     ATTRACT_CAPTURE_SCHEDULE,
+    CAPTURE_FRAMES_AFTER_HIT,
     _build_safe_capture,
+    _paired_pixel_comparisons,
     _parse_screenshot,
     _target_hit_matches,
     validate_display_capture,
@@ -183,6 +187,56 @@ class TestDisplayCaptureTests(unittest.TestCase):
             "post-advance capture requires confirmed display captures",
         ):
             validate_display_capture(broken)
+
+    def test_paired_capture_compares_normalized_pixels(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            baseline_paths = []
+            test_paths = []
+            for frame in CAPTURE_FRAMES_AFTER_HIT:
+                baseline_path = root / f"baseline-{frame}.png"
+                test_path = root / f"test-{frame}.png"
+                baseline_path.write_bytes(PNG_1X1)
+                test_path.write_bytes(PNG_1X1)
+                baseline_paths.append(
+                    {
+                        "file": str(baseline_path),
+                        "frame_after_hit": frame,
+                        "png_sha256": sha256_bytes(PNG_1X1),
+                    }
+                )
+                test_paths.append(
+                    {
+                        "file": str(test_path),
+                        "frame_after_hit": frame,
+                        "png_sha256": sha256_bytes(PNG_1X1),
+                    }
+                )
+            baseline_post = root / "baseline-post.png"
+            test_post = root / "test-post.png"
+            baseline_post.write_bytes(PNG_1X1)
+            test_post.write_bytes(PNG_1X1)
+            frames, post = _paired_pixel_comparisons(
+                {
+                    "captures": baseline_paths,
+                    "post_advance_capture": {
+                        "file": str(baseline_post),
+                        "png_sha256": sha256_bytes(PNG_1X1),
+                    },
+                },
+                {
+                    "captures": test_paths,
+                    "post_advance_capture": {
+                        "file": str(test_post),
+                        "png_sha256": sha256_bytes(PNG_1X1),
+                    },
+                },
+            )
+        self.assertEqual(len(frames), 4)
+        self.assertTrue(all(item["changed_pixels"] == 0 for item in frames))
+        self.assertIsNotNone(post)
+        assert post is not None
+        self.assertEqual(post["changed_pixels"], 0)
 
 
 if __name__ == "__main__":

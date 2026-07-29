@@ -2,24 +2,25 @@
   "artifact_kind": "sanitized-s25u-test-display-review",
   "schema_version": 1,
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "test_target_sha256": "329ad708b9a70320d78e582350fa1b671f291462c165c367f929be42cd7f3411",
+  "test_target_sha256": "c7a076a8df221e934091bd4dd5a1d18646f50e9efb01e1c1a9e91895af2eb770",
   "capture_png_sha256s": [
     "93ccdb1d3fc723412d2acecd1e8ec1738e8755b4d248ba6f980c9a304a2ce4a5",
-    "2d3e5a570ab591710467a2a7349d293a779a5b4306f1f6ff01dd9f07a781b471",
-    "d02b8abe9f72d8a34356b616466d020b8c22b1ffe17c3420ebbe3e20d52abb20",
-    "ec88bdc48ada3297f3b6118dfe389e63301cf458e38402f0889600d781b4bc17",
+    "cf51392fd95d361106412404574453d8ac37f4a078c776cc4548f5877b00f183",
+    "1d5423fe0f151981861691f36bb2cc13cd8275d2bebfb9f82064c59de1b604bc",
+    "4676c4f4c95d6c2de1dc9e2dd9704d463b214543a13a1b3390fb07bcd05b076d",
     "0d7294005257f149b8f19de061fb684cb99e93236c461c304225ef4eacd4d9ef"
   ],
   "reviewed_stream": {
-    "physical_start": 132194,
-    "logical_start": 17506,
+    "physical_start": 132211,
+    "logical_start": 17523,
     "mapped_bank": 8
   },
   "rejected_physical_starts": [
     132062,
     132072,
     132167,
-    132194
+    132194,
+    132211
   ],
   "result": "phrase-absent-fail",
   "observations": {

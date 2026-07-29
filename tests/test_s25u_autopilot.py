@@ -9,6 +9,9 @@ from tools.v5_1_runtime_bundle import SAFE_ARTIFACTS
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (ROOT / "tools" / "run_s25u_autopilot.sh").read_text(encoding="utf-8")
+RUNTIME_STAGE = (ROOT / "tools" / "run_s25u_runtime_stage.sh").read_text(
+    encoding="utf-8"
+)
 MANAGER = (ROOT / "tools" / "manage_s25u_autopilot.sh").read_text(
     encoding="utf-8"
 )
@@ -63,6 +66,21 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn("/storage/emulated/0/", MANAGER)
         self.assertIn('"$HOME"/storage/shared/*', MANAGER)
         self.assertIn('kill -0 "$candidate"', MANAGER)
+
+    def test_default_poll_interval_is_one_minute(self) -> None:
+        self.assertIn('SFKR_AUTOPILOT_INTERVAL:-60', SCRIPT)
+        self.assertIn('SFKR_AUTOPILOT_INTERVAL:-60', MANAGER)
+
+    def test_runtime_stage_batches_exact_no_change_rejections(self) -> None:
+        self.assertIn("comparison_attempt_limit=8", RUNTIME_STAGE)
+        self.assertIn(
+            "no-visible-pixel-change",
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
+            "v5_1_test_display_comparison.py --result-only",
+            RUNTIME_STAGE,
+        )
 
 
 if __name__ == "__main__":

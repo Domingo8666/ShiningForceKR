@@ -12,6 +12,7 @@ try:
         validate_decoder_stream_resolution,
     )
     from .v5_1_test_display_capture import validate_display_capture
+    from .v5_1_test_display_comparison import validate_display_comparison
     from .v5_1_test_display_review import validate_display_review
     from .v5_1_runtime_diagnostic import validate_runtime_diagnostic
     from .v5_1_runtime_hit_resolver import validate_consumer_resolution
@@ -24,6 +25,7 @@ except ImportError:  # direct script execution
         validate_decoder_stream_resolution,
     )
     from v5_1_test_display_capture import validate_display_capture
+    from v5_1_test_display_comparison import validate_display_comparison
     from v5_1_test_display_review import validate_display_review
     from v5_1_runtime_diagnostic import validate_runtime_diagnostic
     from v5_1_runtime_hit_resolver import validate_consumer_resolution
@@ -51,6 +53,8 @@ SAFE_ARTIFACTS = {
         validate_consumer_resolution,
     Path("analysis/device/v5_1_latest_display_capture.json"):
         validate_display_capture,
+    Path("analysis/device/v5_1_latest_display_comparison.json"):
+        validate_display_comparison,
     Path("analysis/device/v5_1_latest_display_review.json"):
         validate_display_review,
 }
@@ -118,6 +122,25 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
     display_review = artifacts.get(
         Path("analysis/device/v5_1_latest_display_review.json")
     )
+    display_comparison = artifacts.get(
+        Path("analysis/device/v5_1_latest_display_comparison.json")
+    )
+    if (
+        display_comparison is not None
+        and resolution is not None
+        and display_comparison["baseline_target_sha256"]
+        != resolution["target_sha256"]
+    ):
+        raise ValueError("display comparison and resolution identities disagree")
+    if (
+        display_comparison is not None
+        and display_capture is not None
+        and display_comparison["test_target_sha256"]
+        == display_capture["test_target_sha256"]
+        and display_comparison["baseline_target_sha256"]
+        != display_capture["baseline_target_sha256"]
+    ):
+        raise ValueError("display capture and comparison identities disagree")
     if (
         display_review is not None
         and display_capture is not None
