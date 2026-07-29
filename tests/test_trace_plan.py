@@ -71,7 +71,7 @@ class TracePlanTests(unittest.TestCase):
 
 
     def test_generic_slot_base_calls_do_not_promote_a_data_table(self) -> None:
-        rom = bytearray(b"ÿ" * 0x20000)
+        rom = bytearray(bytes([0xFF]) * 0x20000)
         for index in range(20):
             at = 0x200 + index * 3
             rom[at:at + 3] = bytes.fromhex("cd0040")
