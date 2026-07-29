@@ -1,13 +1,13 @@
 {
   "artifact_kind": "sanitized-renderer-hook-observation",
-  "schema_version": 1,
+  "schema_version": 2,
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "status": "renderer-hook-not-observed",
   "probe": {
     "emulator": "Gearsystem",
     "emulator_version": "3.9.14",
     "system": "gamegear",
-    "frames_per_mapping": 1680,
+    "frame_budget": 12000,
     "mappings_attempted": [
       {
         "call_site_file_offset": 16341,
