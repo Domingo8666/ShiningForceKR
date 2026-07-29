@@ -8,6 +8,9 @@ import json
 from pathlib import Path
 
 try:
+    from .v5_1_decoder_stream_resolution import (
+        validate_decoder_stream_resolution,
+    )
     from .v5_1_test_display_capture import validate_display_capture
     from .v5_1_runtime_diagnostic import validate_runtime_diagnostic
     from .v5_1_runtime_hit_resolver import validate_consumer_resolution
@@ -16,6 +19,9 @@ try:
     from .v5_1_route_capture import validate_route_capture
     from .v5_1_safe_observation import _git, _normalized_remote
 except ImportError:  # direct script execution
+    from v5_1_decoder_stream_resolution import (
+        validate_decoder_stream_resolution,
+    )
     from v5_1_test_display_capture import validate_display_capture
     from v5_1_runtime_diagnostic import validate_runtime_diagnostic
     from v5_1_runtime_hit_resolver import validate_consumer_resolution
@@ -29,6 +35,8 @@ DEFAULT_GIT_NAME = "Domingo8666"
 DEFAULT_GIT_EMAIL = "145947995+Domingo8666@users.noreply.github.com"
 
 SAFE_ARTIFACTS = {
+    Path("analysis/device/v5_1_latest_decoder_stream_resolution.json"):
+        validate_decoder_stream_resolution,
     Path("analysis/device/v5_1_latest_runtime_observation.json"):
         validate_runtime_observation,
     Path("analysis/device/v5_1_latest_renderer_observation.json"):

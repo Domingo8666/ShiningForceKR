@@ -27,6 +27,9 @@ try:
         _default_command,
         _step_frames_and_wait,
     )
+    from .v5_1_decoder_stream_resolution import (
+        validate_decoder_stream_resolution,
+    )
     from .v5_1_runtime_hit_resolver import validate_consumer_resolution
     from .v5_1_test_phrase import TEST_PHRASE
 except ImportError:  # direct script execution
@@ -37,6 +40,9 @@ except ImportError:  # direct script execution
         _capture_state,
         _default_command,
         _step_frames_and_wait,
+    )
+    from v5_1_decoder_stream_resolution import (
+        validate_decoder_stream_resolution,
     )
     from v5_1_runtime_hit_resolver import validate_consumer_resolution
     from v5_1_test_phrase import TEST_PHRASE
@@ -49,6 +55,9 @@ DEFAULT_BUILD_REPORT = Path("reports/local/v5_1_test_patch_build.json")
 DEFAULT_RESOLUTION = Path(
     "analysis/device/v5_1_latest_consumer_resolution.json"
 )
+DEFAULT_STREAM_RESOLUTION = Path(
+    "analysis/device/v5_1_latest_decoder_stream_resolution.json"
+)
 DEFAULT_LOCAL_REPORT = Path(
     "reports/local/v5_1_test_display_capture.json"
 )
@@ -57,6 +66,9 @@ PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_display_capture.json"
 )
 CAPTURE_FRAMES_AFTER_HIT = (1, 8, 30, 90)
+ATTRACT_CAPTURE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
+    *((1_000, None),) * 12,
+)
 REQUIRED_TOOLS = {
     "controller_button",
     "debug_get_status",
@@ -417,6 +429,7 @@ def _capture_display(
     rom_size: int,
     target_read: dict[str, object],
     evidence_dir: Path,
+    schedule: tuple[tuple[int, str | None], ...] = INPUT_SCHEDULE,
 ) -> tuple[
     str,
     int | None,
@@ -465,7 +478,7 @@ def _capture_display(
             },
         )
         breakpoint_armed = True
-        for frames, button in INPUT_SCHEDULE:
+        for frames, button in schedule:
             if button is not None:
                 client.call(
                     "controller_button",
@@ -558,6 +571,11 @@ def main() -> int:
     parser.add_argument("--test-rom", type=Path, default=DEFAULT_TEST_ROM)
     parser.add_argument("--build-report", type=Path, default=DEFAULT_BUILD_REPORT)
     parser.add_argument("--resolution", type=Path, default=DEFAULT_RESOLUTION)
+    parser.add_argument(
+        "--stream-resolution",
+        type=Path,
+        default=DEFAULT_STREAM_RESOLUTION,
+    )
     parser.add_argument("--local-report", type=Path, default=DEFAULT_LOCAL_REPORT)
     parser.add_argument("--evidence-dir", type=Path, default=DEFAULT_EVIDENCE_DIR)
     parser.add_argument("--if-ready", action="store_true")
@@ -566,6 +584,7 @@ def main() -> int:
     rom_path = _absolute(root, args.test_rom)
     build_report_path = _absolute(root, args.build_report)
     resolution_path = _absolute(root, args.resolution)
+    stream_resolution_path = _absolute(root, args.stream_resolution)
     local_report_path = _absolute(root, args.local_report)
     evidence_dir = _absolute(root, args.evidence_dir)
     _require_within(rom_path, root / "build", "test ROM")
@@ -580,10 +599,10 @@ def main() -> int:
         "display capture evidence",
     )
     missing = [
-        path
-        for path in (rom_path, build_report_path, resolution_path)
-        if not path.is_file()
+        path for path in (rom_path, build_report_path) if not path.is_file()
     ]
+    if not resolution_path.is_file() and not stream_resolution_path.is_file():
+        missing.append(resolution_path)
     if missing:
         if args.if_ready:
             print("Display capture not run: the S25U-local test build is not ready.")
@@ -601,14 +620,53 @@ def main() -> int:
         or sha256_file(rom_path) != build_report["test_target_sha256"]
     ):
         raise PatchError("S25U-local test build identity or status mismatch")
-    resolution = _read_json(resolution_path)
-    validate_consumer_resolution(resolution)
-    if (
-        resolution["consumer_evidence_confirmed"] is not True
-        or resolution["target_sha256"] != build_report["baseline_target_sha256"]
-        or not isinstance(resolution["target_read"], dict)
-    ):
-        raise PatchError("runtime resolution does not authorize display capture")
+    resolution: dict[str, object]
+    capture_schedule = INPUT_SCHEDULE
+    if stream_resolution_path.is_file():
+        stream_resolution = _read_json(stream_resolution_path)
+        validate_decoder_stream_resolution(stream_resolution)
+        selected_index = stream_resolution["selected_stream_index"]
+        streams = stream_resolution["streams"]
+        if (
+            stream_resolution["consumer_evidence_confirmed"] is not True
+            or stream_resolution["target_sha256"]
+            != build_report["baseline_target_sha256"]
+            or not isinstance(selected_index, int)
+            or not isinstance(streams, list)
+        ):
+            raise PatchError(
+                "runtime stream resolution does not authorize display capture"
+            )
+        selected = streams[selected_index]
+        assert isinstance(selected, dict)
+        logical_access = int(selected["logical_start"])
+        expected_bank = int(selected["mapped_bank"])
+        resolution = {
+            "target_read": {
+                "slot": logical_access // 0x4000,
+                "logical_access": logical_access,
+                "physical_target_byte": int(selected["physical_start"]),
+                "instruction_bank": int(selected["instruction_bank"]),
+                "instruction_pc": int(selected["instruction_pc"]),
+                "pc_after": int(selected["instruction_pc"]) + 1,
+                "physical_pc_after": int(selected["instruction_pc"]) + 1,
+                "expected_bank": expected_bank,
+                "mapped_bank": expected_bank,
+            }
+        }
+        capture_schedule = ATTRACT_CAPTURE_SCHEDULE
+    else:
+        resolution = _read_json(resolution_path)
+        validate_consumer_resolution(resolution)
+        if (
+            resolution["consumer_evidence_confirmed"] is not True
+            or resolution["target_sha256"]
+            != build_report["baseline_target_sha256"]
+            or not isinstance(resolution["target_read"], dict)
+        ):
+            raise PatchError(
+                "runtime resolution does not authorize display capture"
+            )
 
     (
         emulator_version,
@@ -621,6 +679,7 @@ def main() -> int:
         rom_size=rom_path.stat().st_size,
         target_read=resolution["target_read"],
         evidence_dir=evidence_dir,
+        schedule=capture_schedule,
     )
     local.update(
         {

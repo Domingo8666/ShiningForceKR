@@ -187,6 +187,7 @@ is_safe_artifact() {
   case "$1" in
     analysis/device/v5_1_latest_runtime_observation.json|\
     analysis/device/v5_1_latest_renderer_observation.json|\
+    analysis/device/v5_1_latest_decoder_stream_resolution.json|\
     analysis/device/v5_1_latest_route_capture.json|\
     analysis/device/v5_1_latest_runtime_diagnostic.json|\
     analysis/device/v5_1_latest_consumer_resolution.json|\

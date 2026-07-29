@@ -155,6 +155,13 @@ mapper bank 0x20에서 실제로 읽는 경로를 확인했습니다. 다음 실
 고정 operand-kind 토큰만 게시해 압축 stream과 조회 경계를 연결합니다.
 
 - `analysis/device/v5_1_latest_renderer_observation.json`
+- `analysis/device/v5_1_latest_decoder_stream_resolution.json`
+
+실제 인트로에서 읽힌 source-region 시작점은 BPS 자체로 복원되는 한국어
+Huffman 데이터와 제한 디코딩·재인코딩합니다. 종료 심벌까지 정확히
+왕복하고 다음 런타임 시작점을 침범하지 않는 첫 스트림만 기술 시험
+문장 빌더에 전달합니다. 이 경로는 정적 조회표 모양을 가정하지 않으며,
+시험 ROM과 PNG는 계속 S25U 로컬에만 둡니다.
 
 이 경로에서 벡터 read가 없으면 같은 wrapper가 부팅 대기, Start 직후,
 1·4·16번째 2번 확인 직후 화면을 다음 S25U 로컬 폴더에 PNG로 저장합니다.

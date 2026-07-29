@@ -37,6 +37,12 @@
 파일 좌표, 논리 주소, 실제 매퍼 뱅크, 레지스터와 trace·호출 스택
 집계만 기록하고 전체 trace와 로컬 경로는 게시하지 않습니다.
 
+`tools/v5_1_decoder_stream_resolution.py`는 실제 디코더가 읽은
+source-region 시작점을 BPS의 원본 비의존 Huffman 데이터로 다시
+디코딩·인코딩합니다. 심벌과 ROM 바이트는 게시하지 않고 시작·종료
+좌표, 비트 수, 심벌 수와 왕복 판정만
+`v5_1_latest_decoder_stream_resolution.json`에 기록합니다.
+
 런타임 단계가 결과 생성 전에 중단되면
 `tools/v5_1_runtime_diagnostic.py`가 proot, Ubuntu, 실행 파일, 동적
 의존성, MCP 초기화와 필수 도구의 성공 여부만

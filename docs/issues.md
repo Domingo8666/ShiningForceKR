@@ -35,7 +35,8 @@
 | SFKR-027 | 단일 프레임 장벽으로 완료한 Start·2번 3,300프레임 경로에서 상위 정적 조회표 후보와 패치된 디코더 execute 후보가 모두 무히트 | fixed-emulator | 동기화된 무입력 attract intro에서 0x33FA execute hit와 PC 0x3406의 slot 1·bank 8 read를 확인 |
 | SFKR-028 | 무입력·버튼 경로 매트릭스가 안전 상한 1,000을 넘는 단일 12,000프레임 요청으로 즉시 종료 | fixed-static | 무입력 총예산은 유지하고 1,000프레임 12구간으로 나누며 renderer schema v3 실패 영수증을 유지 |
 | SFKR-029 | 디코더 진입 뒤 첫 64개 표본이 모두 bank 8 source-region read여서 한국어 Huffman bank 0x20 전환 전에 수집 종료 | fixed-emulator | source-region 표본을 8개로 제한한 후 mapper bank 0x20의 Huffman vector/tree 실제 읽기를 수집 |
-| SFKR-030 | 실제 stream·vector·tree read 좌표는 확보했지만 공개 증거에 피연산자 역할이 없어 정확한 압축 엔트리 경계를 확정할 수 없음 | investigating | opcode는 S25U 로컬에만 두고 고정된 Z80 operand-kind 토큰으로 읽기 역할을 분리 |
+| SFKR-030 | 실제 stream·vector·tree read 좌표는 확보했지만 공개 증거에 피연산자 역할이 없어 정확한 압축 엔트리 경계를 확정할 수 없음 | fixed-static | opcode는 S25U 로컬에만 두고 고정 operand-kind와 BPS 제한 왕복으로 겹치지 않는 실제 인트로 스트림 4개를 확정 |
+| SFKR-031 | 런타임 확정 인트로 스트림의 첫 시험 문장 화면 증거가 아직 없음 | investigating | 54비트 첫 스트림에 39비트 `한다`를 Expected Write로 넣고 동일 attract 경로의 S25U PNG를 로컬 캡처 |
 
 ## 테스트 원칙
 

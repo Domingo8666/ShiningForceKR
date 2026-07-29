@@ -34,6 +34,9 @@ try:
         load_trees_at,
     )
     from .v5_1_consumer import verify_target_identity
+    from .v5_1_decoder_stream_resolution import (
+        validate_decoder_stream_resolution,
+    )
     from .v5_1_engine import (
         KO_TREE_BANK_BASE,
         KO_VECTOR_ENTRIES,
@@ -60,6 +63,9 @@ except ImportError:  # direct script execution
         load_trees_at,
     )
     from v5_1_consumer import verify_target_identity
+    from v5_1_decoder_stream_resolution import (
+        validate_decoder_stream_resolution,
+    )
     from v5_1_engine import (
         KO_TREE_BANK_BASE,
         KO_VECTOR_ENTRIES,
@@ -75,6 +81,9 @@ except ImportError:  # direct script execution
 DEFAULT_PATCH = Path("patch/Final_Conflict_Japan_to_Korean_v5.1.bps")
 DEFAULT_RESOLUTION = Path(
     "analysis/device/v5_1_latest_consumer_resolution.json"
+)
+DEFAULT_STREAM_RESOLUTION = Path(
+    "analysis/device/v5_1_latest_decoder_stream_resolution.json"
 )
 DEFAULT_TRACE_PLAN = Path("reports/v5_1_emucap_trace_plan.json")
 DEFAULT_OUTPUT_ROM = Path("build/Final_Conflict_Korean_test_phrase.gg")
@@ -203,6 +212,7 @@ def select_runtime_entry(
         raise PatchError("selected compressed target is shared or missing")
     next_targets = [target for target in targets if target > selected_target]
     return {
+        "kind": "lookup-entry",
         "format": selected["format"],
         "alignment_file_offset": int(selected["alignment_file_offset"]),
         "entry_index": entry_index,
@@ -212,6 +222,44 @@ def select_runtime_entry(
         "table_entries": int(table["entries"]),
         "target_alias_count": 1,
         "next_target_file_offset": min(next_targets) if next_targets else None,
+        "all_target_offsets": targets,
+    }
+
+
+def select_runtime_stream(
+    baseline: bytes,
+    resolution: dict[str, object],
+) -> dict[str, object]:
+    validate_decoder_stream_resolution(resolution)
+    if resolution["consumer_evidence_confirmed"] is not True:
+        raise PatchError("runtime decoder stream evidence is not confirmed")
+    if resolution["target_sha256"] != sha256_bytes(baseline):
+        raise PatchError("runtime stream target identity mismatch")
+    selected_index = resolution["selected_stream_index"]
+    streams = resolution["streams"]
+    assert isinstance(selected_index, int) and isinstance(streams, list)
+    selected = streams[selected_index]
+    assert isinstance(selected, dict)
+    targets = [int(item["physical_start"]) for item in streams]
+    selected_target = int(selected["physical_start"])
+    if targets.count(selected_target) != 1:
+        raise PatchError("runtime-selected stream is shared or missing")
+    return {
+        "kind": "runtime-decoder-stream",
+        "target_file_offset": selected_target,
+        "pointer_bank": int(selected["mapped_bank"]),
+        "pointer_address": int(selected["logical_start"]),
+        "target_alias_count": 1,
+        "next_target_file_offset": (
+            None
+            if selected["next_stream_start"] is None
+            else int(selected["next_stream_start"])
+        ),
+        "runtime_instruction_bank": int(selected["instruction_bank"]),
+        "runtime_instruction_pc": int(selected["instruction_pc"]),
+        "runtime_operand_kind": str(selected["operand_kind"]),
+        "runtime_symbol_count": int(selected["symbol_count"]),
+        "runtime_encoded_bits": int(selected["encoded_bits"]),
         "all_target_offsets": targets,
     }
 
@@ -296,6 +344,8 @@ def build_test_patch(
     patch: bytes,
     resolution: dict[str, object],
     trace_plan: dict[str, object],
+    *,
+    stream_resolution: dict[str, object] | None = None,
 ) -> tuple[bytes, bytes, dict[str, object]]:
     if (
         len(source) != EXPECTED_SOURCE_SIZE
@@ -306,10 +356,14 @@ def build_test_patch(
     phrase_plan = build_test_phrase_plan(patch)
     baseline = apply_bps(source, patch)
     verify_target_identity(baseline)
-    runtime_entry = select_runtime_entry(
-        baseline,
-        resolution,
-        trace_plan,
+    runtime_entry = (
+        select_runtime_stream(baseline, stream_resolution)
+        if stream_resolution is not None
+        else select_runtime_entry(
+            baseline,
+            resolution,
+            trace_plan,
+        )
     )
 
     known = bytes((1,)) * len(baseline)
@@ -474,6 +528,11 @@ def main() -> int:
     parser.add_argument("--source-rom", type=Path, required=True)
     parser.add_argument("--patch", type=Path, default=DEFAULT_PATCH)
     parser.add_argument("--resolution", type=Path, default=DEFAULT_RESOLUTION)
+    parser.add_argument(
+        "--stream-resolution",
+        type=Path,
+        default=DEFAULT_STREAM_RESOLUTION,
+    )
     parser.add_argument("--trace-plan", type=Path, default=DEFAULT_TRACE_PLAN)
     parser.add_argument("--output-rom", type=Path, default=DEFAULT_OUTPUT_ROM)
     parser.add_argument("--output-ips", type=Path, default=DEFAULT_OUTPUT_IPS)
@@ -486,14 +545,29 @@ def main() -> int:
     args = parser.parse_args()
 
     resolution_path = _absolute(root, args.resolution)
-    if not resolution_path.exists():
+    stream_resolution_path = _absolute(root, args.stream_resolution)
+    stream_resolution: dict[str, object] | None = None
+    if stream_resolution_path.exists():
+        candidate = _read_json(stream_resolution_path)
+        validate_decoder_stream_resolution(candidate)
+        if candidate["consumer_evidence_confirmed"] is True:
+            stream_resolution = candidate
+    if stream_resolution is None and not resolution_path.exists():
         if args.if_ready:
             print("Test patch not built: runtime consumer resolution is absent.")
             return 0
         raise SystemExit("runtime consumer resolution is absent")
-    resolution = _read_json(resolution_path)
-    validate_consumer_resolution(resolution)
-    if resolution["consumer_evidence_confirmed"] is not True:
+    resolution = (
+        _read_json(resolution_path)
+        if resolution_path.exists()
+        else {}
+    )
+    if stream_resolution is None:
+        validate_consumer_resolution(resolution)
+    if (
+        stream_resolution is None
+        and resolution["consumer_evidence_confirmed"] is not True
+    ):
         if args.if_ready:
             print("Test patch not built: runtime consumer evidence is ambiguous.")
             return 0
@@ -514,6 +588,7 @@ def main() -> int:
         _absolute(root, args.patch).read_bytes(),
         resolution,
         _read_json(_absolute(root, args.trace_plan)),
+        stream_resolution=stream_resolution,
     )
     _write_outputs(
         output_rom,

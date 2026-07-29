@@ -6,6 +6,7 @@ from tools.patch_io import PatchError, sha256_bytes
 from tools.v5_1_test_patch import (
     plan_in_place_write,
     select_runtime_entry,
+    select_runtime_stream,
 )
 
 
@@ -72,6 +73,49 @@ def trace_plan(target_sha256: str) -> dict[str, object]:
     }
 
 
+def confirmed_stream_resolution(target_sha256: str) -> dict[str, object]:
+    return {
+        "artifact_kind": "sanitized-runtime-decoder-stream-resolution",
+        "schema_version": 1,
+        "target_sha256": target_sha256,
+        "status": "decoder-stream-resolved",
+        "streams": [
+            {
+                "physical_start": 0x8000,
+                "logical_start": 0x4000,
+                "mapped_bank": 2,
+                "instruction_bank": 0,
+                "instruction_pc": 0x3406,
+                "operand_kind": "hl-indirect",
+                "decoded_end_exclusive": 0x8006,
+                "next_stream_start": 0x8010,
+                "symbol_count": 12,
+                "encoded_bits": 48,
+                "roundtrip_exact": True,
+            },
+            {
+                "physical_start": 0x8010,
+                "logical_start": 0x4010,
+                "mapped_bank": 2,
+                "instruction_bank": 0,
+                "instruction_pc": 0x3406,
+                "operand_kind": "hl-indirect",
+                "decoded_end_exclusive": 0x8016,
+                "next_stream_start": None,
+                "symbol_count": 12,
+                "encoded_bits": 48,
+                "roundtrip_exact": True,
+            },
+        ],
+        "selected_stream_index": 0,
+        "huffman_vector_read_count": 2,
+        "huffman_tree_read_count": 8,
+        "consumer_evidence_confirmed": True,
+        "translation_build_eligible": False,
+        "next_checkpoint": "build-runtime-selected-test-phrase",
+    }
+
+
 class TestPatchTests(unittest.TestCase):
     def setUp(self) -> None:
         self.baseline = bytearray(b"\xFF" * 0x10000)
@@ -122,6 +166,19 @@ class TestPatchTests(unittest.TestCase):
         )
         self.assertEqual(selected["alignment_file_offset"], 0x100)
         self.assertEqual(selected["target_file_offset"], 0x8000)
+
+    def test_runtime_decoder_stream_is_selected_without_a_guessed_table(
+        self,
+    ) -> None:
+        baseline = bytes(self.baseline)
+        selected = select_runtime_stream(
+            baseline,
+            confirmed_stream_resolution(sha256_bytes(baseline)),
+        )
+        self.assertEqual(selected["kind"], "runtime-decoder-stream")
+        self.assertEqual(selected["target_file_offset"], 0x8000)
+        self.assertEqual(selected["next_target_file_offset"], 0x8010)
+        self.assertEqual(selected["runtime_instruction_pc"], 0x3406)
 
     def test_shared_target_is_rejected(self) -> None:
         self.baseline[0x103:0x106] = bytes.fromhex("02 00 80")

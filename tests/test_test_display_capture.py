@@ -6,6 +6,7 @@ import unittest
 
 from tools.patch_io import PatchError, sha256_bytes
 from tools.v5_1_test_display_capture import (
+    ATTRACT_CAPTURE_SCHEDULE,
     _build_safe_capture,
     _parse_screenshot,
     validate_display_capture,
@@ -36,6 +37,13 @@ def resolution() -> dict[str, object]:
 
 
 class TestDisplayCaptureTests(unittest.TestCase):
+    def test_runtime_stream_capture_waits_for_the_attract_intro(self) -> None:
+        self.assertEqual(ATTRACT_CAPTURE_SCHEDULE, ((1_000, None),) * 12)
+        self.assertEqual(
+            sum(frames for frames, _ in ATTRACT_CAPTURE_SCHEDULE),
+            12_000,
+        )
+
     def test_png_payload_is_verified_before_hashing(self) -> None:
         png, metadata = _parse_screenshot(
             {
