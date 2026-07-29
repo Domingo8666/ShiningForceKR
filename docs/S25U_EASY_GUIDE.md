@@ -31,7 +31,8 @@ bash tools/manage_s25u_autopilot.sh install --interval 60
 
 1. **내 파일** 앱을 엽니다.
 2. `내부 저장공간 > ShiningForceKR > reports`로 이동합니다.
-3. `AUTOPILOT_STATUS.txt`를 먼저 엽니다.
+3. `AUTOPILOT_STATUS.txt`에서 `상태: 실행 중`인지 확인합니다.
+4. `NEXT_STEP.txt`를 열고 적힌 안내만 따르면 됩니다.
 
 ## 사진을 보내야 할 때
 

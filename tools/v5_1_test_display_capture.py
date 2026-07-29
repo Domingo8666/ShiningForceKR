@@ -503,6 +503,42 @@ def _paired_pixel_comparisons(
     }
 
 
+def _next_step_text(
+    comparison: dict[str, object],
+    *,
+    evidence_dir: Path,
+    root: Path,
+) -> str:
+    result = comparison["result"]
+    if result == "no-visible-pixel-change":
+        return (
+            "Shining Force KR 다음 할 일\n\n"
+            "현재 후보는 기준 화면과 한 픽셀도 다르지 않아 자동 탈락했습니다.\n"
+            "자동실행기가 가능한 다음 후보를 계속 확인합니다.\n"
+            "지금 사용자가 할 일은 없습니다.\n"
+        )
+    if result == "visible-pixel-change-human-review-required":
+        relative = evidence_dir.relative_to(root)
+        base = "내부 저장공간 > ShiningForceKR > " + " > ".join(
+            relative.parts
+        )
+        return (
+            "Shining Force KR 다음 할 일\n\n"
+            "기준 화면과 시험 화면의 픽셀 차이가 발견됐습니다.\n"
+            "아래 PNG 3개를 Codex 대화에 올려주세요.\n\n"
+            f"1. {base} > baseline > frame_0090.png\n"
+            f"2. {base} > test > frame_0090.png\n"
+            f"3. {base} > test > after_advance.png\n\n"
+            "ROM 또는 생성 ROM은 올리지 마세요.\n"
+        )
+    return (
+        "Shining Force KR 다음 할 일\n\n"
+        "기준 화면과 시험 화면을 완전하게 짝지어 비교하지 못했습니다.\n"
+        "reports/AUTOPILOT_STATUS.txt와 이 파일의 글자 내용만 보내주세요.\n"
+        "ROM 또는 생성 ROM은 올리지 마세요.\n"
+    )
+
+
 def _target_hit_matches(
     state: dict[str, object],
     target_read: dict[str, object],
@@ -851,6 +887,14 @@ def main() -> int:
         ),
     )
     comparison_path = write_display_comparison(root, comparison)
+    _write_bytes_atomic(
+        root / "reports" / "NEXT_STEP.txt",
+        _next_step_text(
+            comparison,
+            evidence_dir=evidence_dir,
+            root=root,
+        ).encode("utf-8"),
+    )
     local = {
         "baseline": baseline_local,
         "test": test_local,

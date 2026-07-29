@@ -11,6 +11,7 @@ from tools.v5_1_test_display_capture import (
     ATTRACT_CAPTURE_SCHEDULE,
     CAPTURE_FRAMES_AFTER_HIT,
     _build_safe_capture,
+    _next_step_text,
     _paired_pixel_comparisons,
     _parse_screenshot,
     _target_hit_matches,
@@ -237,6 +238,25 @@ class TestDisplayCaptureTests(unittest.TestCase):
         self.assertIsNotNone(post)
         assert post is not None
         self.assertEqual(post["changed_pixels"], 0)
+
+    def test_next_step_names_only_three_pngs_for_human_review(self) -> None:
+        text = _next_step_text(
+            {"result": "visible-pixel-change-human-review-required"},
+            evidence_dir=Path("C:/project/evidence/local/run"),
+            root=Path("C:/project"),
+        )
+        self.assertIn("baseline > frame_0090.png", text)
+        self.assertIn("test > frame_0090.png", text)
+        self.assertIn("test > after_advance.png", text)
+        self.assertIn("ROM 또는 생성 ROM은 올리지 마세요", text)
+
+    def test_next_step_requires_no_user_action_for_exact_no_change(self) -> None:
+        text = _next_step_text(
+            {"result": "no-visible-pixel-change"},
+            evidence_dir=Path("C:/project/evidence/local/run"),
+            root=Path("C:/project"),
+        )
+        self.assertIn("지금 사용자가 할 일은 없습니다", text)
 
 
 if __name__ == "__main__":
