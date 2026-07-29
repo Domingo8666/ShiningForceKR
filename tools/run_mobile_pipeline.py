@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""Run the safe S25U preparation pipeline for ShiningForceKR in one command."""
+
+from __future__ import annotations
+
+import argparse
+from datetime import datetime, timezone
+import json
+from pathlib import Path
+
+try:
+    from .analyze_v5_1 import (
+        EXPECTED_PATCH_SHA256,
+        EXPECTED_PATCH_SIZE,
+        EXPECTED_SOURCE_SHA256,
+        EXPECTED_SOURCE_SIZE,
+        make_report,
+    )
+    from .patch_io import apply_bps, sha256_bytes
+    from .sfgfc_huffman import verified_overlay
+    from .v5_1_engine import analyze_patch, to_markdown
+except ImportError:  # direct script execution
+    from analyze_v5_1 import (
+        EXPECTED_PATCH_SHA256,
+        EXPECTED_PATCH_SIZE,
+        EXPECTED_SOURCE_SHA256,
+        EXPECTED_SOURCE_SIZE,
+        make_report,
+    )
+    from patch_io import apply_bps, sha256_bytes
+    from sfgfc_huffman import verified_overlay
+    from v5_1_engine import analyze_patch, to_markdown
+
+
+def _write_text(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def main() -> int:
+    root = Path(__file__).resolve().parents[1]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--rom", type=Path, required=True, help="clean Japanese ROM on S25U")
+    parser.add_argument(
+        "--patch",
+        type=Path,
+        default=root / "patch" / "Final_Conflict_Japan_to_Korean_v5.1.bps",
+    )
+    parser.add_argument(
+        "--english-ips",
+        type=Path,
+        default=root / "patch" / "fcpatch_070706.ips",
+        help="optional verified English reference IPS",
+    )
+    parser.add_argument(
+        "--output-rom",
+        type=Path,
+        default=root / "build" / "Final_Conflict_Korean_v5.1.gg",
+    )
+    parser.add_argument(
+        "--verification-report",
+        type=Path,
+        default=root / "analysis" / "local" / "v5_1_mobile_verification.md",
+    )
+    parser.add_argument(
+        "--engine-report",
+        type=Path,
+        default=root / "analysis" / "local" / "v5_1_engine_report.md",
+    )
+    parser.add_argument(
+        "--status-json",
+        type=Path,
+        default=root / "analysis" / "local" / "pipeline_status.json",
+    )
+    parser.add_argument(
+        "--no-rom-output",
+        action="store_true",
+        help="validate in memory without writing the patched ROM",
+    )
+    args = parser.parse_args()
+
+    source_path = args.rom.resolve()
+    output_path = args.output_rom.resolve()
+    if not args.no_rom_output and source_path == output_path:
+        raise SystemExit("refusing to overwrite the clean source ROM")
+
+    source = args.rom.read_bytes()
+    patch = args.patch.read_bytes()
+    if len(source) != EXPECTED_SOURCE_SIZE or sha256_bytes(source) != EXPECTED_SOURCE_SHA256:
+        raise SystemExit("clean ROM identity mismatch; refusing to continue")
+    if len(patch) != EXPECTED_PATCH_SIZE or sha256_bytes(patch) != EXPECTED_PATCH_SHA256:
+        raise SystemExit("v5.1 BPS identity mismatch; refusing to continue")
+
+    engine = analyze_patch(patch)
+    target = apply_bps(source, patch)
+    target_sha256 = sha256_bytes(target)
+
+    if not args.no_rom_output:
+        args.output_rom.parent.mkdir(parents=True, exist_ok=True)
+        args.output_rom.write_bytes(target)
+
+    _write_text(
+        args.verification_report,
+        make_report(source, target, patch, args.rom),
+    )
+    _write_text(args.engine_report, to_markdown(engine))
+
+    english: dict[str, object]
+    if args.english_ips.exists():
+        _, _, trees = verified_overlay(args.english_ips)
+        english = {
+            "status": "pass",
+            "path": args.english_ips.name,
+            "populated_trees": len(trees),
+            "empty_trees": 256 - len(trees),
+        }
+    else:
+        english = {
+            "status": "skipped",
+            "reason": "verified English IPS not present; run tools/fetch_fc_english_patch.py",
+        }
+
+    status = {
+        "generated_utc": datetime.now(timezone.utc).isoformat(),
+        "source": {
+            "name": args.rom.name,
+            "size": len(source),
+            "sha256": sha256_bytes(source),
+        },
+        "target": {
+            "written": not args.no_rom_output,
+            "name": None if args.no_rom_output else args.output_rom.name,
+            "size": len(target),
+            "sha256": target_sha256,
+            "crc32": engine["patch"]["target_crc32"],
+        },
+        "checks": {
+            "clean_source_identity": "pass",
+            "bps_identity_and_crc": "pass",
+            "korean_huffman_vector": "pass",
+            "korean_font_runtime": "pass",
+            "english_reference": english,
+            "script_lookup": "investigating",
+            "token_semantics": "investigating",
+            "emulator_cold_boot": "not_run",
+        },
+        "translation_build_eligible": False,
+        "next_checkpoint": "trace the v5.1 script consumer and prove entry lookup coordinates",
+    }
+    _write_text(
+        args.status_json,
+        json.dumps(status, ensure_ascii=False, indent=2) + "\n",
+    )
+
+    print("S25U pipeline checks passed.")
+    if args.no_rom_output:
+        print("Patched ROM was validated in memory and not written.")
+    else:
+        print(f"Built local ROM: {args.output_rom}")
+    print(f"Verification report: {args.verification_report}")
+    print(f"Engine report: {args.engine_report}")
+    print(f"Pipeline status: {args.status_json}")
+    print("Script lookup remains investigating; no translation was marked build-eligible.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -32,12 +32,16 @@ v5.1은 최종판이 아니라 재작업용 진단 기준입니다.
 4. Huffman 벡터 0x29C3F, 256개 엔트리와 221개 트리 확인
 5. 독립 BPS/IPS/Huffman Python 파서와 합성 테스트 추가
 6. ROM과 외부 IPS가 Git에 올라가지 않도록 규칙 강화
+7. 한국어 v5.1 벡터를 0x80100에서 확인하고 51개 트리 전부 파싱
+8. 한국어 심벌/트리 구간 0x80300..0x808D3 확정
+9. 244엔트리 글꼴 페이지 매핑과 뱅크 0x22..0x5E 배치 확인
+10. S25U 원클릭 검증 파이프라인과 실제 BPS 회귀 테스트 추가
 
 ## 현재 체크포인트
 
-- 실제 스크립트 조회표와 뱅크 선택 규칙
-- 0x80 이상 단어 사전 확장
-- And so began Mishaela's new ambition... 의 ROM 기반 디코딩
+- v5.1 실제 스크립트 조회표와 뱅크 선택 소비 코드
+- 한국어 문맥 0x00..0x20과 제어 심벌의 화면 의미
+- And so began Mishaela's new ambition... 및 기존 한국어 문장의 정확한 엔트리 ID
 
 조회표 없이 압축 뱅크의 모든 바이트를 시작점으로 읽는 방식은 거짓 양성이 많아 사용하지 않습니다.
 
@@ -46,24 +50,18 @@ v5.1은 최종판이 아니라 재작업용 진단 기준입니다.
 ~~~sh
 cd ~/storage/shared/ShiningForceKR
 git pull --ff-only
-python -m unittest discover -s tests -v
-python tools/fetch_fc_english_patch.py
-python tools/sfgfc_huffman.py stats
-python tools/analyze_v5_1.py \
-  --rom original/원본파일.gg \
-  --output build/Final_Conflict_Korean_v5.1.gg \
-  --report analysis/local_v5_1_diff_report.md
+python tools/run_mobile_pipeline.py --rom "original/원본파일.gg"
 ~~~
 
-마지막 명령의 원본 파일명만 실제 이름으로 바꿉니다. 해시가 다르면 중단됩니다.
+이 명령은 ROM과 보고서를 S25U 로컬의 build/ 및 analysis/local/에만 생성합니다. 원본 ROM은 덮어쓰지 않으며 Git 대상에서 제외됩니다.
 
 ## 다음 순서
 
-1. S25U에서 검증된 v5.1 대상 ROM과 로컬 보고서를 생성합니다.
-2. 소비 코드를 역추적해 조회표를 확정합니다.
-3. 단어 사전을 추출하고 토큰을 확장합니다.
-4. 목표 인트로 문장을 ROM에서 정확히 디코딩합니다.
-5. 왕복 인코딩 검증 뒤 한국어 삽입을 재개합니다.
+1. S25U 원클릭 파이프라인으로 v5.1 대상 ROM과 로컬 보고서를 생성합니다.
+2. 0x87000 런타임과 기존 호출부를 역추적해 조회표를 확정합니다.
+3. 한국어 문맥 심벌과 글꼴 페이지 선택 규칙을 엔트리별로 연결합니다.
+4. 목표 인트로 문장과 기존 한국어 문장을 정확한 엔트리 ID로 재현합니다.
+5. 왕복 인코딩과 사람 검수 뒤 한국어 삽입을 재개합니다.
 6. 콜드 부팅 기준으로 SFKR-001부터 SFKR-007까지 에뮬레이터 검증합니다.
 
 ## 금지 사항

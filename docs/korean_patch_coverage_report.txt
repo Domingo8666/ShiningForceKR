@@ -1,3 +1,7 @@
+WARNING: 이 파일은 조회표를 확인하지 않은 과거 휴리스틱 결과입니다.
+total_script_entries와 translated_entries 수치는 완료율이나 빌드 근거로 사용하지 않습니다.
+현재 확정 근거는 analysis/v5_1_engine_layout.md를 참조하십시오.
+
 Korean patch coverage report
 total_script_entries=1492
 translated_entries=103

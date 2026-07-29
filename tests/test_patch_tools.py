@@ -2,8 +2,16 @@ from __future__ import annotations
 
 import unittest
 import zlib
+from pathlib import Path
 
-from tools.patch_io import PatchError, apply_bps, apply_ips, inspect_bps, parse_ips
+from tools.patch_io import (
+    PatchError,
+    apply_bps,
+    apply_ips,
+    extract_bps_target_literals,
+    inspect_bps,
+    parse_ips,
+)
 from tools.sfgfc_huffman import (
     BANK_BASE,
     CANDIDATE_END_SYMBOL,
@@ -12,8 +20,10 @@ from tools.sfgfc_huffman import (
     build_ips_overlay,
     decode_symbols,
     load_trees,
+    load_trees_at,
     render_basic,
 )
+from tools.v5_1_engine import analyze_patch
 
 
 def bps_varint(value: int) -> bytes:
@@ -63,6 +73,10 @@ class PatchIOTests(unittest.TestCase):
         self.assertEqual(report.action_counts, (1, 1, 1, 1))
         self.assertEqual(apply_bps(source, patch), target)
 
+        sparse = extract_bps_target_literals(patch)
+        self.assertEqual(sparse.data[3:5], b"XY")
+        self.assertEqual(sparse.known, b"\x00\x00\x00\x01\x01\x00\x00\x00\x00\x00")
+
     def test_bps_rejects_wrong_source(self) -> None:
         source = b"abc"
         target = b"abc"
@@ -106,6 +120,24 @@ class HuffmanTests(unittest.TestCase):
         self.assertEqual(symbols, [0x0C, CANDIDATE_END_SYMBOL])
         self.assertEqual(bits, 2)
         self.assertEqual(render_basic(symbols), "A<END>")
+
+
+class KoreanEngineTests(unittest.TestCase):
+    def test_v5_1_literal_extension_layout(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        patch = (root / "patch" / "Final_Conflict_Japan_to_Korean_v5.1.bps").read_bytes()
+        result = analyze_patch(patch)
+
+        self.assertEqual(result["status"], "verified-static")
+        self.assertEqual(result["patch"]["extension_known_without_source"], 0xFC000)
+        self.assertEqual(result["huffman"]["vector_file_offset"], 0x80100)
+        self.assertEqual(result["huffman"]["populated_trees"], 51)
+        self.assertEqual(result["huffman"]["empty_trees"], 205)
+        self.assertEqual(result["huffman"]["tree_data_start"], 0x80300)
+        self.assertEqual(result["huffman"]["tree_data_end_exclusive"], 0x808D3)
+        self.assertEqual(result["font_runtime"]["page_map_entries"], 244)
+        self.assertEqual(len(result["font_runtime"]["full_0x3000_payload_banks"]), 60)
+        self.assertFalse(result["checkpoints"]["translation_build_eligible"])
 
 
 if __name__ == "__main__":

@@ -24,43 +24,32 @@ Android 내 파일 앱: 내부 저장공간/ShiningForceKR
 ## 현재 기술 상태
 
 - v5.1 BPS의 크기, 체크섬, 액션 구성과 ROM 확장 구간을 검증했습니다.
-- 영어판 IPS의 Huffman 벡터 위치 0x29C3F와 256개 엔트리를 확인했습니다.
-- 221개 트리가 존재하고 35개가 비어 있음을 독립 파서로 재현합니다.
-- 0xC9는 시작/종료 심벌 후보입니다. 실제 스크립트 조회표와 단어 사전은 아직 확인 중입니다.
-- 목표 문장 And so began Mishaela's new ambition... 은 조회표와 사전 검증 전까지 완료로 표시하지 않습니다.
+- 한국어 v5.1의 재배치 Huffman 벡터는 0x80100이며 51개 문맥 트리를 가집니다.
+- 한국어 심벌/트리 데이터 0x80300..0x808D3과 244엔트리 글꼴 페이지 매핑을 독립 파서로 재현합니다.
+- 영어판 IPS의 별도 Huffman 벡터 0x29C3F에는 221개 트리가 있습니다.
+- 실제 스크립트 조회표와 토큰 의미는 아직 소비 코드에서 확인 중입니다.
+- 조회표가 확정되기 전에는 임의 시작점 디코딩이나 기존 1,492개 추정 목록을 번역 완료 근거로 쓰지 않습니다.
 
-근거는 analysis/compression_research.md 와 analysis/v5_1_patch_layout.md 에 있습니다.
+근거는 analysis/compression_research.md, analysis/v5_1_patch_layout.md, analysis/v5_1_engine_layout.md 에 있습니다.
 
-## 모바일 검증 순서
+## S25U 자동 준비와 검증
 
-1. 도구 테스트
-
-~~~sh
-python -m unittest discover -s tests -v
-~~~
-
-2. 영어 참조 IPS 받기 및 검증
+내부 저장공간/ShiningForceKR에서 원본 파일명만 맞춰 한 번 실행합니다.
 
 ~~~sh
-python tools/fetch_fc_english_patch.py
+cd ~/storage/shared/ShiningForceKR
+git pull --ff-only
+python tools/run_mobile_pipeline.py --rom "original/원본파일.gg"
 ~~~
 
-3. 영어판 Huffman 트리 검증
+이 명령은 원본과 BPS 식별, 대상 CRC, 한국어 Huffman 블록, 글꼴 런타임을 검증하고 다음 로컬 결과를 만듭니다.
 
-~~~sh
-python tools/sfgfc_huffman.py stats
-~~~
+- build/Final_Conflict_Korean_v5.1.gg
+- analysis/local/v5_1_mobile_verification.md
+- analysis/local/v5_1_engine_report.md
+- analysis/local/pipeline_status.json
 
-4. 깨끗한 일본판 ROM으로 v5.1 검증 및 로컬 빌드
-
-~~~sh
-python tools/analyze_v5_1.py \
-  --rom original/원본파일.gg \
-  --output build/Final_Conflict_Korean_v5.1.gg \
-  --report analysis/local_v5_1_diff_report.md
-~~~
-
-원본이 정확한 파일이 아니면 도구가 중단됩니다. 생성 ROM은 Git에서 제외됩니다.
+ROM을 쓰지 않고 메모리 검증만 하려면 --no-rom-output을 붙입니다. 영어 참조 IPS가 없으면 그 단계만 skipped로 기록되며, python tools/fetch_fc_english_patch.py로 받은 뒤 다시 실행할 수 있습니다. 스크립트 조회표와 토큰 의미가 확정되기 전에는 파이프라인이 translation_build_eligible을 false로 유지합니다.
 
 ## 안전 규칙
 

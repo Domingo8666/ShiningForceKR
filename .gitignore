@@ -24,6 +24,7 @@ patch/fcpatch_070706.zip
 
 # Generated
 build/*
+analysis/local/
 backup/*
 logs/*.log
 __pycache__/

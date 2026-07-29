@@ -123,6 +123,79 @@ def inspect_bps(patch: bytes) -> BPSReport:
     )
 
 
+@dataclass(frozen=True)
+class BPSSparseTarget:
+    """BPS target bytes plus a mask identifying source-independent bytes.
+
+    A mask byte is one only when the corresponding target byte can be recovered
+    from the patch without possessing the copyrighted source image.
+    """
+
+    report: BPSReport
+    data: bytes
+    known: bytes
+
+
+def extract_bps_target_literals(patch: bytes) -> BPSSparseTarget:
+    """Reconstruct every target byte that is derivable from the BPS alone.
+
+    SourceRead and SourceCopy output remains unknown. TargetRead is known, and
+    TargetCopy propagates the known/unknown state byte by byte so overlapping
+    copies retain normal BPS semantics. The patch CRC and action stream are
+    validated by inspect_bps first.
+    """
+
+    report = inspect_bps(patch)
+    footer = len(patch) - 12
+    position = 4
+    _, position = _read_bps_varint(patch, position, footer)
+    _, position = _read_bps_varint(patch, position, footer)
+    metadata_size, position = _read_bps_varint(patch, position, footer)
+    position += metadata_size
+
+    output = bytearray()
+    known = bytearray()
+    source_relative = 0
+    target_relative = 0
+    while len(output) < report.target_size:
+        instruction, position = _read_bps_varint(patch, position, footer)
+        action = instruction & 3
+        length = (instruction >> 2) + 1
+        if len(output) + length > report.target_size:
+            raise PatchError("BPS action exceeds declared target size")
+
+        if action == 0:  # SourceRead
+            output.extend(b"\x00" * length)
+            known.extend(b"\x00" * length)
+        elif action == 1:  # TargetRead
+            if position + length > footer:
+                raise PatchError("truncated BPS TargetRead data")
+            output.extend(patch[position : position + length])
+            known.extend(b"\x01" * length)
+            position += length
+        elif action == 2:  # SourceCopy
+            encoded, position = _read_bps_varint(patch, position, footer)
+            source_relative += _decode_bps_signed(encoded)
+            if source_relative < 0 or source_relative + length > report.source_size:
+                raise PatchError("BPS SourceCopy exceeds source")
+            output.extend(b"\x00" * length)
+            known.extend(b"\x00" * length)
+            source_relative += length
+        else:  # TargetCopy
+            encoded, position = _read_bps_varint(patch, position, footer)
+            target_relative += _decode_bps_signed(encoded)
+            if target_relative < 0:
+                raise PatchError("BPS TargetCopy has a negative source offset")
+            for _ in range(length):
+                if target_relative >= len(output):
+                    raise PatchError("BPS TargetCopy reads beyond produced target")
+                output.append(output[target_relative])
+                known.append(known[target_relative])
+                target_relative += 1
+
+    return BPSSparseTarget(report=report, data=bytes(output), known=bytes(known))
+
+
 def apply_bps(source: bytes, patch: bytes) -> bytes:
     report = inspect_bps(patch)
     if len(source) != report.source_size:

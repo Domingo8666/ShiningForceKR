@@ -85,8 +85,9 @@ def parse_tree(
     known: bytes,
     previous_symbol: int,
     pointer: int,
+    bank_base: int = BANK_BASE,
 ) -> ParsedTree:
-    structure_offset = BANK_BASE + (pointer & 0x3FFF)
+    structure_offset = bank_base + (pointer & 0x3FFF)
     bit_index = 0
     leaves: list[HuffmanNode] = []
     node_count = 0
@@ -121,15 +122,38 @@ def parse_tree(
     )
 
 
-def load_trees(data: bytes, known: bytes) -> dict[int, ParsedTree]:
-    _require_known(known, VECTOR_OFFSET, VECTOR_OFFSET + VECTOR_SIZE, "Huffman vector")
+def load_trees_at(
+    data: bytes,
+    known: bytes,
+    vector_offset: int,
+    bank_base: int,
+    entries: int = VECTOR_ENTRIES,
+) -> dict[int, ParsedTree]:
+    """Load a context vector located in any 16 KiB ROM bank."""
+
+    _require_known(
+        known,
+        vector_offset,
+        vector_offset + entries * 2,
+        "Huffman vector",
+    )
     trees: dict[int, ParsedTree] = {}
-    for previous_symbol in range(VECTOR_ENTRIES):
-        at = VECTOR_OFFSET + previous_symbol * 2
+    for previous_symbol in range(entries):
+        at = vector_offset + previous_symbol * 2
         pointer = int.from_bytes(data[at : at + 2], "little")
         if pointer != 0xFFFF:
-            trees[previous_symbol] = parse_tree(data, known, previous_symbol, pointer)
+            trees[previous_symbol] = parse_tree(
+                data,
+                known,
+                previous_symbol,
+                pointer,
+                bank_base=bank_base,
+            )
     return trees
+
+
+def load_trees(data: bytes, known: bytes) -> dict[int, ParsedTree]:
+    return load_trees_at(data, known, VECTOR_OFFSET, BANK_BASE)
 
 
 def decode_symbols(
