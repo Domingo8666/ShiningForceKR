@@ -60,3 +60,6 @@ cd ~/storage/shared/ShiningForceKR
 bash tools/manage_s25u_autopilot.sh status
 bash tools/manage_s25u_autopilot.sh logs
 ~~~
+
+`logs`는 자동작업 요약 뒤에 실행 상세의 마지막 80줄도 함께 보여줍니다.
+Codex가 요청했을 때만 이 화면을 캡처하면 됩니다.

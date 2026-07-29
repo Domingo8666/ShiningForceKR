@@ -82,6 +82,39 @@ class S25UAutopilotTests(unittest.TestCase):
             RUNTIME_STAGE,
         )
 
+    def test_confirmed_stream_skips_redundant_runtime_research(self) -> None:
+        self.assertIn("decoder_selection_ready()", RUNTIME_STAGE)
+        self.assertIn(
+            "using the confirmed decoder stream",
+            RUNTIME_STAGE,
+        )
+        self.assertLess(
+            RUNTIME_STAGE.index("if decoder_selection_ready; then"),
+            RUNTIME_STAGE.index("python tools/run_s25u_runtime_probe.py"),
+        )
+
+    def test_runtime_stage_records_precise_substage_failures(self) -> None:
+        self.assertIn("v5_1_runtime_stage_failure.py", RUNTIME_STAGE)
+        for stage in (
+            "runtime-probe",
+            "runtime-hit-resolver",
+            "renderer-probe",
+            "decoder-stream-resolution",
+            "route-capture",
+            "test-patch",
+            "test-display-capture",
+            "display-comparison",
+        ):
+            self.assertIn(f"record_stage_failure {stage}", RUNTIME_STAGE)
+
+    def test_manager_logs_include_launcher_details(self) -> None:
+        self.assertIn("tail -n 40 \"$private_log\"", MANAGER)
+        self.assertIn("tail -n 80 \"$launcher_log\"", MANAGER)
+
+    def test_runtime_stage_replaces_stale_next_step_text(self) -> None:
+        self.assertIn("새 후보를 자동 검사하고 있습니다", RUNTIME_STAGE)
+        self.assertIn("자동 검사 실패 지점을 안전하게 기록했습니다", RUNTIME_STAGE)
+
 
 if __name__ == "__main__":
     unittest.main()

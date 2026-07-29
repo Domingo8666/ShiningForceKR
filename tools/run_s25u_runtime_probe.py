@@ -96,6 +96,14 @@ RUNTIME_FAILURE_STAGES = {
     "candidate-probe",
     "target-followup",
     "mcp-close",
+    "runtime-probe",
+    "runtime-hit-resolver",
+    "renderer-probe",
+    "decoder-stream-resolution",
+    "route-capture",
+    "test-patch",
+    "test-display-capture",
+    "display-comparison",
 }
 RUNTIME_FAILURE_KINDS = {
     "invalid-json",

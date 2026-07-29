@@ -293,11 +293,18 @@ case "$action" in
     write_status
     ;;
   logs)
+    printed=0
     if [ -s "$private_log" ]; then
+      echo "=== 자동작업 요약 ==="
       tail -n 40 "$private_log"
-    elif [ -s "$launcher_log" ]; then
-      tail -n 40 "$launcher_log"
-    else
+      printed=1
+    fi
+    if [ -s "$launcher_log" ]; then
+      echo "=== 실행 상세(마지막 80줄) ==="
+      tail -n 80 "$launcher_log"
+      printed=1
+    fi
+    if [ "$printed" -eq 0 ]; then
       echo "No S25U autopilot log is available yet"
     fi
     ;;
