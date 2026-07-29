@@ -17,6 +17,7 @@
 | SFKR-009 | 한국어 문맥·제어 심벌 의미 미확정 | investigating | 확인된 51개 문맥을 글꼴 페이지·화면 동작과 연결 |
 | SFKR-010 | 목표 인트로 문장 ROM 디코딩 미완료 | blocked | 정확한 조회표 엔트리 ID 확인 뒤 재개 |
 | SFKR-011 | 추적 계획 추가 뒤 모바일 파이프라인 SyntaxError | fixed-static | compileall 및 파이프라인 import 회귀 통과 후 S25U 재실행 |
+| SFKR-012 | 0x4000/0x8000의 흔한 JP/CALL이 0x010000 후보를 과대평가 | fixed-static | 제어 흐름 점수 제외와 슬롯 시작 주소 감점 뒤 S25U 후보 재산정 |
 
 ## 테스트 원칙
 

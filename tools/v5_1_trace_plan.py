@@ -36,6 +36,14 @@ REFERENCE_SHAPES = (
     ("ld_iy_nn", b"\xFD\x21"),
 )
 
+POINTER_LOAD_SHAPES = frozenset(
+    {"ld_bc_nn", "ld_de_nn", "ld_hl_nn", "ld_sp_nn", "ld_ix_nn", "ld_iy_nn"}
+)
+CONTROL_FLOW_SHAPES = frozenset({"jp_nn", "call_nn"})
+ABSOLUTE_MEMORY_SHAPES = frozenset(
+    {"ld_mem_a", "ld_a_mem", "ld_mem_hl", "ld_hl_mem"}
+)
+
 
 def _hex(value: int, width: int = 6) -> str:
     return f"0x{value:0{width}X}"
@@ -96,30 +104,51 @@ def _reference_shapes(
 ) -> dict[str, object]:
     encoded = logical_address.to_bytes(2, "little")
     examples: list[dict[str, object]] = []
-    count = 0
-    coupled = 0
+    counts = {
+        "pointer_load": 0,
+        "control_flow": 0,
+        "absolute_memory": 0,
+    }
+    total = 0
+    nearby_bank_total = 0
+    bank_coupled_pointer_loads = 0
     for shape, prefix in REFERENCE_SHAPES:
+        if shape in POINTER_LOAD_SHAPES:
+            category = "pointer_load"
+        elif shape in CONTROL_FLOW_SHAPES:
+            category = "control_flow"
+        elif shape in ABSOLUTE_MEMORY_SHAPES:
+            category = "absolute_memory"
+        else:
+            raise AssertionError(f"unclassified reference shape: {shape}")
         for at in _find_all(rom, prefix + encoded):
-            count += 1
+            total += 1
+            counts[category] += 1
             left = max(0, at - 24)
             right = min(len(rom), at + len(prefix) + 2 + 24)
             has_bank_literal = rom.find(bytes((0x3E, expected_bank)), left, right) >= 0
-            coupled += int(has_bank_literal)
+            nearby_bank_total += int(has_bank_literal)
+            if category == "pointer_load" and has_bank_literal:
+                bank_coupled_pointer_loads += 1
             if len(examples) < MAX_REFERENCE_EXAMPLES:
                 examples.append(
                     {
                         "code_file_offset": at,
                         "instruction_shape": shape,
+                        "category": category,
                         "nearby_ld_a_bank_literal": has_bank_literal,
                     }
                 )
     return {
-        "candidate_count": count,
-        "nearby_bank_literal_count": coupled,
+        "candidate_count": total,
+        "pointer_load_count": counts["pointer_load"],
+        "control_flow_count": counts["control_flow"],
+        "absolute_memory_count": counts["absolute_memory"],
+        "nearby_bank_literal_count": nearby_bank_total,
+        "bank_coupled_pointer_load_count": bank_coupled_pointer_loads,
         "examples": examples,
-        "examples_truncated": count > len(examples),
+        "examples_truncated": total > len(examples),
     }
-
 
 def _table_hypotheses(consumer: dict[str, object]) -> list[dict[str, object]]:
     tables = consumer["pointer_table_candidates"]
@@ -152,7 +181,12 @@ def build_trace_plan(rom: bytes, consumer: dict[str, object]) -> dict[str, objec
         extent = int(item["end_exclusive"]) - int(item["file_offset"])
         mappings = logical_mapping_hypotheses(int(item["file_offset"]), extent)
         reference_total = 0
-        coupled_total = 0
+        pointer_load_total = 0
+        control_flow_total = 0
+        absolute_memory_total = 0
+        nearby_bank_total = 0
+        coupled_pointer_total = 0
+        generic_slot_base = False
         for mapping in mappings:
             refs = _reference_shapes(
                 rom,
@@ -161,18 +195,39 @@ def build_trace_plan(rom: bytes, consumer: dict[str, object]) -> dict[str, objec
             )
             mapping["reference_shapes"] = refs
             reference_total += int(refs["candidate_count"])
-            coupled_total += int(refs["nearby_bank_literal_count"])
+            pointer_load_total += int(refs["pointer_load_count"])
+            control_flow_total += int(refs["control_flow_count"])
+            absolute_memory_total += int(refs["absolute_memory_count"])
+            nearby_bank_total += int(refs["nearby_bank_literal_count"])
+            coupled_pointer_total += int(refs["bank_coupled_pointer_load_count"])
+            generic_slot_base = generic_slot_base or int(mapping["logical_start"]) in (
+                0x4000,
+                0x8000,
+            )
+
+        # Raw jp/call shapes at 0x4000 or 0x8000 are common banked-code
+        # control flow, not evidence that the candidate is a data table.
+        # Keep them in the report but exclude them from candidate promotion.
         score = (
             float(item["scanner_score"])
-            + reference_total * 100
-            + coupled_total * 50
+            + min(pointer_load_total, 4) * 12
+            + min(absolute_memory_total, 2) * 4
+            + min(coupled_pointer_total, 3) * 100
+            - (80 if generic_slot_base and coupled_pointer_total == 0 else 0)
         )
         ranked.append(
             {
                 **item,
                 "logical_mappings": mappings,
                 "reference_shape_count": reference_total,
-                "nearby_bank_literal_count": coupled_total,
+                "pointer_load_shape_count": pointer_load_total,
+                "control_flow_shape_count": control_flow_total,
+                "absolute_memory_shape_count": absolute_memory_total,
+                "nearby_bank_literal_count": nearby_bank_total,
+                "bank_coupled_pointer_load_count": coupled_pointer_total,
+                "generic_slot_base_discounted": (
+                    generic_slot_base and coupled_pointer_total == 0
+                ),
                 "combined_candidate_score": round(score, 2),
             }
         )
@@ -180,7 +235,8 @@ def build_trace_plan(rom: bytes, consumer: dict[str, object]) -> dict[str, objec
     ranked.sort(
         key=lambda item: (
             item["combined_candidate_score"],
-            item["reference_shape_count"],
+            item["bank_coupled_pointer_load_count"],
+            item["pointer_load_shape_count"],
             -item["file_offset"],
         ),
         reverse=True,
@@ -211,7 +267,7 @@ def build_trace_plan(rom: bytes, consumer: dict[str, object]) -> dict[str, objec
             )
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "runtime-trace-plan-ready",
         "source_analysis_sha256": consumer["input"]["sha256"],
         "ranked_consumer_hypotheses": ranked,
@@ -263,23 +319,26 @@ def to_markdown(plan: dict[str, object]) -> str:
         "Status: plan ready; runtime consumer not yet confirmed",
         "",
         "Byte-shaped references only adjust candidate priority. They are not",
-        "disassembly or runtime-consumption proof.",
+        "disassembly or runtime-consumption proof. Common jp/call shapes at slot",
+        "bases 0x4000 and 0x8000 are reported but do not promote a data-table candidate.",
         "",
         "## Ranked consumer hypotheses",
         "",
-        "| Rank | File offset | Family | Entries | Reference shapes | Bank-coupled | Score |",
-        "|---:|---:|---|---:|---:|---:|---:|",
+        "| Rank | File offset | Family | Entries | Pointer loads | Branches | Bank-coupled pointers | Slot-base discount | Score |",
+        "|---:|---:|---|---:|---:|---:|---:|---|---:|",
     ]
     if ranked:
         for rank, item in enumerate(ranked, 1):
             lines.append(
                 f"| {rank} | {_hex(item['file_offset'])} | {item['family']} | "
-                f"{item['entries']} | {item['reference_shape_count']} | "
-                f"{item['nearby_bank_literal_count']} | "
+                f"{item['entries']} | {item['pointer_load_shape_count']} | "
+                f"{item['control_flow_shape_count']} | "
+                f"{item['bank_coupled_pointer_load_count']} | "
+                f"{'yes' if item['generic_slot_base_discounted'] else 'no'} | "
                 f"{item['combined_candidate_score']:.2f} |"
             )
     else:
-        lines.append("| - | - | none | 0 | 0 | 0 | - |")
+        lines.append("| - | - | none | 0 | 0 | 0 | 0 | - | - |")
 
     lines.extend(["", "## Selected watch ranges", ""])
     if selected:
@@ -344,7 +403,10 @@ def to_korean_summary(plan: dict[str, object]) -> str:
             "[소비 코드 2차 분석]",
             f"- 선택된 물리 ROM 후보: {_hex(selected['file_offset'])}",
             f"- 구조: {selected['family']} / {selected['entries']}개 항목",
-            f"- 코드 리터럴 모양 참조: {selected['reference_shape_count']}개",
+            f"- 데이터 포인터 적재 모양: {selected['pointer_load_shape_count']}개",
+            f"- 분기/호출 모양(점수 제외): {selected['control_flow_shape_count']}개",
+            f"- 뱅크 리터럴 결합 포인터: {selected['bank_coupled_pointer_load_count']}개",
+            f"- 슬롯 시작 주소 할인 적용: {'예' if selected['generic_slot_base_discounted'] else '아니요'}",
             f"- 실행 읽기 감시 범위: {mappings}",
             "- 아직 실행 중 읽기 증거가 없으므로 확정 조회표가 아닙니다.",
             "",
