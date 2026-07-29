@@ -8,12 +8,12 @@
     "U+B2E4"
   ],
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "test_target_sha256": "329ad708b9a70320d78e582350fa1b671f291462c165c367f929be42cd7f3411",
+  "test_target_sha256": "c7a076a8df221e934091bd4dd5a1d18646f50e9efb01e1c1a9e91895af2eb770",
   "emulator_version": "3.9.14",
   "cold_boot": true,
   "target_read": {
     "slot": 1,
-    "logical_access": 17506,
+    "logical_access": 17523,
     "expected_bank": 8,
     "mapped_bank": 8,
     "confirmed": true
@@ -29,19 +29,19 @@
       "frame_after_hit": 8,
       "width": 160,
       "height": 144,
-      "png_sha256": "2d3e5a570ab591710467a2a7349d293a779a5b4306f1f6ff01dd9f07a781b471"
+      "png_sha256": "cf51392fd95d361106412404574453d8ac37f4a078c776cc4548f5877b00f183"
     },
     {
       "frame_after_hit": 30,
       "width": 160,
       "height": 144,
-      "png_sha256": "d02b8abe9f72d8a34356b616466d020b8c22b1ffe17c3420ebbe3e20d52abb20"
+      "png_sha256": "1d5423fe0f151981861691f36bb2cc13cd8275d2bebfb9f82064c59de1b604bc"
     },
     {
       "frame_after_hit": 90,
       "width": 160,
       "height": 144,
-      "png_sha256": "ec88bdc48ada3297f3b6118dfe389e63301cf458e38402f0889600d781b4bc17"
+      "png_sha256": "4676c4f4c95d6c2de1dc9e2dd9704d463b214543a13a1b3390fb07bcd05b076d"
     }
   ],
   "post_advance_capture": {
