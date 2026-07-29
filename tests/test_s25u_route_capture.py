@@ -24,6 +24,8 @@ class S25URouteCaptureTests(unittest.TestCase):
                 arguments: dict[str, object] | None = None,
             ) -> dict[str, object]:
                 self.calls.append((name, arguments or {}))
+                if name == "debug_get_status":
+                    return {"paused": True, "at_breakpoint": False}
                 return {}
 
         metadata = [

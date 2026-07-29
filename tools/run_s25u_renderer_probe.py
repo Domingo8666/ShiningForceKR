@@ -14,6 +14,7 @@ try:
         McpStdioClient,
         _capture_state,
         _default_command,
+        _step_frames_and_wait,
     )
     from .v5_1_consumer import verify_target_identity
     from .v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
@@ -28,6 +29,7 @@ except ImportError:  # direct script execution
         McpStdioClient,
         _capture_state,
         _default_command,
+        _step_frames_and_wait,
     )
     from v5_1_consumer import verify_target_identity
     from v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
@@ -136,8 +138,7 @@ def _probe_vector_reads(
                     },
                 )
             while True:
-                client.call("debug_step_frame", {"frames": frames})
-                status = client.call("debug_get_status")
+                status = _step_frames_and_wait(client, frames)
                 if status.get("at_breakpoint") is not True:
                     break
                 state, evidence = _capture_state(client)
@@ -279,8 +280,7 @@ def _capture_decoder_reads(
     seen: set[tuple[int, int, int]] = set()
     try:
         for _ in range(MAX_DECODER_READ_HITS):
-            client.call("debug_step_frame", {"frames": 1})
-            status = client.call("debug_get_status")
+            status = _step_frames_and_wait(client, 1)
             if status.get("at_breakpoint") is not True:
                 break
             state, evidence = _capture_state(client)

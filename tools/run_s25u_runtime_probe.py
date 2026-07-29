@@ -254,7 +254,34 @@ class McpStdioClient:
                 self._process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self._process.kill()
-                self._process.wait(timeout=5)
+        self._process.wait(timeout=5)
+
+
+def _step_frames_and_wait(
+    client: McpStdioClient,
+    frames: int,
+) -> dict[str, object]:
+    """Wait until an asynchronous Gearsystem frame step stops or hits a breakpoint."""
+
+    if not 1 <= frames <= 1000:
+        raise ValueError("frame step must be between 1 and 1000")
+    client.call("debug_step_frame", {"frames": frames})
+    # Gearsystem acknowledges debug_step_frame when it schedules the work, not
+    # after all frames have executed. Polling paused/at_breakpoint is the
+    # adapter-supported completion barrier. PAL is the slowest expected clock.
+    deadline = time.monotonic() + (frames / 50.0) + 5.0
+    while True:
+        status = client.call("debug_get_status")
+        if (
+            status.get("at_breakpoint") is True
+            or status.get("paused") is True
+        ):
+            return status
+        if time.monotonic() >= deadline:
+            raise RuntimeError(
+                f"Gearsystem frame step did not finish within {frames} frames"
+            )
+        time.sleep(0.02)
 
 
 def _watch_ranges(plan: dict[str, object]) -> list[dict[str, int]]:
@@ -776,8 +803,7 @@ def _probe_slot(
                     },
                 )
             while True:
-                client.call("debug_step_frame", {"frames": frames})
-                status = client.call("debug_get_status")
+                status = _step_frames_and_wait(client, frames)
                 if status.get("at_breakpoint") is not True:
                     break
                 hit, evidence = _capture_hit(client, mapping)

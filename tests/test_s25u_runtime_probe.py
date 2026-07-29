@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from tools.run_s25u_runtime_probe import (
     _call_stack_depth,
@@ -13,6 +14,7 @@ from tools.run_s25u_runtime_probe import (
     _runtime_candidate_groups,
     _target_candidates,
     _tool_payload,
+    _step_frames_and_wait,
     _watch_ranges,
 )
 
@@ -52,6 +54,34 @@ class _FakeProbeClient:
 
 
 class S25URuntimeProbeTests(unittest.TestCase):
+    def test_frame_step_waits_for_paused_completion_barrier(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.statuses = iter(
+                    (
+                        {"paused": False, "at_breakpoint": False},
+                        {"paused": True, "at_breakpoint": False},
+                    )
+                )
+                self.calls: list[str] = []
+
+            def call(
+                self,
+                name: str,
+                arguments: dict[str, object] | None = None,
+            ) -> dict[str, object]:
+                self.calls.append(name)
+                if name == "debug_get_status":
+                    return next(self.statuses)
+                return {}
+
+        client = FakeClient()
+        with patch("tools.run_s25u_runtime_probe.time.sleep"):
+            status = _step_frames_and_wait(client, 180)
+        self.assertTrue(status["paused"])
+        self.assertEqual(client.calls[0], "debug_step_frame")
+        self.assertEqual(client.calls.count("debug_get_status"), 2)
+
     def test_watch_ranges_require_trace_schema_five(self) -> None:
         plan = {
             "schema_version": 5,

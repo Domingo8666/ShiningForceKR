@@ -13,7 +13,8 @@ except ImportError:  # direct script execution
     from v5_1_safe_observation import _git, _normalized_remote
 
 ARTIFACT_KIND = "sanitized-runtime-consumer-observation"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+FRAME_SYNC = "debug-status-paused"
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_runtime_observation.json"
 )
@@ -37,6 +38,7 @@ PROBE_KEYS = {
     "emulator",
     "emulator_version",
     "system",
+    "frame_sync",
     "frames_per_slot",
     "slots_attempted",
     "breakpoint_ranges",
@@ -136,8 +138,10 @@ def validate_runtime_observation(observation: dict[str, object]) -> None:
     probe = observation["probe"]
     if not isinstance(probe, dict) or set(probe) != PROBE_KEYS:
         raise ValueError("probe fields do not match the safe schema")
-    for key in ("emulator", "emulator_version", "system"):
+    for key in ("emulator", "emulator_version", "system", "frame_sync"):
         _require_short_token(probe[key], key)
+    if probe["frame_sync"] != FRAME_SYNC:
+        raise ValueError("runtime probe did not use the completion barrier")
     _require_int(probe["frames_per_slot"], "frames_per_slot", 1, 100_000)
     slots = probe["slots_attempted"]
     if (
@@ -220,6 +224,7 @@ def build_runtime_observation(
             "emulator": "Gearsystem",
             "emulator_version": emulator_version,
             "system": "gamegear",
+            "frame_sync": FRAME_SYNC,
             "frames_per_slot": frames_per_slot,
             "slots_attempted": slots_attempted,
             "breakpoint_ranges": breakpoint_ranges,

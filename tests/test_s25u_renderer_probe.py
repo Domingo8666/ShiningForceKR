@@ -21,7 +21,7 @@ class S25URendererProbeTests(unittest.TestCase):
         class FakeClient:
             def __init__(self) -> None:
                 self.calls: list[tuple[str, dict[str, object]]] = []
-                self.status_checks = 0
+                self.step_requests = 0
 
             def call(
                 self,
@@ -29,9 +29,13 @@ class S25URendererProbeTests(unittest.TestCase):
                 arguments: dict[str, object] | None = None,
             ) -> dict[str, object]:
                 self.calls.append((name, arguments or {}))
+                if name == "debug_step_frame":
+                    self.step_requests += 1
                 if name == "debug_get_status":
-                    self.status_checks += 1
-                    return {"at_breakpoint": self.status_checks >= 3}
+                    return {
+                        "at_breakpoint": self.step_requests >= 3,
+                        "paused": self.step_requests < 3,
+                    }
                 return {}
 
         client = FakeClient()

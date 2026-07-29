@@ -15,6 +15,7 @@ try:
         TEXT_ROUTE,
         _consumer_already_confirmed,
         _default_command,
+        _step_frames_and_wait,
     )
     from .v5_1_consumer import verify_target_identity
     from .v5_1_route_capture import build_route_capture, write_route_capture
@@ -30,6 +31,7 @@ except ImportError:  # direct script execution
         TEXT_ROUTE,
         _consumer_already_confirmed,
         _default_command,
+        _step_frames_and_wait,
     )
     from v5_1_consumer import verify_target_identity
     from v5_1_route_capture import build_route_capture, write_route_capture
@@ -89,7 +91,9 @@ def _capture_route(
                 },
             )
             input_count += 1
-        client.call("debug_step_frame", {"frames": frames})
+        status = _step_frames_and_wait(client, frames)
+        if status.get("at_breakpoint") is True:
+            raise RuntimeError("unexpected breakpoint during story-route capture")
         frame_total += frames
         if stage is None:
             continue

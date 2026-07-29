@@ -8,7 +8,8 @@ from pathlib import Path
 import re
 
 ARTIFACT_KIND = "sanitized-text-engine-observation"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
+FRAME_SYNC = "debug-status-paused"
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_renderer_observation.json"
 )
@@ -30,6 +31,7 @@ PROBE_KEYS = {
     "emulator",
     "emulator_version",
     "system",
+    "frame_sync",
     "route",
     "anchor_kind",
     "frame_budget",
@@ -153,10 +155,13 @@ def validate_renderer_observation(
         "emulator",
         "emulator_version",
         "system",
+        "frame_sync",
         "route",
         "anchor_kind",
     ):
         _require_token(probe[key], key)
+    if probe["frame_sync"] != FRAME_SYNC:
+        raise ValueError("renderer probe did not use the completion barrier")
     if probe["anchor_kind"] not in {
         "text-decoder-entry",
         "huffman-vector-read",
@@ -318,6 +323,7 @@ def build_renderer_observation(
             "emulator": "Gearsystem",
             "emulator_version": emulator_version,
             "system": "gamegear",
+            "frame_sync": FRAME_SYNC,
             "route": route,
             "anchor_kind": anchor_kind,
             "frame_budget": frame_budget,

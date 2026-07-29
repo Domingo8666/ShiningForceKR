@@ -25,6 +25,7 @@ try:
         McpStdioClient,
         _capture_state,
         _default_command,
+        _step_frames_and_wait,
     )
     from .v5_1_runtime_hit_resolver import validate_consumer_resolution
     from .v5_1_test_phrase import TEST_PHRASE
@@ -35,6 +36,7 @@ except ImportError:  # direct script execution
         McpStdioClient,
         _capture_state,
         _default_command,
+        _step_frames_and_wait,
     )
     from v5_1_runtime_hit_resolver import validate_consumer_resolution
     from v5_1_test_phrase import TEST_PHRASE
@@ -473,8 +475,7 @@ def _capture_display(
                         "action": "press_and_release",
                     },
                 )
-            client.call("debug_step_frame", {"frames": frames})
-            status = client.call("debug_get_status")
+            status = _step_frames_and_wait(client, frames)
             if status.get("at_breakpoint") is not True:
                 continue
             state, hit_evidence = _capture_state(client)
@@ -496,7 +497,7 @@ def _capture_display(
         if mapped_bank == int(target_read["expected_bank"]):
             previous = 0
             for frame in CAPTURE_FRAMES_AFTER_HIT:
-                client.call("debug_step_frame", {"frames": frame - previous})
+                _step_frames_and_wait(client, frame - previous)
                 png, metadata = _parse_screenshot(client.call("get_screenshot"))
                 filename = f"frame_{frame:04d}.png"
                 _write_bytes_atomic(evidence_dir / filename, png)
@@ -514,7 +515,7 @@ def _capture_display(
                     "action": "press_and_release",
                 },
             )
-            client.call("debug_step_frame", {"frames": 60})
+            _step_frames_and_wait(client, 60)
             png, metadata = _parse_screenshot(client.call("get_screenshot"))
             filename = "after_advance.png"
             _write_bytes_atomic(evidence_dir / filename, png)

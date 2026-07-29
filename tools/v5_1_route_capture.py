@@ -8,7 +8,8 @@ from pathlib import Path
 import re
 
 ARTIFACT_KIND = "sanitized-story-route-capture"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+FRAME_SYNC = "debug-status-paused"
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_route_capture.json"
 )
@@ -30,6 +31,7 @@ PROBE_KEYS = {
     "emulator",
     "emulator_version",
     "system",
+    "frame_sync",
     "route",
     "frame_budget",
 }
@@ -103,10 +105,18 @@ def validate_route_capture(observation: dict[str, object]) -> None:
     probe = observation["probe"]
     if not isinstance(probe, dict) or set(probe) != PROBE_KEYS:
         raise ValueError("route capture probe fields do not match")
-    for key in ("emulator", "emulator_version", "system", "route"):
+    for key in (
+        "emulator",
+        "emulator_version",
+        "system",
+        "frame_sync",
+        "route",
+    ):
         _require_token(probe[key], f"probe.{key}")
     if probe["system"] != "gamegear":
         raise ValueError("route capture system must be gamegear")
+    if probe["frame_sync"] != FRAME_SYNC:
+        raise ValueError("route capture did not use the completion barrier")
     _require_int(probe["frame_budget"], "probe.frame_budget", 1, 100_000)
 
     captures = observation["captures"]
@@ -195,6 +205,7 @@ def build_route_capture(
             "emulator": "Gearsystem",
             "emulator_version": emulator_version,
             "system": "gamegear",
+            "frame_sync": FRAME_SYNC,
             "route": route,
             "frame_budget": frame_budget,
         },

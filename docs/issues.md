@@ -26,7 +26,7 @@
 | SFKR-018 | 정적 상위 3바이트 조회표 후보군 세 곳 모두 입력 구간에서 실제 읽기 0회 | investigating | 추정 조회표 확대를 중단하고 검증된 v5.1 한글 렌더러 호출 좌표 0x003FD5·0x03FFB2의 execute hit와 mapper bank를 역추적 |
 | SFKR-019 | 렌더러 추적 자동화가 콜드 부팅 180프레임 뒤 Start와 1번 버튼을 눌러 무입력 도입 장면을 건너뜀 | fixed-emulator | 여섯 execute breakpoint를 한 콜드 부팅에 동시에 설치하고 12,000프레임 무입력 attract intro를 S25U에서 재추적 완료 |
 | SFKR-020 | 무입력 attract intro에서도 0x003FD5·0x03FFB2의 0x5F 전용 한국어 페이지 렌더러 호출이 0회 | fixed-emulator | 전용 호출보다 앞선 공용 텍스트 디코더 0x003411도 같은 12,000프레임 경로에서 실행되지 않음을 S25U로 확인 |
-| SFKR-021 | 무입력 attract 경로는 추정 텍스트 디코더 0x003411에 도달하지 않고, 이전 새 게임 자동 조작은 확인이 아닌 1번 취소 버튼을 반복함 | fixed-emulator | 콜드 부팅 뒤 Start와 2번 확인 버튼으로 3,300프레임을 진행해도 같은 주소가 실행되지 않음을 S25U에서 확인 |
+| SFKR-021 | 무입력 attract 경로는 추정 텍스트 디코더 0x003411에 도달하지 않고, 이전 새 게임 자동 조작은 확인이 아닌 1번 취소 버튼을 반복함 | revalidate-frame-sync | 초기 Start·2번 3,300프레임 무히트는 비동기 step 완료 장벽이 없어 폐기했으며 `debug_get_status.paused` 동기화로 재검증 |
 | SFKR-022 | 0x003411은 v5.1 BPS의 source-independent 확장 코드나 패치 호출부에서 검증된 진입점이 아닌데 공용 디코더로 가정됨 | fixed-static | 검증된 한국어 Huffman 벡터 물리 0x080100..0x0802FF를 slot 1·2, mapper bank 0x20 조건의 실제 read로 직접 추적 |
 
 ## 테스트 원칙
