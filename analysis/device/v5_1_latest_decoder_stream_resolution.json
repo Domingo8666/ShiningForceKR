@@ -2,7 +2,7 @@
   "artifact_kind": "sanitized-runtime-decoder-stream-resolution",
   "schema_version": 1,
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "status": "decoder-stream-resolved",
+  "status": "decoder-stream-ambiguous",
   "streams": [
     {
       "physical_start": 132062,
@@ -57,10 +57,10 @@
       "roundtrip_exact": true
     }
   ],
-  "selected_stream_index": 1,
+  "selected_stream_index": null,
   "huffman_vector_read_count": 3,
   "huffman_tree_read_count": 13,
-  "consumer_evidence_confirmed": true,
+  "consumer_evidence_confirmed": false,
   "translation_build_eligible": false,
-  "next_checkpoint": "build-runtime-selected-test-phrase"
+  "next_checkpoint": "capture-more-decoder-stream-reads"
 }

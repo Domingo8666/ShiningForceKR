@@ -131,7 +131,7 @@ class S25URendererProbeTests(unittest.TestCase):
                 "physical_pc_after": 0x3407,
                 "classification": "source-region",
             }
-            for index in range(9)
+            for index in range(33)
         ]
         huffman_sample = {
             "slot": 1,
@@ -147,7 +147,7 @@ class S25URendererProbeTests(unittest.TestCase):
         with patch(
             "tools.run_s25u_renderer_probe._step_frames_and_wait",
             side_effect=[
-                *({"at_breakpoint": True} for _ in range(10)),
+                *({"at_breakpoint": True} for _ in range(34)),
                 {"at_breakpoint": False},
             ],
         ), patch(
@@ -165,7 +165,7 @@ class S25URendererProbeTests(unittest.TestCase):
             [item["classification"] for item in captured].count(
                 "source-region"
             ),
-            8,
+            32,
         )
         self.assertIn(huffman_sample, captured)
 
