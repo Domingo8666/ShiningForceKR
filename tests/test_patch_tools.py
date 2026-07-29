@@ -90,8 +90,9 @@ class HuffmanTests(unittest.TestCase):
         vector = bytearray(b"\xFF" * VECTOR_SIZE)
         structure_offset = 0x29E80
         pointer = 0x4000 | (structure_offset - BANK_BASE)
-        at = CANDIDATE_END_SYMBOL * 2
-        vector[at : at + 2] = pointer.to_bytes(2, "little")
+        for previous_symbol in (CANDIDATE_END_SYMBOL, 0x0C):
+            at = previous_symbol * 2
+            vector[at : at + 2] = pointer.to_bytes(2, "little")
 
         patch = b"PATCH"
         patch += ips_record(VECTOR_OFFSET, bytes(vector))
