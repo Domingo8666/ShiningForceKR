@@ -118,17 +118,33 @@ def _selected_table(
     selected: dict[str, object],
 ) -> dict[str, object]:
     cluster = trace_plan.get("selected_alignment_cluster")
-    if not isinstance(cluster, list):
-        raise PatchError("trace plan has no selected alignment cluster")
+    ranked = trace_plan.get("ranked_consumer_hypotheses")
+    candidates = [
+        item
+        for collection in (cluster, ranked)
+        if isinstance(collection, list)
+        for item in collection
+        if isinstance(item, dict)
+    ]
     matches = [
         item
-        for item in cluster
-        if isinstance(item, dict)
-        and item.get("format") == selected["format"]
+        for item in candidates
+        if item.get("format") == selected["format"]
         and item.get("file_offset") == selected["alignment_file_offset"]
     ]
+    matches = list(
+        {
+            (
+                int(item["file_offset"]),
+                int(item["end_exclusive"]),
+                int(item["entries"]),
+                str(item["format"]),
+            ): item
+            for item in matches
+        }.values()
+    )
     if len(matches) != 1:
-        raise PatchError("trace plan does not contain one selected table")
+        raise PatchError("trace plan does not contain one runtime-selected table")
     table = matches[0]
     entries = table.get("entries")
     end_exclusive = table.get("end_exclusive")

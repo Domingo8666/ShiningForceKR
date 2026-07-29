@@ -148,8 +148,8 @@ def validate_runtime_observation(observation: dict[str, object]) -> None:
     ):
         raise ValueError("slots_attempted must contain unique slot IDs")
     ranges = probe["breakpoint_ranges"]
-    if not isinstance(ranges, list) or len(ranges) > 3:
-        raise ValueError("breakpoint_ranges must contain at most three ranges")
+    if not isinstance(ranges, list) or len(ranges) > 12:
+        raise ValueError("breakpoint_ranges must contain at most twelve ranges")
     for index, item in enumerate(ranges):
         _validate_range(item, f"breakpoint_ranges[{index}]")
 

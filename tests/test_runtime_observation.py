@@ -93,6 +93,32 @@ class RuntimeObservationTests(unittest.TestCase):
         self.assertIsNone(observation["hit"])
         validate_runtime_observation(observation)
 
+    def test_multiple_ranked_candidate_ranges_are_safe(self) -> None:
+        candidate_ranges = ranges() + [
+            {
+                "slot": 1,
+                "expected_bank": 6,
+                "logical_start": 0x427D,
+                "logical_end": 0x42E8,
+            },
+            {
+                "slot": 2,
+                "expected_bank": 6,
+                "logical_start": 0x827D,
+                "logical_end": 0x82E8,
+            },
+        ]
+        observation = build_runtime_observation(
+            target_sha256="e" * 64,
+            emulator_version="3.9.14",
+            frames_per_slot=1800,
+            slots_attempted=[0, 1, 2],
+            breakpoint_ranges=candidate_ranges,
+            hit=None,
+        )
+        validate_runtime_observation(observation)
+        self.assertEqual(len(observation["probe"]["breakpoint_ranges"]), 5)
+
     def test_schema_rejects_raw_extra_fields(self) -> None:
         observation = build_runtime_observation(
             target_sha256="c" * 64,

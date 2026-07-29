@@ -17,8 +17,10 @@ try:
     from .patch_io import sha256_file
     from .v5_1_consumer import verify_target_identity
     from .v5_1_runtime_observation import (
+        PUBLISH_RELATIVE_PATH as RUNTIME_OBSERVATION_PATH,
         build_runtime_observation,
         publish_runtime_observation,
+        validate_runtime_observation,
         write_runtime_observation,
     )
     from .v5_1_runtime_hit_resolver import (
@@ -27,12 +29,15 @@ try:
         _parse_trace_line,
         _read_addresses,
     )
+    from .v5_1_trace_plan import logical_mapping_hypotheses
 except ImportError:  # direct script execution
     from patch_io import sha256_file
     from v5_1_consumer import verify_target_identity
     from v5_1_runtime_observation import (
+        PUBLISH_RELATIVE_PATH as RUNTIME_OBSERVATION_PATH,
         build_runtime_observation,
         publish_runtime_observation,
+        validate_runtime_observation,
         write_runtime_observation,
     )
     from v5_1_runtime_hit_resolver import (
@@ -41,6 +46,7 @@ except ImportError:  # direct script execution
         _parse_trace_line,
         _read_addresses,
     )
+    from v5_1_trace_plan import logical_mapping_hypotheses
 
 DEFAULT_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 DEFAULT_TRACE_PLAN = Path("reports/v5_1_emucap_trace_plan.json")
@@ -87,6 +93,7 @@ INPUT_SCHEDULE: tuple[tuple[int, str | None], ...] = (
     (120, "1"),
 )
 MAX_REJECTED_BANK_HITS_PER_SLOT = 64
+MAX_RUNTIME_CANDIDATE_GROUPS = 2
 
 
 def _tool_payload(message: dict[str, object]) -> dict[str, Any]:
@@ -259,6 +266,146 @@ def _watch_ranges(plan: dict[str, object]) -> list[dict[str, int]]:
     if len({item["slot"] for item in output}) != len(output):
         raise ValueError("logical mapping slots must be unique")
     return output
+
+
+def _range_key(mapping: dict[str, int]) -> tuple[int, int, int, int]:
+    return (
+        int(mapping["slot"]),
+        int(mapping["expected_bank"]),
+        int(mapping["logical_start"]),
+        int(mapping["logical_end"]),
+    )
+
+
+def _prior_no_hit_ranges(
+    root: Path,
+    target_sha256: str,
+) -> set[tuple[int, int, int, int]]:
+    path = root / RUNTIME_OBSERVATION_PATH
+    try:
+        observation = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(observation, dict):
+            return set()
+        validate_runtime_observation(observation)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return set()
+    if (
+        observation.get("target_sha256") != target_sha256
+        or observation.get("read_hit_observed") is not False
+    ):
+        return set()
+    probe = observation.get("probe")
+    if not isinstance(probe, dict):
+        return set()
+    ranges = probe.get("breakpoint_ranges")
+    if not isinstance(ranges, list):
+        return set()
+    return {
+        _range_key(item)
+        for item in ranges
+        if isinstance(item, dict)
+    }
+
+
+def _overlap_ratio(
+    left: dict[str, object],
+    right: dict[str, object],
+) -> float:
+    left_start = int(left["file_offset"])
+    left_end = int(left["end_exclusive"])
+    right_start = int(right["file_offset"])
+    right_end = int(right["end_exclusive"])
+    overlap = max(0, min(left_end, right_end) - max(left_start, right_start))
+    shorter = min(left_end - left_start, right_end - right_start)
+    return 0.0 if shorter <= 0 else overlap / shorter
+
+
+def _candidate_cluster(
+    selected: dict[str, object],
+    ranked: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    cluster: list[dict[str, object]] = []
+    for item in ranked:
+        if (
+            item.get("family") != "triplet"
+            or item.get("format") not in {"addr_le_bank", "bank_addr_le"}
+            or int(item.get("entry_width", 0)) != 3
+            or abs(int(item["file_offset"]) - int(selected["file_offset"])) >= 3
+            or _overlap_ratio(selected, item) < 0.90
+        ):
+            continue
+        cluster.append(
+            {
+                "file_offset": int(item["file_offset"]),
+                "end_exclusive": int(item["end_exclusive"]),
+                "format": str(item["format"]),
+                "entries": int(item["entries"]),
+            }
+        )
+    return cluster
+
+
+def _runtime_candidate_groups(
+    plan: dict[str, object],
+    excluded_ranges: set[tuple[int, int, int, int]] | None = None,
+) -> list[dict[str, object]]:
+    if int(plan.get("schema_version", 0)) < 5:
+        raise ValueError("trace plan schema 5 or newer is required")
+    ranked_value = plan.get("ranked_consumer_hypotheses")
+    if not isinstance(ranked_value, list):
+        raise ValueError("trace plan has no ranked consumer hypotheses")
+    ranked = [item for item in ranked_value if isinstance(item, dict)]
+    excluded = excluded_ranges or set()
+    groups: list[dict[str, object]] = []
+    seen_extents: set[tuple[int, int]] = set()
+    for rank, candidate in enumerate(ranked, 1):
+        full_decode = candidate.get("full_decode_probe")
+        if (
+            candidate.get("family") != "triplet"
+            or candidate.get("format") not in {"addr_le_bank", "bank_addr_le"}
+            or int(candidate.get("entry_width", 0)) != 3
+            or not isinstance(full_decode, dict)
+            or int(full_decode.get("bounded_terminations", 0)) < 1
+        ):
+            continue
+        cluster = _candidate_cluster(candidate, ranked)
+        if not cluster:
+            continue
+        watch_start = min(int(item["file_offset"]) for item in cluster)
+        watch_end = max(int(item["end_exclusive"]) for item in cluster)
+        extent = (watch_start, watch_end)
+        if extent in seen_extents:
+            continue
+        seen_extents.add(extent)
+        mappings = [
+            {
+                "slot": int(item["slot"]),
+                "expected_bank": int(item["bank"]),
+                "logical_start": int(item["logical_start"]),
+                "logical_end": int(item["logical_end"]),
+            }
+            for item in logical_mapping_hypotheses(
+                watch_start, watch_end - watch_start
+            )
+        ]
+        if mappings and all(_range_key(item) in excluded for item in mappings):
+            continue
+        groups.append(
+            {
+                "rank": rank,
+                "watch": {
+                    "file_start": watch_start,
+                    "end_exclusive": watch_end,
+                },
+                "alignment_cluster": cluster,
+                "mappings": mappings,
+            }
+        )
+        if len(groups) >= MAX_RUNTIME_CANDIDATE_GROUPS:
+            break
+    if not groups:
+        raise ValueError("no untested decodable triplet candidate groups remain")
+    return groups
 
 
 def _parse_hex(value: object, label: str) -> int:
@@ -641,16 +788,26 @@ def main() -> int:
         raise ValueError("trace plan must be a JSON object")
     if plan.get("source_analysis_sha256") != target_sha256:
         raise ValueError("trace plan and local v5.1 ROM identities do not match")
-    ranges = _watch_ranges(plan)
+    excluded_ranges = _prior_no_hit_ranges(root, target_sha256)
+    candidate_groups = _runtime_candidate_groups(plan, excluded_ranges)
+    planned_ranges = [
+        mapping
+        for group in candidate_groups
+        for mapping in group["mappings"]
+        if isinstance(mapping, dict)
+    ]
 
     client = McpStdioClient(_default_command())
     local_result: dict[str, object] = {
         "target_sha256": target_sha256,
         "trace_plan": str(plan_path),
         "rom": str(rom_path),
+        "candidate_groups": candidate_groups,
+        "planned_ranges": planned_ranges,
         "attempts": [],
     }
     slots_attempted: list[int] = []
+    ranges_attempted: list[dict[str, int]] = []
     safe_hit: dict[str, object] | None = None
     emulator_version = "unknown"
     try:
@@ -681,46 +838,62 @@ def main() -> int:
                 "bank_switch": True,
             },
         )
-        for mapping in ranges:
-            slots_attempted.append(mapping["slot"])
-            hit, evidence, rejected_bank_hits = _probe_slot(client, mapping)
-            attempt: dict[str, object] = {
-                "mapping": mapping,
-                "hit": hit,
-                "evidence": evidence,
-                "rejected_bank_hits": rejected_bank_hits,
-                "target_followup": None,
-            }
-            local_result["attempts"].append(attempt)
-            if hit is not None:
-                found = _find_access(attempt)
-                if found is None:
-                    attempt["target_followup"] = {
-                        "status": "table-read-address-unresolved",
-                        "candidates": [],
-                        "matching_candidate": None,
-                        "logical_access": None,
-                        "trace_record": None,
-                        "hit": None,
-                        "evidence": None,
-                        "events_seen": 0,
-                    }
-                else:
-                    _, _, logical_access = found
-                    watch = plan.get("selected_watch")
-                    assert isinstance(watch, dict)
-                    physical_table_byte = (
-                        int(watch["file_start"])
-                        + logical_access
-                        - int(hit["logical_start"])
-                    )
-                    candidates = _target_candidates(
-                        rom, plan, physical_table_byte
-                    )
-                    attempt["target_followup"] = _follow_target_read(
-                        client, candidates
-                    )
-                safe_hit = hit
+        for group in candidate_groups:
+            watch = group["watch"]
+            alignment_cluster = group["alignment_cluster"]
+            assert isinstance(watch, dict)
+            assert isinstance(alignment_cluster, list)
+            mappings = group["mappings"]
+            assert isinstance(mappings, list)
+            for mapping in mappings:
+                assert isinstance(mapping, dict)
+                ranges_attempted.append(mapping)
+                slot = int(mapping["slot"])
+                if slot not in slots_attempted:
+                    slots_attempted.append(slot)
+                hit, evidence, rejected_bank_hits = _probe_slot(client, mapping)
+                attempt: dict[str, object] = {
+                    "candidate_rank": int(group["rank"]),
+                    "watch": watch,
+                    "alignment_cluster": alignment_cluster,
+                    "mapping": mapping,
+                    "hit": hit,
+                    "evidence": evidence,
+                    "rejected_bank_hits": rejected_bank_hits,
+                    "target_followup": None,
+                }
+                local_result["attempts"].append(attempt)
+                if hit is not None:
+                    found = _find_access(attempt)
+                    if found is None:
+                        attempt["target_followup"] = {
+                            "status": "table-read-address-unresolved",
+                            "candidates": [],
+                            "matching_candidate": None,
+                            "logical_access": None,
+                            "trace_record": None,
+                            "hit": None,
+                            "evidence": None,
+                            "events_seen": 0,
+                        }
+                    else:
+                        _, _, logical_access = found
+                        physical_table_byte = (
+                            int(watch["file_start"])
+                            + logical_access
+                            - int(hit["logical_start"])
+                        )
+                        candidates = _target_candidates(
+                            rom,
+                            {"selected_alignment_cluster": alignment_cluster},
+                            physical_table_byte,
+                        )
+                        attempt["target_followup"] = _follow_target_read(
+                            client, candidates
+                        )
+                    safe_hit = hit
+                    break
+            if safe_hit is not None:
                 break
     finally:
         local_result["stderr_tail"] = list(client.stderr_tail)
@@ -737,7 +910,7 @@ def main() -> int:
         emulator_version=emulator_version,
         frames_per_slot=_frames_per_slot(),
         slots_attempted=slots_attempted,
-        breakpoint_ranges=ranges,
+        breakpoint_ranges=ranges_attempted,
         hit=safe_hit,
     )
     safe_path = write_runtime_observation(root, observation)

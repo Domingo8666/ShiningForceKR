@@ -10,6 +10,7 @@ from tools.run_s25u_runtime_probe import (
     _matching_target_candidate,
     _parse_mapper,
     _probe_slot,
+    _runtime_candidate_groups,
     _target_candidates,
     _tool_payload,
     _watch_ranges,
@@ -88,6 +89,47 @@ class S25URuntimeProbeTests(unittest.TestCase):
             }
         }
         self.assertEqual(_tool_payload(message), {"pc": "8123"})
+
+    def test_next_runtime_groups_skip_the_exhausted_selected_extent(self) -> None:
+        def candidate(
+            offset: int,
+            entries: int,
+            format_name: str,
+            family: str = "triplet",
+        ) -> dict[str, object]:
+            return {
+                "family": family,
+                "format": format_name,
+                "entry_width": 3 if family == "triplet" else 2,
+                "file_offset": offset,
+                "end_exclusive": offset + entries * (3 if family == "triplet" else 2),
+                "entries": entries,
+                "full_decode_probe": {"bounded_terminations": entries},
+            }
+
+        plan = {
+            "schema_version": 5,
+            "ranked_consumer_hypotheses": [
+                candidate(0x0B7B, 60, "addr_le_bank"),
+                candidate(0x0B7A, 60, "bank_addr_le"),
+                candidate(0x10000, 190, "addr_le_bank_unresolved", "pair"),
+                candidate(0x1827D, 36, "bank_addr_le"),
+                candidate(0x42599, 20, "bank_addr_le"),
+            ],
+        }
+        exhausted = {
+            (0, 0, 0x0B7A, 0x0C2E),
+            (1, 0, 0x4B7A, 0x4C2E),
+            (2, 0, 0x8B7A, 0x8C2E),
+        }
+        groups = _runtime_candidate_groups(plan, exhausted)
+        self.assertEqual([item["rank"] for item in groups], [4, 5])
+        self.assertEqual(groups[0]["watch"]["file_start"], 0x1827D)
+        self.assertEqual(groups[1]["watch"]["file_start"], 0x42599)
+        self.assertEqual(
+            sum(len(item["mappings"]) for item in groups),
+            5,
+        )
 
     def test_mapper_snapshot_is_exactly_four_bytes(self) -> None:
         self.assertEqual(_parse_mapper("00 01 02 03"), (0, 1, 2, 3))

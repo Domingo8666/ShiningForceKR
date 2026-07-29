@@ -95,6 +95,34 @@ class TestPatchTests(unittest.TestCase):
         self.assertEqual(selected["target_alias_count"], 1)
         self.assertEqual(selected["next_target_file_offset"], 0xC000)
 
+    def test_runtime_selected_fallback_table_is_accepted(self) -> None:
+        baseline = bytes(self.baseline)
+        digest = sha256_bytes(baseline)
+        plan = trace_plan(digest)
+        plan["selected_alignment_cluster"] = [
+            {
+                "file_offset": 0x200,
+                "end_exclusive": 0x206,
+                "entries": 2,
+                "format": "bank_addr_le",
+            }
+        ]
+        plan["ranked_consumer_hypotheses"] = [
+            {
+                "file_offset": 0x100,
+                "end_exclusive": 0x106,
+                "entries": 2,
+                "format": "bank_addr_le",
+            }
+        ]
+        selected = select_runtime_entry(
+            baseline,
+            confirmed_resolution(digest),
+            plan,
+        )
+        self.assertEqual(selected["alignment_file_offset"], 0x100)
+        self.assertEqual(selected["target_file_offset"], 0x8000)
+
     def test_shared_target_is_rejected(self) -> None:
         self.baseline[0x103:0x106] = bytes.fromhex("02 00 80")
         baseline = bytes(self.baseline)

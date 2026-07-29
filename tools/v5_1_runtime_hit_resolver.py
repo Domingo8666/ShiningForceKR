@@ -762,8 +762,18 @@ def main() -> int:
         return 0
     attempt, found = found_record
     hit, trace_record, logical_access = found
-    watch = plan.get("selected_watch")
-    assert isinstance(watch, dict)
+    watch = attempt.get("watch")
+    cluster = attempt.get("alignment_cluster")
+    if not isinstance(watch, dict):
+        watch = plan.get("selected_watch")
+    if not isinstance(cluster, list):
+        cluster = plan.get("selected_alignment_cluster")
+    if not isinstance(watch, dict) or not isinstance(cluster, list):
+        raise ValueError("runtime attempt has no candidate watch context")
+    candidate_plan = {
+        "selected_watch": watch,
+        "selected_alignment_cluster": cluster,
+    }
     physical_table_byte = (
         int(watch["file_start"])
         + logical_access
@@ -778,13 +788,13 @@ def main() -> int:
         KO_VECTOR_ENTRIES,
     )
     alignments = _alignment_resolutions(
-        rom, plan, physical_table_byte, trees
+        rom, candidate_plan, physical_table_byte, trees
     )
     if not alignments:
         raise ValueError("runtime access did not resolve to an alignment entry")
     resolution = build_consumer_resolution(
         target_sha256=target_sha256,
-        plan=plan,
+        plan=candidate_plan,
         hit=hit,
         trace_record=trace_record,
         logical_access=logical_access,
