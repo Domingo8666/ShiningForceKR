@@ -664,6 +664,15 @@ def main() -> int:
         or sha256_file(rom_path) != build_report["test_target_sha256"]
     ):
         raise PatchError("S25U-local test build identity or status mismatch")
+    if args.evidence_dir == DEFAULT_EVIDENCE_DIR:
+        evidence_dir = (
+            evidence_dir / str(build_report["test_target_sha256"])[:16]
+        )
+        _require_within(
+            evidence_dir,
+            root / "evidence" / "local",
+            "display capture evidence",
+        )
     resolution: dict[str, object]
     capture_schedule = INPUT_SCHEDULE
     if stream_resolution_path.is_file():
@@ -751,9 +760,10 @@ def main() -> int:
         "local PNG frame(s))"
     )
     if captures:
+        relative_evidence = evidence_dir.relative_to(root)
         print(
             "Open in My Files: Internal storage > ShiningForceKR > "
-            "evidence > local > v5_1_test_phrase"
+            + " > ".join(relative_evidence.parts)
         )
     return 0
 

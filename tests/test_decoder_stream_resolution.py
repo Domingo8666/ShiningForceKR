@@ -136,6 +136,32 @@ class DecoderStreamResolutionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_decoder_stream_resolution(resolution)
 
+    def test_human_rejected_stream_advances_to_next_runtime_stream(self) -> None:
+        start = 0x203DE
+        next_start = 0x203E8
+        resolution = build_decoder_stream_resolution(
+            PATCH.read_bytes(),
+            observation(start, next_start),
+            rejected_physical_starts={start},
+        )
+        validate_decoder_stream_resolution(resolution)
+        selected = resolution["selected_stream_index"]
+        self.assertIsInstance(selected, int)
+        self.assertEqual(
+            resolution["streams"][selected]["physical_start"],
+            next_start,
+        )
+
+    def test_streams_below_test_phrase_bit_budget_are_not_selected(self) -> None:
+        resolution = build_decoder_stream_resolution(
+            PATCH.read_bytes(),
+            observation(0x203DE, 0x203E8),
+            rejected_physical_starts={0x203DE},
+            minimum_selected_bits=55,
+        )
+        self.assertFalse(resolution["consumer_evidence_confirmed"])
+        self.assertIsNone(resolution["selected_stream_index"])
+
 
 if __name__ == "__main__":
     unittest.main()

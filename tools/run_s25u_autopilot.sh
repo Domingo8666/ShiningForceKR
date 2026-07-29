@@ -191,7 +191,8 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_route_capture.json|\
     analysis/device/v5_1_latest_runtime_diagnostic.json|\
     analysis/device/v5_1_latest_consumer_resolution.json|\
-    analysis/device/v5_1_latest_display_capture.json)
+    analysis/device/v5_1_latest_display_capture.json|\
+    analysis/device/v5_1_latest_display_review.json)
       return 0
       ;;
     *)

@@ -57,7 +57,7 @@
       "roundtrip_exact": true
     }
   ],
-  "selected_stream_index": 0,
+  "selected_stream_index": 1,
   "huffman_vector_read_count": 3,
   "huffman_tree_read_count": 13,
   "consumer_evidence_confirmed": true,

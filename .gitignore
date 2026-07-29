@@ -17,6 +17,7 @@ patch/fcpatch_070706.zip
 *.mkv
 *.avi
 evidence/local/
+.codex-remote-attachments/
 
 # Archives
 *.zip

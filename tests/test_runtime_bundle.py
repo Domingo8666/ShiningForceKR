@@ -27,6 +27,7 @@ from tools.v5_1_route_capture import (  # noqa: E402
     write_route_capture,
 )
 from tools.v5_1_test_display_capture import _build_safe_capture  # noqa: E402
+from tools.v5_1_test_display_review import write_display_review  # noqa: E402
 
 
 class RuntimeBundleTests(unittest.TestCase):
@@ -123,6 +124,146 @@ class RuntimeBundleTests(unittest.TestCase):
             )
             artifacts = _load_validated_artifacts(root)
         self.assertIn(path.relative_to(root), artifacts)
+
+    def test_display_review_is_bound_to_exact_capture_hashes(self) -> None:
+        capture = _build_safe_capture(
+            build_report={
+                "baseline_target_sha256": "1" * 64,
+                "test_target_sha256": "2" * 64,
+            },
+            resolution={
+                "target_read": {
+                    "slot": 1,
+                    "logical_access": 0x43DE,
+                    "expected_bank": 8,
+                }
+            },
+            emulator_version="3.9.14",
+            mapped_bank=8,
+            captures=[
+                {
+                    "frame_after_hit": 1,
+                    "width": 160,
+                    "height": 144,
+                    "png_sha256": "3" * 64,
+                }
+            ],
+            post_advance_capture={
+                "button": "1",
+                "frames_after_press": 60,
+                "width": 160,
+                "height": 144,
+                "png_sha256": "4" * 64,
+            },
+        )
+        review = {
+            "artifact_kind": "sanitized-s25u-test-display-review",
+            "schema_version": 1,
+            "baseline_target_sha256": "1" * 64,
+            "test_target_sha256": "2" * 64,
+            "capture_png_sha256s": ["3" * 64, "4" * 64],
+            "reviewed_stream": {
+                "physical_start": 0x203DE,
+                "logical_start": 0x43DE,
+                "mapped_bank": 8,
+            },
+            "rejected_physical_starts": [0x203DE],
+            "result": "phrase-absent-fail",
+            "observations": {
+                "test_phrase_visible": False,
+                "surrounding_text_readable": True,
+                "portrait_intact": True,
+                "dialogue_box_intact": True,
+                "post_advance_cleared": True,
+            },
+            "translation_build_eligible": False,
+            "next_checkpoint": "try-next-runtime-observed-stream",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            capture_path = (
+                root
+                / "analysis/device/v5_1_latest_display_capture.json"
+            )
+            capture_path.parent.mkdir(parents=True)
+            capture_path.write_text(
+                json.dumps(capture, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            review_path = write_display_review(root, review)
+            artifacts = _load_validated_artifacts(root)
+        self.assertIn(capture_path.relative_to(root), artifacts)
+        self.assertIn(review_path.relative_to(root), artifacts)
+
+    def test_prior_review_does_not_block_a_new_test_capture(self) -> None:
+        capture = _build_safe_capture(
+            build_report={
+                "baseline_target_sha256": "1" * 64,
+                "test_target_sha256": "5" * 64,
+            },
+            resolution={
+                "target_read": {
+                    "slot": 1,
+                    "logical_access": 0x43E8,
+                    "expected_bank": 8,
+                }
+            },
+            emulator_version="3.9.14",
+            mapped_bank=8,
+            captures=[
+                {
+                    "frame_after_hit": 1,
+                    "width": 160,
+                    "height": 144,
+                    "png_sha256": "6" * 64,
+                }
+            ],
+            post_advance_capture={
+                "button": "1",
+                "frames_after_press": 60,
+                "width": 160,
+                "height": 144,
+                "png_sha256": "7" * 64,
+            },
+        )
+        prior_review = {
+            "artifact_kind": "sanitized-s25u-test-display-review",
+            "schema_version": 1,
+            "baseline_target_sha256": "1" * 64,
+            "test_target_sha256": "2" * 64,
+            "capture_png_sha256s": ["3" * 64, "4" * 64],
+            "reviewed_stream": {
+                "physical_start": 0x203DE,
+                "logical_start": 0x43DE,
+                "mapped_bank": 8,
+            },
+            "rejected_physical_starts": [0x203DE],
+            "result": "phrase-absent-fail",
+            "observations": {
+                "test_phrase_visible": False,
+                "surrounding_text_readable": True,
+                "portrait_intact": True,
+                "dialogue_box_intact": True,
+                "post_advance_cleared": True,
+            },
+            "translation_build_eligible": False,
+            "next_checkpoint": "try-next-runtime-observed-stream",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            capture_path = (
+                root
+                / "analysis/device/v5_1_latest_display_capture.json"
+            )
+            capture_path.parent.mkdir(parents=True)
+            capture_path.write_text(
+                json.dumps(capture, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            review_path = write_display_review(root, prior_review)
+            artifacts = _load_validated_artifacts(root)
+        self.assertIn(capture_path.relative_to(root), artifacts)
+        self.assertIn(review_path.relative_to(root), artifacts)
 
     def test_loads_sanitized_renderer_observation(self) -> None:
         observation = build_renderer_observation(

@@ -27,6 +27,8 @@ try:
         KO_VECTOR_OFFSET,
     )
     from .v5_1_renderer_observation import validate_renderer_observation
+    from .v5_1_test_display_review import validate_display_review
+    from .v5_1_test_phrase import build_test_phrase_plan
 except ImportError:  # direct script execution
     from patch_io import PatchError, extract_bps_target_literals, sha256_bytes
     from sfgfc_huffman import (
@@ -42,6 +44,8 @@ except ImportError:  # direct script execution
         KO_VECTOR_OFFSET,
     )
     from v5_1_renderer_observation import validate_renderer_observation
+    from v5_1_test_display_review import validate_display_review
+    from v5_1_test_phrase import build_test_phrase_plan
 
 
 ARTIFACT_KIND = "sanitized-runtime-decoder-stream-resolution"
@@ -49,6 +53,9 @@ SCHEMA_VERSION = 1
 DEFAULT_PATCH = Path("patch/Final_Conflict_Japan_to_Korean_v5.1.bps")
 DEFAULT_OBSERVATION = Path(
     "analysis/device/v5_1_latest_renderer_observation.json"
+)
+DEFAULT_DISPLAY_REVIEW = Path(
+    "analysis/device/v5_1_latest_display_review.json"
 )
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_decoder_stream_resolution.json"
@@ -199,8 +206,13 @@ def validate_decoder_stream_resolution(
 def build_decoder_stream_resolution(
     patch: bytes,
     observation: dict[str, object],
+    *,
+    rejected_physical_starts: set[int] | None = None,
+    minimum_selected_bits: int = 1,
 ) -> dict[str, object]:
     validate_renderer_observation(observation)
+    if minimum_selected_bits <= 0:
+        raise ValueError("minimum selected bit budget must be positive")
     if sha256_bytes(patch) != EXPECTED_PATCH_SHA256:
         raise PatchError("v5.1 BPS identity mismatch")
     sparse = extract_bps_target_literals(patch)
@@ -280,7 +292,14 @@ def build_decoder_stream_resolution(
         and item.get("classification") == "korean-huffman-tree"
         for item in reads
     )
-    confirmed = bool(streams and vector_reads and tree_reads)
+    rejected = rejected_physical_starts or set()
+    selectable = [
+        index
+        for index, stream in enumerate(streams)
+        if int(stream["physical_start"]) not in rejected
+        and int(stream["encoded_bits"]) >= minimum_selected_bits
+    ]
+    confirmed = bool(selectable and vector_reads and tree_reads)
     resolution: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
@@ -291,7 +310,7 @@ def build_decoder_stream_resolution(
             else "decoder-stream-ambiguous"
         ),
         "streams": streams,
-        "selected_stream_index": 0 if confirmed else None,
+        "selected_stream_index": selectable[0] if confirmed else None,
         "huffman_vector_read_count": vector_reads,
         "huffman_tree_read_count": tree_reads,
         "consumer_evidence_confirmed": confirmed,
@@ -325,6 +344,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--patch", type=Path, default=DEFAULT_PATCH)
     parser.add_argument("--observation", type=Path, default=DEFAULT_OBSERVATION)
+    parser.add_argument(
+        "--display-review",
+        type=Path,
+        default=DEFAULT_DISPLAY_REVIEW,
+    )
     args = parser.parse_args()
 
     def absolute(path: Path) -> Path:
@@ -335,9 +359,32 @@ def main() -> int:
     )
     if not isinstance(observation, dict):
         raise ValueError("renderer observation must be a JSON object")
+    rejected_physical_starts: set[int] = set()
+    display_review_path = absolute(args.display_review)
+    if display_review_path.is_file():
+        display_review = json.loads(
+            display_review_path.read_text(encoding="utf-8")
+        )
+        if not isinstance(display_review, dict):
+            raise ValueError("display review must be a JSON object")
+        validate_display_review(display_review)
+        if (
+            display_review["result"] == "phrase-absent-fail"
+            and display_review["baseline_target_sha256"]
+            == observation["target_sha256"]
+        ):
+            rejected = display_review["rejected_physical_starts"]
+            assert isinstance(rejected, list)
+            rejected_physical_starts.update(int(value) for value in rejected)
+    patch_bytes = absolute(args.patch).read_bytes()
+    phrase_plan = build_test_phrase_plan(patch_bytes)
+    encoding = phrase_plan["encoding"]
+    assert isinstance(encoding, dict)
     resolution = build_decoder_stream_resolution(
-        absolute(args.patch).read_bytes(),
+        patch_bytes,
         observation,
+        rejected_physical_starts=rejected_physical_starts,
+        minimum_selected_bits=int(encoding["encoded_bits"]),
     )
     path = write_decoder_stream_resolution(root, resolution)
     print(
