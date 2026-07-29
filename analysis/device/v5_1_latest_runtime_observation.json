@@ -5,7 +5,7 @@
   "status": "runtime-read-hit-not-observed",
   "probe": {
     "emulator": "Gearsystem",
-    "emulator_version": "3.9.14",
+    "emulator_version": "not-run",
     "system": "gamegear",
     "frame_sync": "debug-status-paused",
     "access_filter": "mapped-data-read-not-executing-range",
@@ -18,15 +18,45 @@
     "breakpoint_ranges": [
       {
         "slot": 0,
+        "expected_bank": 0,
+        "logical_start": 2938,
+        "logical_end": 3118
+      },
+      {
+        "slot": 0,
         "expected_bank": 16,
         "logical_start": 9625,
         "logical_end": 9685
       },
       {
         "slot": 1,
+        "expected_bank": 0,
+        "logical_start": 19322,
+        "logical_end": 19502
+      },
+      {
+        "slot": 1,
+        "expected_bank": 6,
+        "logical_start": 17021,
+        "logical_end": 17128
+      },
+      {
+        "slot": 1,
         "expected_bank": 16,
         "logical_start": 26009,
         "logical_end": 26069
+      },
+      {
+        "slot": 2,
+        "expected_bank": 0,
+        "logical_start": 35706,
+        "logical_end": 35886
+      },
+      {
+        "slot": 2,
+        "expected_bank": 6,
+        "logical_start": 33405,
+        "logical_end": 33512
       },
       {
         "slot": 2,

@@ -8,21 +8,27 @@
     "emulator_version": "3.9.14",
     "system": "gamegear",
     "frame_sync": "debug-status-paused",
-    "route": "cold-boot-start-confirm-story",
-    "anchor_kind": "huffman-vector-read",
+    "route": "cold-boot-start-confirm-decoder-entry",
+    "anchor_kind": "text-decoder-entry",
     "frame_budget": 3300,
     "mappings_attempted": [
       {
-        "probe_file_offset": 524544,
-        "slot": 1,
-        "expected_bank": 32,
-        "logical_address": 16640
+        "probe_file_offset": 13306,
+        "slot": 0,
+        "expected_bank": 0,
+        "logical_address": 13306
       },
       {
-        "probe_file_offset": 524544,
-        "slot": 2,
-        "expected_bank": 32,
-        "logical_address": 33024
+        "probe_file_offset": 13329,
+        "slot": 0,
+        "expected_bank": 0,
+        "logical_address": 13329
+      },
+      {
+        "probe_file_offset": 13361,
+        "slot": 0,
+        "expected_bank": 0,
+        "logical_address": 13361
       }
     ]
   },
