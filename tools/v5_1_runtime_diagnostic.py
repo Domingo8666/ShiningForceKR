@@ -115,13 +115,16 @@ def validate_runtime_diagnostic(diagnostic: dict[str, object]) -> None:
         or re.fullmatch(r"[a-z0-9-]{1,80}", next_checkpoint) is None
     ):
         raise ValueError("next_checkpoint must be a short safe token")
-    ready = all(checks.values())
+    checks_ready = all(checks.values())
+    ready = checks_ready and exit_code == 0
     if ready != (diagnostic["status"] == "runtime-stage-ready"):
-        raise ValueError("diagnostic status and checks disagree")
+        raise ValueError("diagnostic status, checks, and exit code disagree")
     expected_failed = None
-    if not ready:
+    if not checks_ready:
         expected_failed = next(key for key, value in checks.items() if not value)
         expected_failed = expected_failed.replace("_", "-")
+    elif exit_code != 0:
+        expected_failed = "runtime-command"
     if failed_stage != expected_failed:
         raise ValueError("failed_stage does not identify the first failed check")
 
@@ -219,11 +222,14 @@ def collect_runtime_diagnostic(
         "trace_plan_present": trace_plan_present,
         "target_identity_ready": target_identity_ready,
     }
-    ready = all(checks.values())
+    checks_ready = all(checks.values())
+    ready = checks_ready and exit_code == 0
     failed_stage = None
-    if not ready:
+    if not checks_ready:
         failed_stage = next(key for key, value in checks.items() if not value)
         failed_stage = failed_stage.replace("_", "-")
+    elif exit_code != 0:
+        failed_stage = "runtime-command"
     diagnostic: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
@@ -240,7 +246,11 @@ def collect_runtime_diagnostic(
         "next_checkpoint": (
             "rerun-runtime-probe"
             if ready
-            else "repair-first-failed-runtime-stage"
+            else (
+                "repair-runtime-command"
+                if checks_ready
+                else "repair-first-failed-runtime-stage"
+            )
         ),
     }
     validate_runtime_diagnostic(diagnostic)

@@ -55,6 +55,24 @@ class RuntimeDiagnosticTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_runtime_diagnostic(diagnostic)
 
+    def test_nonzero_runtime_command_cannot_report_ready(self) -> None:
+        diagnostic = {
+            "artifact_kind": "sanitized-runtime-stage-diagnostic",
+            "schema_version": 2,
+            "status": "runtime-stage-not-ready",
+            "trigger": "probe",
+            "exit_code": 1,
+            "attempt_utc": "2026-07-29T05:00:00Z",
+            "checks": {key: True for key in CHECK_KEYS},
+            "failed_stage": "runtime-command",
+            "runtime_observation_present": True,
+            "next_checkpoint": "repair-runtime-command",
+        }
+        validate_runtime_diagnostic(diagnostic)
+        diagnostic["status"] = "runtime-stage-ready"
+        with self.assertRaisesRegex(ValueError, "exit code"):
+            validate_runtime_diagnostic(diagnostic)
+
 
 if __name__ == "__main__":
     unittest.main()
