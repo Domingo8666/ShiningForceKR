@@ -9,6 +9,8 @@
 - 가능한 Game Gear slot, bank와 논리 읽기 범위
 - 서로 겹치는 시프트 정렬 후보와 통합 감시 범위
 - 정적 명령 모양 개수와 매퍼 결합 개수
+- 실제 read breakpoint 히트의 PC·physical PC와 네 개 매퍼 레지스터
+- 실행한 슬롯·프레임 수, trace 항목 수와 호출 스택 깊이
 - 실행 소비 증거 및 번역 빌드 적격 여부
 
 금지 범위:
@@ -21,3 +23,8 @@
 `tools/v5_1_safe_observation.py`는 고정 스키마의 허용 필드만
 `v5_1_latest_observation.json`에 기록하고, 알 수 없는 필드가 있으면
 게시를 거부합니다.
+
+`tools/v5_1_runtime_observation.py`는 Gearsystem 실행 결과에서 고정된
+좌표와 집계값만 `v5_1_latest_runtime_observation.json`에 기록합니다.
+실제 trace 줄, opcode, 메모리 덤프, 화면과 파일 경로는 이 폴더에
+게시할 수 없습니다.

@@ -34,6 +34,8 @@ Android 내 파일 앱: 내부 저장공간/ShiningForceKR
 - 슬롯별 Sega mapper 레지스터 쓰기가 실제로 결합된 포인터 모양을 단순 뱅크 리터럴보다 우선합니다.
 - 90% 이상 겹치는 같은 폭의 시프트 후보는 하나의 정렬 클러스터와 통합 감시 범위로 추적합니다.
 - 상위 3바이트 조회표 후보 4개는 표본이 아닌 모든 엔트리를 디코드해 종료율, 길이 분포, 고유 대상 수와 대상 범위를 집계합니다.
+- S25U 전수 집계에서 0x000B7B 정렬은 60개 중 58개가 제한 안에서 종료되고 고유 대상 60개를 유지해, 0x000B7A의 57/60·고유 대상 54개보다 우세합니다.
+- 공식 Gearsystem ARM64와 MCP read breakpoint를 S25U의 격리된 Ubuntu 환경에서 실행하는 자동 추적 단계를 제공합니다.
 - 후보는 실행 중 소비 증거가 생기기 전까지 확정 조회표로 승격하지 않습니다.
 - 조회표가 확정되기 전에는 기존 1,492개 추정 목록을 번역 완료 근거로 쓰지 않습니다.
 
@@ -78,6 +80,28 @@ Git 인증이 아직 없으면 짧은 `SFKR safe observation` 결과까지는 �
 내 파일 앱에서는 내부 저장공간 > ShiningForceKR > reports > NEXT_STEP.txt를 먼저 열면 됩니다. reports와 build는 S25U 로컬 전용이며 Git에 올라가지 않습니다.
 
 ROM을 쓰지 않고 메모리 검증만 하려면 --no-rom-output을 붙입니다. 영어 참조 IPS가 없으면 그 단계만 skipped로 기록됩니다. 실행 추적으로 스크립트 소비자가 확정되기 전에는 translation_build_eligible을 false로 유지합니다.
+
+## S25U 실제 읽기 추적
+
+정적 후보를 실제 실행 읽기와 연결하려면 아래 명령을 한 번 실행합니다.
+첫 실행은 S25U의 Termux 전용 공간에 Ubuntu와 공식 Gearsystem ARM64를
+설치하므로 시간이 걸릴 수 있습니다. 다운로드한 Gearsystem 3.9.14
+배포 파일은 고정 SHA-256으로 검증합니다.
+
+~~~sh
+cd ~/storage/shared/ShiningForceKR
+git pull --ff-only
+bash tools/setup_s25u_gearsystem.sh &&
+python tools/run_s25u_runtime_probe.py --publish-safe-observation
+~~~
+
+원본 ROM과 생성 ROM은 `/storage/emulated/0`의 S25U 내부에 그대로 남습니다.
+전체 CPU trace, 호출 스택과 로컬 경로는 Git에서 제외된
+`reports/local/v5_1_gearsystem_probe.json`에만 저장합니다. GitHub에는
+PC·매퍼 레지스터·범위·집계 개수만 허용하는
+`analysis/device/v5_1_latest_runtime_observation.json`만 게시합니다.
+첫 범위 히트만으로 번역 삽입을 허용하지 않고, 히트 PC를 정확한 엔트리와
+bounded decode에 연결한 뒤 다음 게이트를 엽니다.
 
 ## 안전 규칙
 
