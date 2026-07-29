@@ -127,6 +127,18 @@ Huffman 벡터·트리 접근과 압축 스트림 후보를 구분합니다. 전
 
 - `analysis/device/v5_1_latest_renderer_observation.json`
 
+이 경로에서 벡터 read가 없으면 같은 wrapper가 부팅 대기, Start 직후,
+1·4·16번째 2번 확인 직후 화면을 다음 S25U 로컬 폴더에 PNG로 저장합니다.
+
+- `evidence/local/v5_1_story_route/`
+- `reports/local/v5_1_story_route_capture.json`
+
+GitHub에는 PNG가 아니라 단계 이름, 누적 프레임·입력 수, 화면 크기와
+PNG SHA-256만 `analysis/device/v5_1_latest_route_capture.json`에 게시합니다.
+마지막 두 화면의 해시가 같으면 자동 입력이 안정된 한 화면에서 멈춘
+것으로만 판정합니다. 화면이 이름 입력, 메뉴 또는 스토리인지 같은 의미
+판정은 로컬 PNG를 사람이 확인하기 전까지 확정하지 않습니다.
+
 히트가 생기면 같은 wrapper가 로컬 trace의 마지막 메모리 읽기 명령을
 제한된 Z80 주소 형식으로 판정하고, 접근한 물리 표 바이트를 정렬 후보의
 엔트리 번호와 연결합니다. 이어서 각 후보 포인터의 압축 대상 주소에

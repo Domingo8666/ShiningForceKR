@@ -48,6 +48,13 @@ else
       if [ "$renderer_probe_status" -ne 0 ]; then
         stage_status="$renderer_probe_status"
         diagnostic_trigger=probe
+      else
+        python tools/run_s25u_route_capture.py --if-needed
+        route_capture_status=$?
+        if [ "$route_capture_status" -ne 0 ]; then
+          stage_status="$route_capture_status"
+          diagnostic_trigger=probe
+        fi
       fi
     fi
     if [ "$stage_status" -eq 0 ] && [ -n "$source_rom" ]; then

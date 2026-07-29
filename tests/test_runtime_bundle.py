@@ -22,6 +22,10 @@ from tools.v5_1_renderer_observation import (  # noqa: E402
     build_renderer_observation,
     write_renderer_observation,
 )
+from tools.v5_1_route_capture import (  # noqa: E402
+    build_route_capture,
+    write_route_capture,
+)
 from tools.v5_1_test_display_capture import _build_safe_capture  # noqa: E402
 
 
@@ -146,6 +150,39 @@ class RuntimeBundleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             path = write_renderer_observation(root, observation)
+            artifacts = _load_validated_artifacts(root)
+        self.assertIn(path.relative_to(root), artifacts)
+
+    def test_loads_sanitized_route_capture_without_local_png(self) -> None:
+        captures = [
+            {
+                "stage": stage,
+                "frame_total": frame,
+                "input_count": inputs,
+                "width": 160,
+                "height": 144,
+                "png_sha256": str(index + 1) * 64,
+            }
+            for index, (stage, frame, inputs) in enumerate(
+                (
+                    ("boot-idle", 180, 0),
+                    ("post-start", 420, 1),
+                    ("confirm-01", 600, 2),
+                    ("confirm-04", 1140, 5),
+                    ("confirm-16", 3300, 17),
+                )
+            )
+        ]
+        observation = build_route_capture(
+            target_sha256="6" * 64,
+            emulator_version="3.9.14",
+            route="cold-boot-start-confirm-story",
+            frame_budget=3300,
+            captures=captures,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = write_route_capture(root, observation)
             artifacts = _load_validated_artifacts(root)
         self.assertIn(path.relative_to(root), artifacts)
 

@@ -13,6 +13,7 @@ try:
     from .v5_1_runtime_hit_resolver import validate_consumer_resolution
     from .v5_1_runtime_observation import validate_runtime_observation
     from .v5_1_renderer_observation import validate_renderer_observation
+    from .v5_1_route_capture import validate_route_capture
     from .v5_1_safe_observation import _git, _normalized_remote
 except ImportError:  # direct script execution
     from v5_1_test_display_capture import validate_display_capture
@@ -20,6 +21,7 @@ except ImportError:  # direct script execution
     from v5_1_runtime_hit_resolver import validate_consumer_resolution
     from v5_1_runtime_observation import validate_runtime_observation
     from v5_1_renderer_observation import validate_renderer_observation
+    from v5_1_route_capture import validate_route_capture
     from v5_1_safe_observation import _git, _normalized_remote
 
 EXPECTED_REMOTE = "github.com/Domingo8666/ShiningForceKR"
@@ -31,6 +33,8 @@ SAFE_ARTIFACTS = {
         validate_runtime_observation,
     Path("analysis/device/v5_1_latest_renderer_observation.json"):
         validate_renderer_observation,
+    Path("analysis/device/v5_1_latest_route_capture.json"):
+        validate_route_capture,
     Path("analysis/device/v5_1_latest_runtime_diagnostic.json"):
         validate_runtime_diagnostic,
     Path("analysis/device/v5_1_latest_consumer_resolution.json"):
@@ -80,6 +84,15 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
         and renderer["target_sha256"] != observation["target_sha256"]
     ):
         raise ValueError("runtime and renderer observation identities disagree")
+    route_capture = artifacts.get(
+        Path("analysis/device/v5_1_latest_route_capture.json")
+    )
+    if (
+        route_capture is not None
+        and renderer is not None
+        and route_capture["target_sha256"] != renderer["target_sha256"]
+    ):
+        raise ValueError("route and renderer observation identities disagree")
     display_capture = artifacts.get(
         Path("analysis/device/v5_1_latest_display_capture.json")
     )
