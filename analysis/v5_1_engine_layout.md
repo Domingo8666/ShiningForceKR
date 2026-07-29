@@ -142,6 +142,9 @@ S25U v3 관측에서 최상위 후보는 0x000B7B의 `addr_le_bank` 60개 항목
 초기 3,300프레임 요청에서 물리 0x003411 execute hit가 0회였다는
 결론은 비동기 프레임 완료 장벽이 없었으므로 폐기했습니다. schema v2
 runtime/schema v4 renderer 관측부터 완료 상태를 확인한 증거로 취급합니다.
+동기화 뒤 잡힌 PC 0x0B7B hit는 감시 물리 범위 안에서 실행 중인 opcode
+fetch였으므로 소비자 read가 아닙니다. schema v3 runtime 관측부터
+매퍼 일치, 실행 범위 비중첩, trace 피연산자 read 복원을 함께 요구합니다.
 이 좌표는 source-independent v5.1 BPS 확장 코드나 위에서 검증한 패치
 호출부에서 확정한 진입점이 아니므로 공용 디코더 근거로 사용하지 않습니다.
 

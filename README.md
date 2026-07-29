@@ -121,6 +121,11 @@ Gearsystem 3.9.14가 `debug_step_frame` 실행 완료 전 요청 접수 응답�
 돌려준다는 사실이 확인되어 폐기했습니다. 모든 프레임 구간은
 `debug_get_status.paused` 또는 breakpoint 정지를 완료 장벽으로 사용해
 다시 검증합니다.
+완료 장벽으로 처음 잡힌 slot 0·bank 0 hit의 PC가 감시 범위 안
+`0x0B7B`였으므로 데이터 소비가 아니라 opcode fetch로 판정했습니다.
+이제 매퍼 일치뿐 아니라 실행 물리 PC가 감시 물리 범위와 겹치지 않고,
+로컬 trace에서 실제 메모리 피연산자 read를 복원할 수 있을 때만 안전
+runtime hit로 승격합니다.
 0x003411은 v5.1 BPS에서 검증된 진입점이 아니므로 더 이상 사용하지 않습니다.
 대신 검증된 한국어 Huffman 벡터 물리 0x080100..0x0802FF가 slot 1 또는
 2에 mapper bank 0x20으로 매핑된 실제 read를 직접 추적합니다. 히트 직후

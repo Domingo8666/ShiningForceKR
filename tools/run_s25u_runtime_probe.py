@@ -590,6 +590,40 @@ def _mapping_bank_matches(
     return int(hit[f"slot{slot}_bank"]) == int(mapping["expected_bank"])
 
 
+def _instruction_fetch_like(
+    hit: dict[str, object],
+    mapping: dict[str, int],
+) -> bool:
+    """Reject ROM read breakpoints raised by execution inside the watched bytes."""
+
+    physical_start = (
+        int(mapping["expected_bank"]) * 0x4000
+        + (int(mapping["logical_start"]) & 0x3FFF)
+    )
+    physical_end = (
+        int(mapping["expected_bank"]) * 0x4000
+        + (int(mapping["logical_end"]) & 0x3FFF)
+    )
+    physical_pc_after = int(hit["physical_pc_after"])
+    # Gearsystem can report the PC after fetching one or more opcode bytes.
+    return physical_start <= physical_pc_after <= physical_end + 4
+
+
+def _rejected_instruction_fetch_hit(
+    hit: dict[str, object],
+    mapping: dict[str, int],
+) -> dict[str, object]:
+    slot = int(mapping["slot"])
+    return {
+        "slot": slot,
+        "expected_bank": int(mapping["expected_bank"]),
+        "mapped_bank": int(hit[f"slot{slot}_bank"]),
+        "pc_after": int(hit["pc_after"]),
+        "physical_pc_after": int(hit["physical_pc_after"]),
+        "rejection_kind": "instruction-fetch-like",
+    }
+
+
 def _rejected_bank_hit(
     hit: dict[str, object],
     mapping: dict[str, int],
@@ -771,11 +805,11 @@ def _probe_slot(
 ) -> tuple[
     dict[str, object] | None,
     dict[str, object] | None,
-    list[dict[str, int]],
+    list[dict[str, object]],
 ]:
     if max_rejected_bank_hits < 1:
         raise ValueError("max_rejected_bank_hits must be positive")
-    rejected_bank_hits: list[dict[str, int]] = []
+    rejected_bank_hits: list[dict[str, object]] = []
     client.call("debug_reset")
     client.call("debug_pause")
     start = f"{mapping['logical_start']:04X}"
@@ -808,6 +842,11 @@ def _probe_slot(
                     break
                 hit, evidence = _capture_hit(client, mapping)
                 if _mapping_bank_matches(hit, mapping):
+                    if _instruction_fetch_like(hit, mapping):
+                        rejected_bank_hits.append(
+                            _rejected_instruction_fetch_hit(hit, mapping)
+                        )
+                        return None, None, rejected_bank_hits
                     return hit, evidence, rejected_bank_hits
                 rejected_bank_hits.append(_rejected_bank_hit(hit, mapping))
                 if len(rejected_bank_hits) >= max_rejected_bank_hits:
@@ -984,6 +1023,7 @@ def main() -> int:
                             "evidence": None,
                             "events_seen": 0,
                         }
+                        continue
                     else:
                         _, _, logical_access = found
                         physical_table_byte = (

@@ -13,8 +13,9 @@ except ImportError:  # direct script execution
     from v5_1_safe_observation import _git, _normalized_remote
 
 ARTIFACT_KIND = "sanitized-runtime-consumer-observation"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 FRAME_SYNC = "debug-status-paused"
+ACCESS_FILTER = "mapped-data-read-not-executing-range"
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_runtime_observation.json"
 )
@@ -39,6 +40,7 @@ PROBE_KEYS = {
     "emulator_version",
     "system",
     "frame_sync",
+    "access_filter",
     "frames_per_slot",
     "slots_attempted",
     "breakpoint_ranges",
@@ -138,10 +140,18 @@ def validate_runtime_observation(observation: dict[str, object]) -> None:
     probe = observation["probe"]
     if not isinstance(probe, dict) or set(probe) != PROBE_KEYS:
         raise ValueError("probe fields do not match the safe schema")
-    for key in ("emulator", "emulator_version", "system", "frame_sync"):
+    for key in (
+        "emulator",
+        "emulator_version",
+        "system",
+        "frame_sync",
+        "access_filter",
+    ):
         _require_short_token(probe[key], key)
     if probe["frame_sync"] != FRAME_SYNC:
         raise ValueError("runtime probe did not use the completion barrier")
+    if probe["access_filter"] != ACCESS_FILTER:
+        raise ValueError("runtime probe did not exclude instruction fetches")
     _require_int(probe["frames_per_slot"], "frames_per_slot", 1, 100_000)
     slots = probe["slots_attempted"]
     if (
@@ -225,6 +235,7 @@ def build_runtime_observation(
             "emulator_version": emulator_version,
             "system": "gamegear",
             "frame_sync": FRAME_SYNC,
+            "access_filter": ACCESS_FILTER,
             "frames_per_slot": frames_per_slot,
             "slots_attempted": slots_attempted,
             "breakpoint_ranges": breakpoint_ranges,

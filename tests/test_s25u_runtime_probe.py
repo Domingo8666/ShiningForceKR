@@ -9,6 +9,7 @@ from tools.run_s25u_runtime_probe import (
     _last_candidate_access,
     _mapping_bank_matches,
     _matching_target_candidate,
+    _instruction_fetch_like,
     _parse_mapper,
     _probe_slot,
     _runtime_candidate_groups,
@@ -227,6 +228,20 @@ class S25URuntimeProbeTests(unittest.TestCase):
         self.assertIsNone(evidence)
         self.assertEqual(len(rejected), 1)
         self.assertEqual(rejected[0]["mapped_bank"], 2)
+
+    def test_execution_inside_watch_is_not_a_data_read(self) -> None:
+        mapping = {
+            "slot": 0,
+            "expected_bank": 0,
+            "logical_start": 0x0B7A,
+            "logical_end": 0x0C2E,
+        }
+        hit = {
+            "physical_pc_after": 0x0B7B,
+        }
+        self.assertTrue(_instruction_fetch_like(hit, mapping))
+        hit["physical_pc_after"] = 0x031C
+        self.assertFalse(_instruction_fetch_like(hit, mapping))
 
     def test_call_stack_depth_and_frame_budget(self) -> None:
         self.assertEqual(_call_stack_depth({"frames": [{}, {}, {}]}), 3)
