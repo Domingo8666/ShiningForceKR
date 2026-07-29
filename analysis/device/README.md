@@ -12,6 +12,7 @@
 - 실제 read breakpoint 히트의 PC·physical PC와 네 개 매퍼 레지스터
 - 실행한 슬롯·프레임 수, trace 항목 수와 호출 스택 깊이
 - 실행 소비 증거 및 번역 빌드 적격 여부
+- S25U 로컬 테스트 화면의 PNG 해시·크기와 사람 시각 확인 대기 상태
 
 금지 범위:
 
@@ -41,3 +42,9 @@ trace에서 제한적으로 지원하는 Z80 읽기 주소를 복원합니다. �
 재인코딩 일치 여부만
 `v5_1_latest_consumer_resolution.json`에 기록합니다. 명령 바이트,
 엔트리 바이트와 디코딩 심벌은 로컬 보고서 밖으로 내보내지 않습니다.
+
+테스트 ROM이 생성된 뒤 `tools/v5_1_test_display_capture.py`는 확정된
+압축 엔트리 read와 매퍼 뱅크를 다시 확인하고 화면 PNG를
+`evidence/local/`에만 저장합니다. `v5_1_latest_display_capture.json`에는
+기준·테스트 빌드 해시, 경로 없는 read 정보, PNG 해시·크기와 사람 검토
+대기 상태만 기록합니다. PNG 픽셀과 로컬 경로는 게시하지 않습니다.

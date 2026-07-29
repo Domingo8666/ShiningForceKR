@@ -50,6 +50,13 @@ else
       if [ "$test_build_status" -ne 0 ]; then
         stage_status="$test_build_status"
         diagnostic_trigger=probe
+      else
+        python tools/v5_1_test_display_capture.py --if-ready
+        display_capture_status=$?
+        if [ "$display_capture_status" -ne 0 ]; then
+          stage_status="$display_capture_status"
+          diagnostic_trigger=probe
+        fi
       fi
     fi
   fi

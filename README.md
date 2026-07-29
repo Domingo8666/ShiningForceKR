@@ -137,6 +137,19 @@ v5.1 BPS에서 기준 이미지를 메모리로 다시 만들고, `한다`가 �
 동작을 콜드 부팅으로 확인하기 전에는 배포 패치나 번역 완료 근거가
 아닙니다.
 
+테스트 ROM이 생성되면 wrapper는 콜드 부팅으로 확정 엔트리의 압축
+데이터 read를 다시 관측하고 매퍼 뱅크를 대조합니다. 일치할 때만
+1·8·30·90프레임 뒤 화면을 다음 S25U 로컬 폴더에 PNG로 저장합니다.
+
+- `evidence/local/v5_1_test_phrase/`
+- `reports/local/v5_1_test_display_capture.json`
+
+PNG와 로컬 경로는 Git에서 제외합니다. GitHub에는 ROM·화면 없이 빌드
+해시, read·뱅크 일치 여부, PNG 해시·크기와 사람 시각 확인 대기 상태만
+`analysis/device/v5_1_latest_display_capture.json`에 게시합니다. 자동
+캡처는 저장→읽기→화면 후보를 연결하지만, 실제 자형·위치·주변 UI의
+정상 여부는 사람이 S25U 로컬 PNG를 확인해야 통과합니다.
+
 설치 또는 MCP 시작이 중단되면 wrapper가 경로·로그·ROM 정보를 제외한
 불리언 점검 결과만
 `analysis/device/v5_1_latest_runtime_diagnostic.json`에 게시합니다.

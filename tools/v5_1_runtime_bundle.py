@@ -8,11 +8,13 @@ import json
 from pathlib import Path
 
 try:
+    from .v5_1_test_display_capture import validate_display_capture
     from .v5_1_runtime_diagnostic import validate_runtime_diagnostic
     from .v5_1_runtime_hit_resolver import validate_consumer_resolution
     from .v5_1_runtime_observation import validate_runtime_observation
     from .v5_1_safe_observation import _git, _normalized_remote
 except ImportError:  # direct script execution
+    from v5_1_test_display_capture import validate_display_capture
     from v5_1_runtime_diagnostic import validate_runtime_diagnostic
     from v5_1_runtime_hit_resolver import validate_consumer_resolution
     from v5_1_runtime_observation import validate_runtime_observation
@@ -29,6 +31,8 @@ SAFE_ARTIFACTS = {
         validate_runtime_diagnostic,
     Path("analysis/device/v5_1_latest_consumer_resolution.json"):
         validate_consumer_resolution,
+    Path("analysis/device/v5_1_latest_display_capture.json"):
+        validate_display_capture,
 }
 
 
@@ -63,6 +67,16 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
         and observation["target_sha256"] != resolution["target_sha256"]
     ):
         raise ValueError("runtime observation and resolution identities disagree")
+    display_capture = artifacts.get(
+        Path("analysis/device/v5_1_latest_display_capture.json")
+    )
+    if (
+        display_capture is not None
+        and resolution is not None
+        and display_capture["baseline_target_sha256"]
+        != resolution["target_sha256"]
+    ):
+        raise ValueError("display capture and resolution identities disagree")
     return artifacts
 
 

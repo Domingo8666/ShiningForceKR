@@ -18,6 +18,7 @@ from tools.v5_1_runtime_diagnostic import (  # noqa: E402
 from tools.v5_1_runtime_observation import (  # noqa: E402
     write_runtime_observation,
 )
+from tools.v5_1_test_display_capture import _build_safe_capture  # noqa: E402
 
 
 class RuntimeBundleTests(unittest.TestCase):
@@ -68,6 +69,44 @@ class RuntimeBundleTests(unittest.TestCase):
                 ValueError, "no sanitized runtime artifacts"
             ):
                 _load_validated_artifacts(Path(directory))
+
+    def test_loads_sanitized_display_capture_without_local_png(self) -> None:
+        capture = _build_safe_capture(
+            build_report={
+                "baseline_target_sha256": "1" * 64,
+                "test_target_sha256": "2" * 64,
+            },
+            resolution={
+                "target_read": {
+                    "slot": 2,
+                    "logical_access": 0x8123,
+                    "expected_bank": 0x2A,
+                }
+            },
+            emulator_version="3.9.14",
+            mapped_bank=0x2A,
+            captures=[
+                {
+                    "frame_after_hit": 30,
+                    "width": 160,
+                    "height": 144,
+                    "png_sha256": "3" * 64,
+                }
+            ],
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = (
+                root
+                / "analysis/device/v5_1_latest_display_capture.json"
+            )
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                json.dumps(capture, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            artifacts = _load_validated_artifacts(root)
+        self.assertIn(path.relative_to(root), artifacts)
 
     def test_skips_stale_artifact_when_another_is_valid(self) -> None:
         diagnostic = {

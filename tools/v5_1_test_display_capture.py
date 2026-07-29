@@ -1,0 +1,576 @@
+#!/usr/bin/env python3
+"""Capture S25U-local cold-boot display evidence for the technical test ROM.
+
+The exact runtime-confirmed compressed entry is watched again in the generated
+test ROM.  After that read is observed with the expected mapper bank, several
+PNG frames are captured locally for human visual review.  Only path-free hashes
+and runtime facts are written to the publishable device artifact.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import binascii
+import json
+import os
+from pathlib import Path
+import re
+import tempfile
+
+try:
+    from .patch_io import PatchError, sha256_bytes, sha256_file
+    from .run_s25u_runtime_probe import (
+        INPUT_SCHEDULE,
+        McpStdioClient,
+        _capture_state,
+        _default_command,
+    )
+    from .v5_1_runtime_hit_resolver import validate_consumer_resolution
+    from .v5_1_test_phrase import TEST_PHRASE
+except ImportError:  # direct script execution
+    from patch_io import PatchError, sha256_bytes, sha256_file
+    from run_s25u_runtime_probe import (
+        INPUT_SCHEDULE,
+        McpStdioClient,
+        _capture_state,
+        _default_command,
+    )
+    from v5_1_runtime_hit_resolver import validate_consumer_resolution
+    from v5_1_test_phrase import TEST_PHRASE
+
+
+ARTIFACT_KIND = "sanitized-s25u-test-display-capture"
+SCHEMA_VERSION = 1
+DEFAULT_TEST_ROM = Path("build/Final_Conflict_Korean_test_phrase.gg")
+DEFAULT_BUILD_REPORT = Path("reports/local/v5_1_test_patch_build.json")
+DEFAULT_RESOLUTION = Path(
+    "analysis/device/v5_1_latest_consumer_resolution.json"
+)
+DEFAULT_LOCAL_REPORT = Path(
+    "reports/local/v5_1_test_display_capture.json"
+)
+DEFAULT_EVIDENCE_DIR = Path("evidence/local/v5_1_test_phrase")
+PUBLISH_RELATIVE_PATH = Path(
+    "analysis/device/v5_1_latest_display_capture.json"
+)
+CAPTURE_FRAMES_AFTER_HIT = (1, 8, 30, 90)
+REQUIRED_TOOLS = {
+    "controller_button",
+    "debug_get_status",
+    "debug_pause",
+    "debug_reset",
+    "debug_step_frame",
+    "get_call_stack",
+    "get_media_info",
+    "get_screenshot",
+    "get_trace_log",
+    "get_z80_status",
+    "list_memory_areas",
+    "load_media",
+    "read_memory",
+    "remove_breakpoint",
+    "set_breakpoint_range",
+}
+TOP_LEVEL_KEYS = {
+    "artifact_kind",
+    "schema_version",
+    "status",
+    "purpose",
+    "phrase_codepoints",
+    "baseline_target_sha256",
+    "test_target_sha256",
+    "emulator_version",
+    "cold_boot",
+    "target_read",
+    "captures",
+    "visual_review",
+    "translation_build_eligible",
+    "next_checkpoint",
+}
+CAPTURE_STATUSES = {
+    "capture-ready-human-review-required",
+    "runtime-target-read-not-observed",
+}
+
+
+def _is_sha256(value: object) -> bool:
+    return isinstance(value, str) and re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def validate_display_capture(capture: dict[str, object]) -> None:
+    if set(capture) != TOP_LEVEL_KEYS:
+        raise ValueError("display capture top-level fields do not match")
+    if capture["artifact_kind"] != ARTIFACT_KIND:
+        raise ValueError("unexpected display capture artifact kind")
+    if capture["schema_version"] != SCHEMA_VERSION:
+        raise ValueError("unexpected display capture schema version")
+    if capture["status"] not in CAPTURE_STATUSES:
+        raise ValueError("unexpected display capture status")
+    if capture["purpose"] != "technical-poc-only":
+        raise ValueError("unexpected display capture purpose")
+    codepoints = capture["phrase_codepoints"]
+    if (
+        not isinstance(codepoints, list)
+        or codepoints != [f"U+{ord(character):04X}" for character in TEST_PHRASE]
+    ):
+        raise ValueError("display capture phrase codepoints do not match")
+    for key in ("baseline_target_sha256", "test_target_sha256"):
+        if not _is_sha256(capture[key]):
+            raise ValueError(f"{key} must be a lowercase SHA-256")
+    if capture["baseline_target_sha256"] == capture["test_target_sha256"]:
+        raise ValueError("baseline and test target identities must differ")
+    emulator_version = capture["emulator_version"]
+    if (
+        not isinstance(emulator_version, str)
+        or not 1 <= len(emulator_version) <= 64
+        or "/" in emulator_version
+        or "\\" in emulator_version
+    ):
+        raise ValueError("emulator_version must be short and path-free")
+    if capture["cold_boot"] is not True:
+        raise ValueError("display capture must start from a cold reset")
+
+    target_read = capture["target_read"]
+    if not isinstance(target_read, dict) or set(target_read) != {
+        "slot",
+        "logical_access",
+        "expected_bank",
+        "mapped_bank",
+        "confirmed",
+    }:
+        raise ValueError("display capture target_read fields do not match")
+    for key in ("slot", "logical_access", "expected_bank"):
+        value = target_read[key]
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise ValueError(f"target_read {key} must be an integer")
+    if target_read["slot"] not in {1, 2}:
+        raise ValueError("target_read slot must be 1 or 2")
+    if not 0 <= target_read["logical_access"] <= 0xFFFF:
+        raise ValueError("target_read logical_access is out of range")
+    if not 0 <= target_read["expected_bank"] <= 0xFF:
+        raise ValueError("target_read expected_bank is out of range")
+    mapped_bank = target_read["mapped_bank"]
+    if mapped_bank is not None and (
+        not isinstance(mapped_bank, int)
+        or isinstance(mapped_bank, bool)
+        or not 0 <= mapped_bank <= 0xFF
+    ):
+        raise ValueError("target_read mapped_bank is invalid")
+    confirmed = target_read["confirmed"]
+    if not isinstance(confirmed, bool):
+        raise ValueError("target_read confirmed must be boolean")
+    if confirmed != (mapped_bank == target_read["expected_bank"]):
+        raise ValueError("target_read confirmation and mapper bank disagree")
+
+    captures = capture["captures"]
+    if not isinstance(captures, list):
+        raise ValueError("captures must be a list")
+    previous_frame = 0
+    for item in captures:
+        if not isinstance(item, dict) or set(item) != {
+            "frame_after_hit",
+            "width",
+            "height",
+            "png_sha256",
+        }:
+            raise ValueError("capture item fields do not match")
+        frame = item["frame_after_hit"]
+        width = item["width"]
+        height = item["height"]
+        if (
+            not isinstance(frame, int)
+            or isinstance(frame, bool)
+            or frame <= previous_frame
+        ):
+            raise ValueError("capture frames must be strictly increasing")
+        if (
+            not isinstance(width, int)
+            or isinstance(width, bool)
+            or not 1 <= width <= 1024
+            or not isinstance(height, int)
+            or isinstance(height, bool)
+            or not 1 <= height <= 1024
+        ):
+            raise ValueError("capture dimensions are invalid")
+        if not _is_sha256(item["png_sha256"]):
+            raise ValueError("capture PNG hash is invalid")
+        previous_frame = frame
+
+    review = capture["visual_review"]
+    if not isinstance(review, dict) or review != {
+        "required": True,
+        "result": None,
+        "evidence_storage": "s25u-local-only",
+    }:
+        raise ValueError("visual review must remain explicitly pending")
+    if capture["translation_build_eligible"] is not False:
+        raise ValueError("technical display capture must not enable translation build")
+    ready = capture["status"] == "capture-ready-human-review-required"
+    if ready != (confirmed and bool(captures)):
+        raise ValueError("display capture status and evidence disagree")
+    expected_checkpoint = (
+        "human-confirm-first-korean-glyphs-and-ui"
+        if ready
+        else "repair-test-display-target-reachability"
+    )
+    if capture["next_checkpoint"] != expected_checkpoint:
+        raise ValueError("display capture next checkpoint is inconsistent")
+
+
+def _parse_screenshot(payload: dict[str, object]) -> tuple[bytes, dict[str, object]]:
+    if payload.get("error") is not None:
+        raise PatchError(f"Gearsystem screenshot failed: {payload['error']}")
+    if payload.get("mimeType") != "image/png":
+        raise PatchError("Gearsystem screenshot is not a PNG")
+    encoded = payload.get("data")
+    width = payload.get("width")
+    height = payload.get("height")
+    if not isinstance(encoded, str):
+        raise PatchError("Gearsystem screenshot has no base64 data")
+    if (
+        not isinstance(width, int)
+        or isinstance(width, bool)
+        or not 1 <= width <= 1024
+        or not isinstance(height, int)
+        or isinstance(height, bool)
+        or not 1 <= height <= 1024
+    ):
+        raise PatchError("Gearsystem screenshot dimensions are invalid")
+    try:
+        png = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error) as error:
+        raise PatchError("Gearsystem screenshot base64 is invalid") from error
+    if len(png) < 24 or png[:8] != b"\x89PNG\r\n\x1a\n" or png[12:16] != b"IHDR":
+        raise PatchError("Gearsystem screenshot PNG header is invalid")
+    header_width = int.from_bytes(png[16:20], "big")
+    header_height = int.from_bytes(png[20:24], "big")
+    if (header_width, header_height) != (width, height):
+        raise PatchError("Gearsystem screenshot dimensions disagree with PNG")
+    return png, {
+        "width": width,
+        "height": height,
+        "png_sha256": sha256_bytes(png),
+    }
+
+
+def _absolute(root: Path, path: Path) -> Path:
+    return path.resolve() if path.is_absolute() else (root / path).resolve()
+
+
+def _require_within(path: Path, parent: Path, label: str) -> None:
+    try:
+        path.relative_to(parent.resolve())
+    except ValueError as error:
+        raise PatchError(f"{label} must stay under {parent}") from error
+
+
+def _read_json(path: Path) -> dict[str, object]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise PatchError(f"{path.name} must contain a JSON object")
+    return value
+
+
+def _write_bytes_atomic(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def _write_json(path: Path, value: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    rendered = json.dumps(value, ensure_ascii=False, indent=2) + "\n"
+    descriptor, temporary = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=path.parent,
+        text=True,
+    )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+            stream.write(rendered)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def _build_safe_capture(
+    *,
+    build_report: dict[str, object],
+    resolution: dict[str, object],
+    emulator_version: str,
+    mapped_bank: int | None,
+    captures: list[dict[str, object]],
+) -> dict[str, object]:
+    target_read = resolution["target_read"]
+    assert isinstance(target_read, dict)
+    expected_bank = int(target_read["expected_bank"])
+    confirmed = mapped_bank == expected_bank
+    ready = confirmed and bool(captures)
+    safe = {
+        "artifact_kind": ARTIFACT_KIND,
+        "schema_version": SCHEMA_VERSION,
+        "status": (
+            "capture-ready-human-review-required"
+            if ready
+            else "runtime-target-read-not-observed"
+        ),
+        "purpose": "technical-poc-only",
+        "phrase_codepoints": [
+            f"U+{ord(character):04X}" for character in TEST_PHRASE
+        ],
+        "baseline_target_sha256": build_report["baseline_target_sha256"],
+        "test_target_sha256": build_report["test_target_sha256"],
+        "emulator_version": emulator_version,
+        "cold_boot": True,
+        "target_read": {
+            "slot": int(target_read["slot"]),
+            "logical_access": int(target_read["logical_access"]),
+            "expected_bank": expected_bank,
+            "mapped_bank": mapped_bank,
+            "confirmed": confirmed,
+        },
+        "captures": captures,
+        "visual_review": {
+            "required": True,
+            "result": None,
+            "evidence_storage": "s25u-local-only",
+        },
+        "translation_build_eligible": False,
+        "next_checkpoint": (
+            "human-confirm-first-korean-glyphs-and-ui"
+            if ready
+            else "repair-test-display-target-reachability"
+        ),
+    }
+    validate_display_capture(safe)
+    return safe
+
+
+def _capture_display(
+    *,
+    rom_path: Path,
+    rom_size: int,
+    target_read: dict[str, object],
+    evidence_dir: Path,
+) -> tuple[str, int | None, list[dict[str, object]], dict[str, object]]:
+    client = McpStdioClient(_default_command())
+    local: dict[str, object] = {
+        "rom": str(rom_path),
+        "target_read": target_read,
+        "captures": [],
+    }
+    emulator_version = "unknown"
+    mapped_bank: int | None = None
+    safe_captures: list[dict[str, object]] = []
+    start = f"{int(target_read['logical_access']):04X}"
+    breakpoint_armed = False
+    try:
+        tools = client.initialize()
+        missing = sorted(REQUIRED_TOOLS - tools)
+        if missing:
+            raise RuntimeError(f"Gearsystem MCP tools missing: {missing}")
+        client.call("load_media", {"file_path": str(rom_path)})
+        media = client.call("get_media_info")
+        local["media"] = media
+        if (
+            media.get("ready") is not True
+            or media.get("is_game_gear") is not True
+            or int(media.get("rom_size", 0)) != rom_size
+        ):
+            raise RuntimeError("Gearsystem did not load the exact-size test ROM")
+        emulator_version = str(media.get("emulator_version", "unknown"))
+        client.call("debug_reset")
+        client.call("debug_pause")
+        client.call(
+            "set_breakpoint_range",
+            {
+                "start_address": start,
+                "end_address": start,
+                "memory_area": "rom_ram",
+                "execute": False,
+                "read": True,
+                "write": False,
+            },
+        )
+        breakpoint_armed = True
+        for frames, button in INPUT_SCHEDULE:
+            if button is not None:
+                client.call(
+                    "controller_button",
+                    {
+                        "player": 1,
+                        "button": button,
+                        "action": "press_and_release",
+                    },
+                )
+            client.call("debug_step_frame", {"frames": frames})
+            status = client.call("debug_get_status")
+            if status.get("at_breakpoint") is not True:
+                continue
+            state, hit_evidence = _capture_state(client)
+            local["target_hit"] = state
+            local["target_hit_evidence"] = hit_evidence
+            slot = int(target_read["slot"])
+            mapped_bank = int(state[f"slot{slot}_bank"])
+            break
+        client.call(
+            "remove_breakpoint",
+            {
+                "address": start,
+                "end_address": start,
+                "memory_area": "rom_ram",
+            },
+        )
+        breakpoint_armed = False
+
+        if mapped_bank == int(target_read["expected_bank"]):
+            previous = 0
+            for frame in CAPTURE_FRAMES_AFTER_HIT:
+                client.call("debug_step_frame", {"frames": frame - previous})
+                png, metadata = _parse_screenshot(client.call("get_screenshot"))
+                filename = f"frame_{frame:04d}.png"
+                _write_bytes_atomic(evidence_dir / filename, png)
+                safe_item = {"frame_after_hit": frame, **metadata}
+                safe_captures.append(safe_item)
+                local["captures"].append(
+                    {"file": str(evidence_dir / filename), **safe_item}
+                )
+                previous = frame
+    finally:
+        if breakpoint_armed:
+            try:
+                client.call(
+                    "remove_breakpoint",
+                    {
+                        "address": start,
+                        "end_address": start,
+                        "memory_area": "rom_ram",
+                    },
+                )
+            except RuntimeError:
+                pass
+        local["stderr_tail"] = list(client.stderr_tail)
+        client.close()
+    return emulator_version, mapped_bank, safe_captures, local
+
+
+def main() -> int:
+    root = Path(__file__).resolve().parents[1]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--test-rom", type=Path, default=DEFAULT_TEST_ROM)
+    parser.add_argument("--build-report", type=Path, default=DEFAULT_BUILD_REPORT)
+    parser.add_argument("--resolution", type=Path, default=DEFAULT_RESOLUTION)
+    parser.add_argument("--local-report", type=Path, default=DEFAULT_LOCAL_REPORT)
+    parser.add_argument("--evidence-dir", type=Path, default=DEFAULT_EVIDENCE_DIR)
+    parser.add_argument("--if-ready", action="store_true")
+    args = parser.parse_args()
+
+    rom_path = _absolute(root, args.test_rom)
+    build_report_path = _absolute(root, args.build_report)
+    resolution_path = _absolute(root, args.resolution)
+    local_report_path = _absolute(root, args.local_report)
+    evidence_dir = _absolute(root, args.evidence_dir)
+    _require_within(rom_path, root / "build", "test ROM")
+    _require_within(
+        local_report_path,
+        root / "reports" / "local",
+        "display capture report",
+    )
+    _require_within(
+        evidence_dir,
+        root / "evidence" / "local",
+        "display capture evidence",
+    )
+    missing = [
+        path
+        for path in (rom_path, build_report_path, resolution_path)
+        if not path.is_file()
+    ]
+    if missing:
+        if args.if_ready:
+            print("Display capture not run: the S25U-local test build is not ready.")
+            return 0
+        raise SystemExit("display capture inputs are missing")
+
+    build_report = _read_json(build_report_path)
+    if (
+        build_report.get("artifact_kind")
+        != "s25u-local-korean-test-patch-build"
+        or build_report.get("status")
+        != "technical-poc-built-needs-runtime-display-proof"
+        or not _is_sha256(build_report.get("baseline_target_sha256"))
+        or not _is_sha256(build_report.get("test_target_sha256"))
+        or sha256_file(rom_path) != build_report["test_target_sha256"]
+    ):
+        raise PatchError("S25U-local test build identity or status mismatch")
+    resolution = _read_json(resolution_path)
+    validate_consumer_resolution(resolution)
+    if (
+        resolution["consumer_evidence_confirmed"] is not True
+        or resolution["target_sha256"] != build_report["baseline_target_sha256"]
+        or not isinstance(resolution["target_read"], dict)
+    ):
+        raise PatchError("runtime resolution does not authorize display capture")
+
+    emulator_version, mapped_bank, captures, local = _capture_display(
+        rom_path=rom_path,
+        rom_size=rom_path.stat().st_size,
+        target_read=resolution["target_read"],
+        evidence_dir=evidence_dir,
+    )
+    local.update(
+        {
+            "artifact_kind": "s25u-local-test-display-capture",
+            "schema_version": 1,
+            "test_target_sha256": build_report["test_target_sha256"],
+            "baseline_target_sha256": build_report["baseline_target_sha256"],
+            "cold_boot": True,
+        }
+    )
+    _write_json(local_report_path, local)
+    safe = _build_safe_capture(
+        build_report=build_report,
+        resolution=resolution,
+        emulator_version=emulator_version,
+        mapped_bank=mapped_bank,
+        captures=captures,
+    )
+    safe_path = root / PUBLISH_RELATIVE_PATH
+    _write_json(safe_path, safe)
+    print(
+        "SFKR display capture: "
+        f"{safe['status']} ({len(captures)} local PNG frame(s))"
+    )
+    if captures:
+        print(
+            "Open in My Files: Internal storage > ShiningForceKR > "
+            "evidence > local > v5_1_test_phrase"
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
