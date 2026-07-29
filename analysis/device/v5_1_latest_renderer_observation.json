@@ -1,12 +1,13 @@
 {
   "artifact_kind": "sanitized-text-engine-observation",
-  "schema_version": 3,
+  "schema_version": 4,
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "status": "text-decoder-not-observed",
   "probe": {
     "emulator": "Gearsystem",
     "emulator_version": "3.9.14",
     "system": "gamegear",
+    "frame_sync": "debug-status-paused",
     "route": "cold-boot-start-confirm-story",
     "anchor_kind": "huffman-vector-read",
     "frame_budget": 3300,

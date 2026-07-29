@@ -1,12 +1,13 @@
 {
   "artifact_kind": "sanitized-story-route-capture",
-  "schema_version": 1,
+  "schema_version": 2,
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "status": "route-frames-captured-human-review-required",
   "probe": {
     "emulator": "Gearsystem",
     "emulator_version": "3.9.14",
     "system": "gamegear",
+    "frame_sync": "debug-status-paused",
     "route": "cold-boot-start-confirm-story",
     "frame_budget": 3300
   },
@@ -17,7 +18,7 @@
       "input_count": 0,
       "width": 160,
       "height": 144,
-      "png_sha256": "20f834530c7cab0db8a37d201dcb03766e70991f978737c6cbbf5eac6a560087"
+      "png_sha256": "a95fa7519afc54113b782015d71bc7938109b60f5254abe1c94fffbde858ef8c"
     },
     {
       "stage": "post-start",
@@ -25,7 +26,7 @@
       "input_count": 1,
       "width": 160,
       "height": 144,
-      "png_sha256": "20f834530c7cab0db8a37d201dcb03766e70991f978737c6cbbf5eac6a560087"
+      "png_sha256": "3f5bcd653142681eb8704306a6388f2f2a006c3ba4387c55de96739bee4aeac2"
     },
     {
       "stage": "confirm-01",
@@ -33,7 +34,7 @@
       "input_count": 2,
       "width": 160,
       "height": 144,
-      "png_sha256": "20f834530c7cab0db8a37d201dcb03766e70991f978737c6cbbf5eac6a560087"
+      "png_sha256": "3f5bcd653142681eb8704306a6388f2f2a006c3ba4387c55de96739bee4aeac2"
     },
     {
       "stage": "confirm-04",
@@ -41,7 +42,7 @@
       "input_count": 5,
       "width": 160,
       "height": 144,
-      "png_sha256": "20f834530c7cab0db8a37d201dcb03766e70991f978737c6cbbf5eac6a560087"
+      "png_sha256": "eda5f02ed6da6142319f28375f655846992ebd58f541cd78f6ce4ef3b7d050bd"
     },
     {
       "stage": "confirm-16",
@@ -49,10 +50,10 @@
       "input_count": 17,
       "width": 160,
       "height": 144,
-      "png_sha256": "d051fec8417ea0f70157f14047a4619942ebe0f405e1d7545846c1aa94a76d25"
+      "png_sha256": "6a69b7485bcf74bce42b59c7887275a15091c1453f7e2ceea3781c6868dcd466"
     }
   ],
-  "distinct_frame_count": 2,
+  "distinct_frame_count": 4,
   "stable_tail": false,
   "route_state_verified": false,
   "translation_build_eligible": false,
