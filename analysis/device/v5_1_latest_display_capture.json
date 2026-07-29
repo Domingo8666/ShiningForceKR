@@ -1,7 +1,7 @@
 {
   "artifact_kind": "sanitized-s25u-test-display-capture",
   "schema_version": 1,
-  "status": "runtime-target-read-not-observed",
+  "status": "capture-ready-human-review-required",
   "purpose": "technical-poc-only",
   "phrase_codepoints": [
     "U+D55C",
@@ -15,16 +15,47 @@
     "slot": 1,
     "logical_access": 17374,
     "expected_bank": 8,
-    "mapped_bank": 7,
-    "confirmed": false
+    "mapped_bank": 8,
+    "confirmed": true
   },
-  "captures": [],
-  "post_advance_capture": null,
+  "captures": [
+    {
+      "frame_after_hit": 1,
+      "width": 160,
+      "height": 144,
+      "png_sha256": "93ccdb1d3fc723412d2acecd1e8ec1738e8755b4d248ba6f980c9a304a2ce4a5"
+    },
+    {
+      "frame_after_hit": 8,
+      "width": 160,
+      "height": 144,
+      "png_sha256": "265a5316c9a110b314aad9875a9418c5b1f71a37b67cf9849e0571541d037977"
+    },
+    {
+      "frame_after_hit": 30,
+      "width": 160,
+      "height": 144,
+      "png_sha256": "9c24ddaaf032b95df57cb62147a6c3cfc962524043565f75d953e3eb32d71d9c"
+    },
+    {
+      "frame_after_hit": 90,
+      "width": 160,
+      "height": 144,
+      "png_sha256": "59ea5018a72bee1341553f36d1ce8045e63ef7ebec02408edc2a49040ae007a3"
+    }
+  ],
+  "post_advance_capture": {
+    "button": "1",
+    "frames_after_press": 60,
+    "width": 160,
+    "height": 144,
+    "png_sha256": "0d7294005257f149b8f19de061fb684cb99e93236c461c304225ef4eacd4d9ef"
+  },
   "visual_review": {
     "required": true,
     "result": null,
     "evidence_storage": "s25u-local-only"
   },
   "translation_build_eligible": false,
-  "next_checkpoint": "repair-test-display-target-reachability"
+  "next_checkpoint": "human-confirm-first-korean-glyphs-and-ui"
 }
