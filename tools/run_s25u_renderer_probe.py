@@ -10,7 +10,6 @@ from pathlib import Path
 try:
     from .patch_io import sha256_file
     from .run_s25u_runtime_probe import (
-        INPUT_SCHEDULE,
         MAX_REJECTED_BANK_HITS_PER_SLOT,
         REQUIRED_TOOLS,
         McpStdioClient,
@@ -26,7 +25,6 @@ try:
 except ImportError:  # direct script execution
     from patch_io import sha256_file
     from run_s25u_runtime_probe import (
-        INPUT_SCHEDULE,
         MAX_REJECTED_BANK_HITS_PER_SLOT,
         REQUIRED_TOOLS,
         McpStdioClient,
@@ -46,10 +44,11 @@ CONSUMER_RESOLUTION = Path(
     "analysis/device/v5_1_latest_consumer_resolution.json"
 )
 RENDERER_CALL_SITES = (0x003FD5, 0x03FFB2)
+IDLE_FRAME_CHUNKS = (300,) * 40
 
 
-def _frames_per_mapping() -> int:
-    return sum(frames for frames, _ in INPUT_SCHEDULE)
+def _frame_budget() -> int:
+    return sum(IDLE_FRAME_CHUNKS)
 
 
 def _renderer_mappings() -> list[dict[str, int]]:
@@ -86,9 +85,9 @@ def _renderer_hit_matches(
     )
 
 
-def _probe_mapping(
+def _probe_mappings(
     client: McpStdioClient,
-    mapping: dict[str, int],
+    mappings: list[dict[str, int]],
 ) -> tuple[
     dict[str, object] | None,
     dict[str, object] | None,
@@ -96,61 +95,62 @@ def _probe_mapping(
 ]:
     client.call("debug_reset")
     client.call("debug_pause")
-    address = f"{mapping['logical_address']:04X}"
-    client.call(
-        "set_breakpoint_range",
-        {
-            "start_address": address,
-            "end_address": address,
-            "memory_area": "rom_ram",
-            "execute": True,
-            "read": False,
-            "write": False,
-        },
-    )
+    addresses = [f"{mapping['logical_address']:04X}" for mapping in mappings]
+    for address in addresses:
+        client.call(
+            "set_breakpoint_range",
+            {
+                "start_address": address,
+                "end_address": address,
+                "memory_area": "rom_ram",
+                "execute": True,
+                "read": False,
+                "write": False,
+            },
+        )
     rejected: list[dict[str, int]] = []
     try:
-        for frames, button in INPUT_SCHEDULE:
-            if button is not None:
-                client.call(
-                    "controller_button",
-                    {
-                        "player": 1,
-                        "button": button,
-                        "action": "press_and_release",
-                    },
-                )
+        for frames in IDLE_FRAME_CHUNKS:
             while True:
                 client.call("debug_step_frame", {"frames": frames})
                 status = client.call("debug_get_status")
                 if status.get("at_breakpoint") is not True:
                     break
                 state, evidence = _capture_state(client)
-                if _renderer_hit_matches(state, mapping):
-                    return {**mapping, **state}, evidence, rejected
+                matching = next(
+                    (
+                        mapping
+                        for mapping in mappings
+                        if _renderer_hit_matches(state, mapping)
+                    ),
+                    None,
+                )
+                if matching is not None:
+                    return {**matching, **state}, evidence, rejected
                 rejected.append(
                     {
-                        "slot": int(mapping["slot"]),
-                        "expected_bank": int(mapping["expected_bank"]),
-                        "mapped_bank": _mapped_bank(state, mapping),
                         "pc_after": int(state["pc_after"]),
                         "physical_pc_after": int(state["physical_pc_after"]),
+                        "slot0_bank": int(state["slot0_bank"]),
+                        "slot1_bank": int(state["slot1_bank"]),
+                        "slot2_bank": int(state["slot2_bank"]),
                     }
                 )
                 if len(rejected) >= MAX_REJECTED_BANK_HITS_PER_SLOT:
                     return None, None, rejected
     finally:
-        try:
-            client.call(
-                "remove_breakpoint",
-                {
-                    "address": address,
-                    "end_address": address,
-                    "memory_area": "rom_ram",
-                },
-            )
-        except RuntimeError:
-            pass
+        for address in addresses:
+            try:
+                client.call(
+                    "remove_breakpoint",
+                    {
+                        "address": address,
+                        "end_address": address,
+                        "memory_area": "rom_ram",
+                    },
+                )
+            except RuntimeError:
+                pass
     return None, None, rejected
 
 
@@ -185,7 +185,6 @@ def main() -> int:
     verify_target_identity(rom)
     target_sha256 = sha256_file(rom_path)
     mappings = _renderer_mappings()
-    mappings_attempted: list[dict[str, int]] = []
     safe_hit: dict[str, object] | None = None
     emulator_version = "unknown"
     local_result: dict[str, object] = {
@@ -224,20 +223,18 @@ def main() -> int:
                 "bank_switch": True,
             },
         )
-        for mapping in mappings:
-            mappings_attempted.append(mapping)
-            hit, evidence, rejected = _probe_mapping(client, mapping)
-            local_result["attempts"].append(
-                {
-                    "mapping": mapping,
-                    "hit": hit,
-                    "evidence": evidence,
-                    "rejected_hits": rejected,
-                }
-            )
-            if hit is not None:
-                safe_hit = hit
-                break
+        hit, evidence, rejected = _probe_mappings(client, mappings)
+        safe_hit = hit
+        local_result["attempts"].append(
+            {
+                "route": "cold-boot-idle-attract-introduction",
+                "frame_budget": _frame_budget(),
+                "mappings": mappings,
+                "hit": hit,
+                "evidence": evidence,
+                "rejected_hits": rejected,
+            }
+        )
     finally:
         local_result["stderr_tail"] = list(client.stderr_tail)
         client.close()
@@ -251,13 +248,13 @@ def main() -> int:
     observation = build_renderer_observation(
         target_sha256=target_sha256,
         emulator_version=emulator_version,
-        frames_per_mapping=_frames_per_mapping(),
-        mappings_attempted=mappings_attempted,
+        frame_budget=_frame_budget(),
+        mappings_attempted=mappings,
         hit=safe_hit,
     )
     safe_path = write_renderer_observation(root, observation)
     if safe_hit is None:
-        print("SFKR renderer hook was not reached in the scripted input window.")
+        print("SFKR renderer hook was not reached during the idle attract intro.")
     else:
         print(
             "SFKR renderer hook reached at "

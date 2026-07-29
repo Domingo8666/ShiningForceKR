@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 
 ARTIFACT_KIND = "sanitized-renderer-hook-observation"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_renderer_observation.json"
 )
@@ -28,7 +28,7 @@ PROBE_KEYS = {
     "emulator",
     "emulator_version",
     "system",
-    "frames_per_mapping",
+    "frame_budget",
     "mappings_attempted",
 }
 MAPPING_KEYS = {
@@ -130,7 +130,7 @@ def validate_renderer_observation(
         raise ValueError("renderer probe fields do not match")
     for key in ("emulator", "emulator_version", "system"):
         _require_token(probe[key], key)
-    _require_int(probe["frames_per_mapping"], "frames_per_mapping", 1, 100_000)
+    _require_int(probe["frame_budget"], "frame_budget", 1, 100_000)
     mappings = probe["mappings_attempted"]
     if not isinstance(mappings, list) or len(mappings) > 6:
         raise ValueError("mappings_attempted must contain at most six mappings")
@@ -183,7 +183,7 @@ def build_renderer_observation(
     *,
     target_sha256: str,
     emulator_version: str,
-    frames_per_mapping: int,
+    frame_budget: int,
     mappings_attempted: list[dict[str, int]],
     hit: dict[str, object] | None,
 ) -> dict[str, object]:
@@ -201,7 +201,7 @@ def build_renderer_observation(
             "emulator": "Gearsystem",
             "emulator_version": emulator_version,
             "system": "gamegear",
-            "frames_per_mapping": frames_per_mapping,
+            "frame_budget": frame_budget,
             "mappings_attempted": mappings_attempted,
         },
         "hit": hit,
