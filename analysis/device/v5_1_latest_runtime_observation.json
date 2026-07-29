@@ -1,16 +1,19 @@
 {
   "artifact_kind": "sanitized-runtime-consumer-observation",
-  "schema_version": 2,
+  "schema_version": 3,
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "status": "runtime-read-hit-observed",
+  "status": "runtime-read-hit-not-observed",
   "probe": {
     "emulator": "Gearsystem",
     "emulator_version": "3.9.14",
     "system": "gamegear",
     "frame_sync": "debug-status-paused",
-    "frames_per_slot": 1680,
+    "access_filter": "mapped-data-read-not-executing-range",
+    "frames_per_slot": 3300,
     "slots_attempted": [
-      0
+      0,
+      1,
+      2
     ],
     "breakpoint_ranges": [
       {
@@ -18,35 +21,36 @@
         "expected_bank": 0,
         "logical_start": 2938,
         "logical_end": 3118
+      },
+      {
+        "slot": 1,
+        "expected_bank": 0,
+        "logical_start": 19322,
+        "logical_end": 19502
+      },
+      {
+        "slot": 2,
+        "expected_bank": 0,
+        "logical_start": 35706,
+        "logical_end": 35886
+      },
+      {
+        "slot": 1,
+        "expected_bank": 6,
+        "logical_start": 17021,
+        "logical_end": 17128
+      },
+      {
+        "slot": 2,
+        "expected_bank": 6,
+        "logical_start": 33405,
+        "logical_end": 33512
       }
     ]
   },
-  "hit": {
-    "slot": 0,
-    "expected_bank": 0,
-    "logical_start": 2938,
-    "logical_end": 3118,
-    "pc_after": 2939,
-    "physical_pc_after": 2939,
-    "executing_bank": 0,
-    "mapper_control": 8,
-    "slot0_bank": 0,
-    "slot1_bank": 17,
-    "slot2_bank": 8,
-    "registers": {
-      "af": 44840,
-      "bc": 16987,
-      "de": 32,
-      "hl": 44800,
-      "ix": 48640,
-      "iy": 65287,
-      "sp": 57057
-    },
-    "trace_entries": 256,
-    "call_stack_depth": 2
-  },
-  "read_hit_observed": true,
+  "hit": null,
+  "read_hit_observed": false,
   "consumer_evidence_confirmed": false,
   "translation_build_eligible": false,
-  "next_checkpoint": "connect-hit-pc-to-selected-entry-and-bounded-decode"
+  "next_checkpoint": "extend-runtime-input-coverage"
 }
