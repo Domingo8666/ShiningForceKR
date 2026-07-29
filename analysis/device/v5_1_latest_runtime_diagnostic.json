@@ -4,7 +4,7 @@
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
   "exit_code": 1,
-  "attempt_utc": "2026-07-29T23:31:36Z",
+  "attempt_utc": "2026-07-29T23:40:21Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -20,8 +20,8 @@
   "runtime_observation_present": true,
   "runtime_failure": {
     "schema_version": 1,
-    "failure_stage": "test-display-capture",
-    "failure_kind": "runtime-error",
+    "failure_stage": "display-pixel-comparison",
+    "failure_kind": "invalid-runtime-data",
     "mcp_method": null
   },
   "next_checkpoint": "repair-runtime-command"
