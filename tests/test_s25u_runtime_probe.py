@@ -6,6 +6,7 @@ from unittest.mock import patch
 from tools.run_s25u_runtime_probe import (
     INPUT_SCHEDULE,
     _call_stack_depth,
+    _frame_step_timeout_seconds,
     _frames_per_slot,
     _last_candidate_access,
     _mapping_bank_matches,
@@ -127,6 +128,13 @@ class S25URuntimeProbeTests(unittest.TestCase):
         self.assertTrue(status["paused"])
         self.assertEqual(client.calls[0], "debug_step_frame")
         self.assertEqual(client.calls.count("debug_get_status"), 2)
+
+    def test_frame_step_timeout_allows_slow_s25u_execution(self) -> None:
+        self.assertEqual(_frame_step_timeout_seconds(180), 60.0)
+        self.assertEqual(_frame_step_timeout_seconds(240), 63.0)
+        self.assertEqual(_frame_step_timeout_seconds(1000), 215.0)
+        with self.assertRaises(ValueError):
+            _frame_step_timeout_seconds(0)
 
     def test_instruction_step_waits_for_paused_completion_barrier(self) -> None:
         class FakeClient:

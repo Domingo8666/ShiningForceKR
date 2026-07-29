@@ -86,6 +86,9 @@ INPUT_SCHEDULE: tuple[tuple[int, str | None], ...] = (
 )
 MAX_REJECTED_BANK_HITS_PER_SLOT = 64
 MAX_RUNTIME_CANDIDATE_GROUPS = 2
+MIN_FRAME_STEP_TIMEOUT_SECONDS = 60.0
+FRAME_STEP_RATE_FLOOR = 5.0
+FRAME_STEP_TIMEOUT_GRACE_SECONDS = 15.0
 RUNTIME_FAILURE_STAGES = {
     "mcp-start",
     "mcp-initialize",
@@ -290,8 +293,10 @@ def _step_frames_and_wait(
     client.call("debug_step_frame", {"frames": frames})
     # Gearsystem acknowledges debug_step_frame when it schedules the work, not
     # after all frames have executed. Polling paused/at_breakpoint is the
-    # adapter-supported completion barrier. PAL is the slowest expected clock.
-    deadline = time.monotonic() + (frames / 50.0) + 5.0
+    # adapter-supported completion barrier. A proot-hosted S25U emulator may
+    # run well below real time, so a PAL wall-clock estimate is not a safe
+    # lower bound. Keep the wait bounded but allow at least one minute.
+    deadline = time.monotonic() + _frame_step_timeout_seconds(frames)
     while True:
         status = client.call("debug_get_status")
         if (
@@ -304,6 +309,15 @@ def _step_frames_and_wait(
                 f"Gearsystem frame step did not finish within {frames} frames"
             )
         time.sleep(0.02)
+
+
+def _frame_step_timeout_seconds(frames: int) -> float:
+    if not 1 <= frames <= 1000:
+        raise ValueError("frame step must be between 1 and 1000")
+    return max(
+        MIN_FRAME_STEP_TIMEOUT_SECONDS,
+        (frames / FRAME_STEP_RATE_FLOOR) + FRAME_STEP_TIMEOUT_GRACE_SECONDS,
+    )
 
 
 def _step_instruction_and_wait(client: McpStdioClient) -> dict[str, object]:
@@ -983,6 +997,9 @@ def _runtime_failure_receipt(
     method = client.last_tool_name if client is not None else None
     if method is None and client is not None:
         method = client.last_request_method
+    failure_kind = _runtime_failure_kind(error)
+    if failure_kind in {"frame-step-timeout", "instruction-step-timeout"}:
+        method = "debug_get_status"
     if method is not None and (
         not method.replace("_", "").isalnum() or len(method) > 40
     ):
@@ -990,7 +1007,7 @@ def _runtime_failure_receipt(
     receipt: dict[str, object] = {
         "schema_version": 1,
         "failure_stage": stage,
-        "failure_kind": _runtime_failure_kind(error),
+        "failure_kind": failure_kind,
         "mcp_method": method,
     }
     validate_runtime_failure_receipt(receipt)

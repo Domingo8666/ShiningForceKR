@@ -61,6 +61,7 @@ v5.1은 최종판이 아니라 재작업용 진단 기준입니다.
 33. USB ADB로 최초 검증한 뒤 케이블 없이도 새 `origin/main` 커밋만 한 번씩 처리하는 S25U 자동실행기를 추가했습니다. canonical main·ROM 공유 저장공간·safe artifact allowlist를 벗어나거나 안전하지 않은 로컬 변경·커밋을 발견하면 중단하고, 동일 실패 커밋을 반복 실행하지 않습니다.
 34. S25U 자동실행의 설치·시작·상태·로그·안전 중지를 한 관리 도구로 묶었습니다. 죽은 PID의 stale lock만 복구하고 살아 있는 프로세스와 경쟁하지 않으며, 내 파일 앱에서 확인할 `reports/AUTOPILOT_STATUS.txt`와 Termux:Boot 개인 실행기를 생성합니다.
 35. 자동실행 첫 작업이 Gearsystem 준비·대상 식별을 모두 통과한 뒤 `runtime-command`에서 종료 코드 1을 게시했습니다. 경로·stderr를 공유하지 않고 실패 단계·종류·마지막 MCP 메서드만 schema v3 진단에 포함하도록 런타임 probe의 실패 영수증을 추가했습니다. 새 소스 커밋은 같은 S25U 자동실행에서 원인 분류를 다시 수집합니다.
+36. 재수집 결과 실제 실패가 `candidate-probe/frame-step-timeout`임을 확인했습니다. proot의 S25U 실행을 PAL 실시간 속도로 가정한 8.6초 제한을 폐기하고, 180프레임은 최소 60초·240프레임은 63초를 허용하는 bounded 완료 장벽으로 수정했습니다.
 
 ## 현재 체크포인트
 

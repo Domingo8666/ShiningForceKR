@@ -29,6 +29,7 @@
 | SFKR-021 | 무입력 attract 경로는 추정 텍스트 디코더 0x003411에 도달하지 않고, 이전 새 게임 자동 조작은 확인이 아닌 1번 취소 버튼을 반복함 | revalidate-frame-sync | 초기 Start·2번 3,300프레임 무히트는 비동기 step 완료 장벽이 없어 폐기했으며 `debug_get_status.paused` 동기화로 재검증 |
 | SFKR-022 | 0x003411은 v5.1 BPS의 source-independent 확장 코드나 패치 호출부에서 검증된 진입점이 아닌데 공용 디코더로 가정됨 | fixed-static | 검증된 한국어 Huffman 벡터 물리 0x080100..0x0802FF를 slot 1·2, mapper bank 0x20 조건의 실제 read로 직접 추적 |
 | SFKR-023 | S25U 런타임 준비 검사는 모두 통과했지만 probe 종료 코드 1의 안전 요약이 `runtime-command`까지만 구분됨 | fixed-static | 로컬 전체 오류는 S25U에 보존하고 실패 단계·분류·마지막 MCP 메서드만 schema v3 진단으로 게시한 뒤 자동실행 재수집 |
+| SFKR-024 | S25U proot의 180프레임 실행을 PAL 실시간 속도로 가정한 8.6초 완료 제한이 정상 실행을 중단 | fixed-static | 프레임 수와 저속 실행 하한으로 계산하되 180프레임에 최소 60초를 허용하는 bounded 완료 장벽으로 S25U 재실행 |
 
 ## 테스트 원칙
 
