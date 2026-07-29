@@ -30,6 +30,7 @@ try:
         publish_safe_observation,
         write_safe_observation,
     )
+    from .v5_1_test_phrase import build_test_phrase_plan
     from .v5_1_trace_plan import (
         build_trace_plan,
         to_korean_summary as trace_to_korean_summary,
@@ -57,6 +58,7 @@ except ImportError:  # direct script execution
         publish_safe_observation,
         write_safe_observation,
     )
+    from v5_1_test_phrase import build_test_phrase_plan
     from v5_1_trace_plan import (
         build_trace_plan,
         to_korean_summary as trace_to_korean_summary,
@@ -125,6 +127,11 @@ def main() -> int:
         default=root / "reports" / "pipeline_status.json",
     )
     parser.add_argument(
+        "--test-phrase-plan-json",
+        type=Path,
+        default=root / "reports" / "v5_1_test_phrase_plan.json",
+    )
+    parser.add_argument(
         "--no-rom-output",
         action="store_true",
         help="validate in memory without writing the patched ROM",
@@ -152,6 +159,7 @@ def main() -> int:
         raise SystemExit("v5.1 BPS identity mismatch; refusing to continue")
 
     engine = analyze_patch(patch)
+    test_phrase_plan = build_test_phrase_plan(patch)
     target = apply_bps(source, patch)
     target_sha256 = sha256_bytes(target)
     consumer = analyze_consumer(target)
@@ -171,8 +179,19 @@ def main() -> int:
         json.dumps(trace_plan, ensure_ascii=False, indent=2) + "\n",
     )
     _write_text(
+        args.test_phrase_plan_json,
+        json.dumps(test_phrase_plan, ensure_ascii=False, indent=2) + "\n",
+    )
+    _write_text(
         args.summary_report,
-        to_korean_summary(consumer) + "\n" + trace_to_korean_summary(trace_plan),
+        (
+            to_korean_summary(consumer)
+            + "\n"
+            + trace_to_korean_summary(trace_plan)
+            + "\n"
+            + "첫 표시 시험 문장 사전검증: 한다 / "
+            + "글리프·허프만 왕복 통과 / 빌드 승격 대기\n"
+        ),
     )
 
     english: dict[str, object]
@@ -211,6 +230,7 @@ def main() -> int:
             "bps_identity_and_crc": "pass",
             "korean_huffman_vector": "pass",
             "korean_font_runtime": "pass",
+            "korean_test_phrase_static_preflight": "pass",
             "english_reference": english,
             "script_lookup_candidate_scan": "pass",
             "script_consumer_cross_reference_plan": "pass",
@@ -241,6 +261,12 @@ def main() -> int:
             "report": args.trace_plan_report.name,
             "json": args.trace_plan_json.name,
         },
+        "test_phrase_plan": {
+            "status": test_phrase_plan["status"],
+            "purpose": test_phrase_plan["purpose"],
+            "report": args.test_phrase_plan_json.name,
+            "translation_build_eligible": False,
+        },
         "translation_build_eligible": False,
         "next_checkpoint": (
             "trace the highest-ranked lookup candidate with mapper state in the emulator"
@@ -260,6 +286,7 @@ def main() -> int:
     print(f"Readable summary: {args.summary_report}")
     print(f"Script candidate report: {args.consumer_report}")
     print(f"emucap trace plan: {args.trace_plan_report}")
+    print(f"ROM-free test phrase plan: {args.test_phrase_plan_json}")
     print(f"Pipeline status: {args.status_json}")
     print(safe_observation_summary(safe_observation))
     if safe_path is not None:

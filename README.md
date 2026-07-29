@@ -28,6 +28,8 @@ Android 내 파일 앱: 내부 저장공간/ShiningForceKR
 - v5.1 BPS의 크기, 체크섬, 액션 구성과 ROM 확장 구간을 검증했습니다.
 - 한국어 v5.1의 재배치 Huffman 벡터는 0x80100이며 51개 문맥 트리를 가집니다.
 - 한국어 심벌/트리 데이터 0x80300..0x808D3과 244엔트리 글꼴 페이지 매핑을 독립 파서로 재현합니다.
+- 기술 시험 문장 `한다`는 페이지 27의 0x1F·0x04 글리프를 사용하며, 심벌열 `5F 03 0D 1F 04 C9`가 한국어 Huffman 트리에서 39비트로 정확히 왕복됨을 ROM 없이 검증합니다.
+- 이 문장은 화면 경로를 확인하기 위한 technical-poc-only 표식이며, 런타임 소비자·정확한 엔트리·Expected Writes·콜드 부팅 화면 증거 전에는 빌드 가능 상태가 아닙니다.
 - 영어판 IPS의 별도 Huffman 벡터 0x29C3F에는 221개 트리가 있습니다.
 - 전체 v5.1 ROM에서 코드 리터럴과 2·3바이트 조회표 후보를 자동 점수화합니다.
 - 상위 후보의 가능한 Z80 버스 주소와 emucap read breakpoint 계획을 자동 생성합니다.
@@ -75,6 +77,7 @@ Git 인증이 아직 없으면 짧은 `SFKR safe observation` 결과까지는 �
 - reports/v5_1_script_lookup_candidates.md
 - reports/v5_1_emucap_trace_plan.md
 - reports/v5_1_emucap_trace_plan.json
+- reports/v5_1_test_phrase_plan.json
 - reports/pipeline_status.json
 - analysis/device/v5_1_latest_observation.json (`--publish-safe-observation` 사용 시)
 
