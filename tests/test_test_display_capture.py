@@ -84,6 +84,13 @@ class TestDisplayCaptureTests(unittest.TestCase):
                     "png_sha256": "3" * 64,
                 }
             ],
+            post_advance_capture={
+                "button": "1",
+                "frames_after_press": 60,
+                "width": 160,
+                "height": 144,
+                "png_sha256": "4" * 64,
+            },
         )
         self.assertEqual(
             capture["status"],
@@ -101,6 +108,7 @@ class TestDisplayCaptureTests(unittest.TestCase):
             emulator_version="3.9.14",
             mapped_bank=None,
             captures=[],
+            post_advance_capture=None,
         )
         self.assertEqual(
             capture["status"],
@@ -123,6 +131,13 @@ class TestDisplayCaptureTests(unittest.TestCase):
                     "png_sha256": "3" * 64,
                 }
             ],
+            post_advance_capture={
+                "button": "1",
+                "frames_after_press": 60,
+                "width": 160,
+                "height": 144,
+                "png_sha256": "4" * 64,
+            },
         )
         broken = copy.deepcopy(capture)
         broken["captures"] = []

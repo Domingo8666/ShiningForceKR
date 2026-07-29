@@ -84,6 +84,7 @@ TOP_LEVEL_KEYS = {
     "cold_boot",
     "target_read",
     "captures",
+    "post_advance_capture",
     "visual_review",
     "translation_build_eligible",
     "next_checkpoint",
@@ -197,6 +198,38 @@ def validate_display_capture(capture: dict[str, object]) -> None:
             raise ValueError("capture PNG hash is invalid")
         previous_frame = frame
 
+    post_advance = capture["post_advance_capture"]
+    if post_advance is not None:
+        if not isinstance(post_advance, dict) or set(post_advance) != {
+            "button",
+            "frames_after_press",
+            "width",
+            "height",
+            "png_sha256",
+        }:
+            raise ValueError("post-advance capture fields do not match")
+        if (
+            post_advance["button"] != "1"
+            or post_advance["frames_after_press"] != 60
+        ):
+            raise ValueError("post-advance input sequence is unexpected")
+        width = post_advance["width"]
+        height = post_advance["height"]
+        if (
+            not isinstance(width, int)
+            or isinstance(width, bool)
+            or not 1 <= width <= 1024
+            or not isinstance(height, int)
+            or isinstance(height, bool)
+            or not 1 <= height <= 1024
+            or not _is_sha256(post_advance["png_sha256"])
+        ):
+            raise ValueError("post-advance capture metadata is invalid")
+        if not confirmed or not captures:
+            raise ValueError(
+                "post-advance capture requires confirmed display captures"
+            )
+
     review = capture["visual_review"]
     if not isinstance(review, dict) or review != {
         "required": True,
@@ -207,7 +240,7 @@ def validate_display_capture(capture: dict[str, object]) -> None:
     if capture["translation_build_eligible"] is not False:
         raise ValueError("technical display capture must not enable translation build")
     ready = capture["status"] == "capture-ready-human-review-required"
-    if ready != (confirmed and bool(captures)):
+    if ready != (confirmed and bool(captures) and post_advance is not None):
         raise ValueError("display capture status and evidence disagree")
     expected_checkpoint = (
         "human-confirm-first-korean-glyphs-and-ui"
@@ -323,12 +356,13 @@ def _build_safe_capture(
     emulator_version: str,
     mapped_bank: int | None,
     captures: list[dict[str, object]],
+    post_advance_capture: dict[str, object] | None,
 ) -> dict[str, object]:
     target_read = resolution["target_read"]
     assert isinstance(target_read, dict)
     expected_bank = int(target_read["expected_bank"])
     confirmed = mapped_bank == expected_bank
-    ready = confirmed and bool(captures)
+    ready = confirmed and bool(captures) and post_advance_capture is not None
     safe = {
         "artifact_kind": ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
@@ -353,6 +387,7 @@ def _build_safe_capture(
             "confirmed": confirmed,
         },
         "captures": captures,
+        "post_advance_capture": post_advance_capture,
         "visual_review": {
             "required": True,
             "result": None,
@@ -375,7 +410,13 @@ def _capture_display(
     rom_size: int,
     target_read: dict[str, object],
     evidence_dir: Path,
-) -> tuple[str, int | None, list[dict[str, object]], dict[str, object]]:
+) -> tuple[
+    str,
+    int | None,
+    list[dict[str, object]],
+    dict[str, object] | None,
+    dict[str, object],
+]:
     client = McpStdioClient(_default_command())
     local: dict[str, object] = {
         "rom": str(rom_path),
@@ -385,6 +426,7 @@ def _capture_display(
     emulator_version = "unknown"
     mapped_bank: int | None = None
     safe_captures: list[dict[str, object]] = []
+    safe_post_advance: dict[str, object] | None = None
     start = f"{int(target_read['logical_access']):04X}"
     breakpoint_armed = False
     try:
@@ -459,6 +501,27 @@ def _capture_display(
                     {"file": str(evidence_dir / filename), **safe_item}
                 )
                 previous = frame
+            client.call(
+                "controller_button",
+                {
+                    "player": 1,
+                    "button": "1",
+                    "action": "press_and_release",
+                },
+            )
+            client.call("debug_step_frame", {"frames": 60})
+            png, metadata = _parse_screenshot(client.call("get_screenshot"))
+            filename = "after_advance.png"
+            _write_bytes_atomic(evidence_dir / filename, png)
+            safe_post_advance = {
+                "button": "1",
+                "frames_after_press": 60,
+                **metadata,
+            }
+            local["post_advance_capture"] = {
+                "file": str(evidence_dir / filename),
+                **safe_post_advance,
+            }
     finally:
         if breakpoint_armed:
             try:
@@ -474,7 +537,13 @@ def _capture_display(
                 pass
         local["stderr_tail"] = list(client.stderr_tail)
         client.close()
-    return emulator_version, mapped_bank, safe_captures, local
+    return (
+        emulator_version,
+        mapped_bank,
+        safe_captures,
+        safe_post_advance,
+        local,
+    )
 
 
 def main() -> int:
@@ -535,7 +604,13 @@ def main() -> int:
     ):
         raise PatchError("runtime resolution does not authorize display capture")
 
-    emulator_version, mapped_bank, captures, local = _capture_display(
+    (
+        emulator_version,
+        mapped_bank,
+        captures,
+        post_advance_capture,
+        local,
+    ) = _capture_display(
         rom_path=rom_path,
         rom_size=rom_path.stat().st_size,
         target_read=resolution["target_read"],
@@ -557,12 +632,14 @@ def main() -> int:
         emulator_version=emulator_version,
         mapped_bank=mapped_bank,
         captures=captures,
+        post_advance_capture=post_advance_capture,
     )
     safe_path = root / PUBLISH_RELATIVE_PATH
     _write_json(safe_path, safe)
     print(
         "SFKR display capture: "
-        f"{safe['status']} ({len(captures)} local PNG frame(s))"
+        f"{safe['status']} ({len(captures) + int(post_advance_capture is not None)} "
+        "local PNG frame(s))"
     )
     if captures:
         print(

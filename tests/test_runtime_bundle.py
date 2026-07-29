@@ -93,6 +93,13 @@ class RuntimeBundleTests(unittest.TestCase):
                     "png_sha256": "3" * 64,
                 }
             ],
+            post_advance_capture={
+                "button": "1",
+                "frames_after_press": 60,
+                "width": 160,
+                "height": 144,
+                "png_sha256": "4" * 64,
+            },
         )
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -139,7 +139,8 @@ v5.1 BPS에서 기준 이미지를 메모리로 다시 만들고, `한다`가 �
 
 테스트 ROM이 생성되면 wrapper는 콜드 부팅으로 확정 엔트리의 압축
 데이터 read를 다시 관측하고 매퍼 뱅크를 대조합니다. 일치할 때만
-1·8·30·90프레임 뒤 화면을 다음 S25U 로컬 폴더에 PNG로 저장합니다.
+1·8·30·90프레임 뒤 화면과 A 버튼 입력 60프레임 뒤 화면을 다음 S25U
+로컬 폴더에 PNG로 저장합니다.
 
 - `evidence/local/v5_1_test_phrase/`
 - `reports/local/v5_1_test_display_capture.json`
