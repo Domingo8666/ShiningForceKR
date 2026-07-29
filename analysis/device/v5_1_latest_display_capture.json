@@ -8,12 +8,12 @@
     "U+B2E4"
   ],
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "test_target_sha256": "d8a3ae0b813cad387b04bebe7db845f39dedf4373d9dd7fd7dfb9e0f4b51d8bd",
+  "test_target_sha256": "329ad708b9a70320d78e582350fa1b671f291462c165c367f929be42cd7f3411",
   "emulator_version": "3.9.14",
   "cold_boot": true,
   "target_read": {
     "slot": 1,
-    "logical_access": 17479,
+    "logical_access": 17506,
     "expected_bank": 8,
     "mapped_bank": 8,
     "confirmed": true
@@ -29,19 +29,19 @@
       "frame_after_hit": 8,
       "width": 160,
       "height": 144,
-      "png_sha256": "b922627baff59bcd31624809e4e7f48a54cdab76adc2f879fa2597a2c2858b42"
+      "png_sha256": "2d3e5a570ab591710467a2a7349d293a779a5b4306f1f6ff01dd9f07a781b471"
     },
     {
       "frame_after_hit": 30,
       "width": 160,
       "height": 144,
-      "png_sha256": "05a798c0274e56f983fe8359e075bb91d022b74aae904304e72c4b80a8e8b3f0"
+      "png_sha256": "d02b8abe9f72d8a34356b616466d020b8c22b1ffe17c3420ebbe3e20d52abb20"
     },
     {
       "frame_after_hit": 90,
       "width": 160,
       "height": 144,
-      "png_sha256": "bccf8fdf6bda32149eb80548c6ec66934e03a1d2e2a57248dfe5538c16075a90"
+      "png_sha256": "ec88bdc48ada3297f3b6118dfe389e63301cf458e38402f0889600d781b4bc17"
     }
   ],
   "post_advance_capture": {
@@ -49,7 +49,7 @@
     "frames_after_press": 60,
     "width": 160,
     "height": 144,
-    "png_sha256": "9e69ec2f75b9340f7de031cf35eda2106ce4960bcc727a92b4dc40341aeef600"
+    "png_sha256": "0d7294005257f149b8f19de061fb684cb99e93236c461c304225ef4eacd4d9ef"
   },
   "visual_review": {
     "required": true,
