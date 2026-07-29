@@ -59,6 +59,7 @@ v5.1은 최종판이 아니라 재작업용 진단 기준입니다.
 31. Gearsystem 3.9.14의 `debug_step_frame`가 완료가 아니라 요청 접수 직후 응답함을 소스와 단색 캡처로 확인했습니다. 초기 3,300프레임 무히트·화면 해시 결론을 폐기하고, `debug_get_status.paused`/breakpoint 완료 장벽과 새 증거 스키마로 전체 런타임 경로를 재검증하도록 수정했습니다.
 32. 동기화된 첫 slot 0·bank 0 hit가 감시 범위 내부 PC 0x0B7B의 opcode fetch임을 확인했습니다. 실행 물리 PC가 감시 물리 범위와 겹치는 hit를 데이터 read로 승격하지 않고 해당 매핑을 제외한 다음 매핑을 계속 추적하도록 수정했습니다.
 33. USB ADB로 최초 검증한 뒤 케이블 없이도 새 `origin/main` 커밋만 한 번씩 처리하는 S25U 자동실행기를 추가했습니다. canonical main·ROM 공유 저장공간·safe artifact allowlist를 벗어나거나 안전하지 않은 로컬 변경·커밋을 발견하면 중단하고, 동일 실패 커밋을 반복 실행하지 않습니다.
+34. S25U 자동실행의 설치·시작·상태·로그·안전 중지를 한 관리 도구로 묶었습니다. 죽은 PID의 stale lock만 복구하고 살아 있는 프로세스와 경쟁하지 않으며, 내 파일 앱에서 확인할 `reports/AUTOPILOT_STATUS.txt`와 Termux:Boot 개인 실행기를 생성합니다.
 
 ## 현재 체크포인트
 
@@ -79,9 +80,10 @@ python tools/run_mobile_pipeline.py --rom "/storage/emulated/0/ROM/Shining Force
 이 명령은 ROM과 보고서를 S25U 로컬의 build/ 및 reports/에만 생성합니다. 내 파일에서 ShiningForceKR/reports/NEXT_STEP.txt를 먼저 확인합니다. 원본 ROM은 덮어쓰지 않으며 Git 대상에서 제외됩니다.
 
 USB ADB 최초 설정과 1회 실행 확인 뒤 케이블 없이 새 GitHub 커밋을
-자동 처리하려면 `tools/run_s25u_autopilot.sh`를 사용합니다. 상태와 로그는
-Termux 전용 `~/.local/state/shiningforcekr/`에만 남고 ROM 경로는 Git에
-게시하지 않습니다.
+자동 처리하려면 `tools/manage_s25u_autopilot.sh install`을 사용합니다.
+상태와 로그는 Termux 전용 `~/.local/state/shiningforcekr/`에 남고,
+사용자용 상태 요약만 로컬 `reports/AUTOPILOT_STATUS.txt`에 생성됩니다.
+ROM 경로와 상태 파일은 Git에 게시하지 않습니다.
 
 캡처 없이 안전 요약을 GitHub에 공유할 때는
 `--publish-safe-observation`을 붙입니다. 이 옵션은

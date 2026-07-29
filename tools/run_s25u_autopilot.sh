@@ -86,6 +86,7 @@ log_file="$state_dir/autopilot.log"
 last_head_file="$state_dir/last_processed_head"
 stop_file="$state_dir/STOP"
 lock_dir="$state_dir/lock"
+lock_pid_file="$lock_dir/pid"
 
 log() {
   line="$(date -u '+%Y-%m-%dT%H:%M:%SZ') $*"
@@ -93,8 +94,37 @@ log() {
   printf '%s\n' "$line" >>"$log_file"
 }
 
-if ! mkdir "$lock_dir" 2>/dev/null; then
-  log "another S25U autopilot process already owns the lock"
+acquire_lock() {
+  if mkdir "$lock_dir" 2>/dev/null; then
+    printf '%s\n' "$$" >"$lock_pid_file"
+    return 0
+  fi
+
+  existing_pid=""
+  if [ -f "$lock_pid_file" ]; then
+    existing_pid="$(cat "$lock_pid_file" 2>/dev/null || true)"
+  fi
+  case "$existing_pid" in
+    ''|*[!0-9]*)
+      ;;
+    *)
+      if kill -0 "$existing_pid" 2>/dev/null; then
+        log "another S25U autopilot process already owns the lock"
+        return 3
+      fi
+      ;;
+  esac
+
+  rm -f "$lock_pid_file"
+  if ! rmdir "$lock_dir" 2>/dev/null ||
+    ! mkdir "$lock_dir" 2>/dev/null; then
+    log "stale autopilot lock could not be recovered safely"
+    return 3
+  fi
+  printf '%s\n' "$$" >"$lock_pid_file"
+}
+
+if ! acquire_lock; then
   exit 3
 fi
 
@@ -103,7 +133,14 @@ cleanup() {
   if [ "$wake_lock" -eq 1 ] && command -v termux-wake-unlock >/dev/null 2>&1; then
     termux-wake-unlock >/dev/null 2>&1 || true
   fi
-  rmdir "$lock_dir" 2>/dev/null || true
+  lock_owner=""
+  if [ -f "$lock_pid_file" ]; then
+    lock_owner="$(cat "$lock_pid_file" 2>/dev/null || true)"
+  fi
+  if [ "$lock_owner" = "$$" ]; then
+    rm -f "$lock_pid_file"
+    rmdir "$lock_dir" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM HUP

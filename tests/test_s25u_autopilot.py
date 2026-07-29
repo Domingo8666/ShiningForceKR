@@ -9,6 +9,9 @@ from tools.v5_1_runtime_bundle import SAFE_ARTIFACTS
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = (ROOT / "tools" / "run_s25u_autopilot.sh").read_text(encoding="utf-8")
+MANAGER = (ROOT / "tools" / "manage_s25u_autopilot.sh").read_text(
+    encoding="utf-8"
+)
 
 
 class S25UAutopilotTests(unittest.TestCase):
@@ -38,6 +41,28 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn("/storage/emulated/0/", SCRIPT)
         self.assertIn('"$HOME"/storage/shared/*', SCRIPT)
         self.assertNotIn("adb pull", SCRIPT)
+
+    def test_autopilot_recovers_only_a_dead_stale_lock(self) -> None:
+        self.assertIn('kill -0 "$existing_pid"', SCRIPT)
+        self.assertIn('if [ "$lock_owner" = "$$" ]', SCRIPT)
+        self.assertIn("stale autopilot lock could not be recovered safely", SCRIPT)
+
+    def test_manager_installs_private_boot_launcher(self) -> None:
+        self.assertIn(
+            '$HOME/.termux/boot/shiningforcekr-autopilot',
+            MANAGER,
+        )
+        self.assertIn("chmod 700", MANAGER)
+        self.assertIn("run_s25u_autopilot.sh", MANAGER)
+        self.assertIn("AUTOPILOT_STATUS.txt", MANAGER)
+        self.assertNotIn("adb pull", MANAGER)
+        self.assertNotIn("git push", MANAGER)
+
+    def test_manager_requires_termux_and_s25u_local_rom(self) -> None:
+        self.assertIn("/data/data/com.termux/files/usr", MANAGER)
+        self.assertIn("/storage/emulated/0/", MANAGER)
+        self.assertIn('"$HOME"/storage/shared/*', MANAGER)
+        self.assertIn('kill -0 "$candidate"', MANAGER)
 
 
 if __name__ == "__main__":

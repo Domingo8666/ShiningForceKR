@@ -202,11 +202,21 @@ Gearsystem이 응답하지 않을 때도 30초 제한으로 종료해 실패 단
 ## S25U 케이블 분리 후 자동실행
 
 USB ADB로 최초 설정과 1회 실행을 확인한 뒤에는 다음 자동실행기를
-Termux에서 계속 실행할 수 있습니다.
+Termux에서 설치하고 계속 실행할 수 있습니다.
 
 ~~~sh
-bash tools/run_s25u_autopilot.sh \
+bash tools/manage_s25u_autopilot.sh install \
   --source-rom "/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg"
+~~~
+
+설치 명령은 중복 프로세스를 막고 현재 작업을 백그라운드에서 시작하며,
+Termux:Boot용 개인 실행기도 `~/.termux/boot/`에 설치합니다. 자동작업
+상태는 내 파일 앱의 `ShiningForceKR/reports/AUTOPILOT_STATUS.txt`에서
+확인할 수 있습니다. 상태 갱신과 안전 중지는 다음 명령을 사용합니다.
+
+~~~sh
+bash tools/manage_s25u_autopilot.sh status
+bash tools/manage_s25u_autopilot.sh stop
 ~~~
 
 자동실행기는 5분마다 canonical `origin/main`을 확인하고, 아직 처리하지
@@ -222,8 +232,10 @@ bash tools/run_s25u_autopilot.sh \
 `~/.local/state/shiningforcekr/`에 저장합니다. 자동실행을 안전하게
 멈추려면 그 폴더에 `STOP` 파일을 만들면 됩니다. 케이블 제거 가능 여부는
 최초 `--force --once` 실행과 GitHub 게시 확인 뒤 판정합니다. Termux가
-강제 종료되거나 S25U가 재부팅되면 별도 부팅 자동 시작 설정 전까지는
-다시 시작해야 합니다.
+강제 종료될 수 있으므로 Android 배터리 최적화 제외가 필요합니다.
+재부팅 뒤 자동 시작은 Termux:Boot 앱이 설치되어 있고 Android에서 한 번
+직접 실행된 경우에만 동작합니다. 관리 도구가 실행기 파일을 설치했다는
+사실만으로 Termux:Boot 앱 설치·최초 실행까지 완료됐다고 판정하지 않습니다.
 
 ## 안전 규칙
 
