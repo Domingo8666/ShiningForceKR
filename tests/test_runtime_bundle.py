@@ -18,6 +18,10 @@ from tools.v5_1_runtime_diagnostic import (  # noqa: E402
 from tools.v5_1_runtime_observation import (  # noqa: E402
     write_runtime_observation,
 )
+from tools.v5_1_renderer_observation import (  # noqa: E402
+    build_renderer_observation,
+    write_renderer_observation,
+)
 from tools.v5_1_test_display_capture import _build_safe_capture  # noqa: E402
 
 
@@ -112,6 +116,20 @@ class RuntimeBundleTests(unittest.TestCase):
                 json.dumps(capture, ensure_ascii=False, indent=2) + "\n",
                 encoding="utf-8",
             )
+            artifacts = _load_validated_artifacts(root)
+        self.assertIn(path.relative_to(root), artifacts)
+
+    def test_loads_sanitized_renderer_observation(self) -> None:
+        observation = build_renderer_observation(
+            target_sha256="5" * 64,
+            emulator_version="3.9.14",
+            frames_per_mapping=1680,
+            mappings_attempted=[],
+            hit=None,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = write_renderer_observation(root, observation)
             artifacts = _load_validated_artifacts(root)
         self.assertIn(path.relative_to(root), artifacts)
 

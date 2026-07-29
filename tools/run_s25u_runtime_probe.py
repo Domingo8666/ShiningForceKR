@@ -282,29 +282,62 @@ def _prior_no_hit_ranges(
     target_sha256: str,
 ) -> set[tuple[int, int, int, int]]:
     path = root / RUNTIME_OBSERVATION_PATH
+    documents: list[str] = []
     try:
-        observation = json.loads(path.read_text(encoding="utf-8"))
+        documents.append(path.read_text(encoding="utf-8"))
+    except OSError:
+        pass
+    relative = str(RUNTIME_OBSERVATION_PATH).replace("\\", "/")
+    history = subprocess.run(
+        ["git", "log", "-16", "--format=%H", "--", relative],
+        cwd=root,
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if history.returncode == 0:
+        for commit in history.stdout.splitlines():
+            shown = subprocess.run(
+                ["git", "show", f"{commit}:{relative}"],
+                cwd=root,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            if shown.returncode == 0:
+                documents.append(shown.stdout)
+    output: set[tuple[int, int, int, int]] = set()
+    for document in documents:
+        try:
+            observation = json.loads(document)
+            if not isinstance(observation, dict):
+                continue
+            validate_runtime_observation(observation)
+        except (ValueError, json.JSONDecodeError):
+            continue
         if not isinstance(observation, dict):
-            return set()
-        validate_runtime_observation(observation)
-    except (OSError, ValueError, json.JSONDecodeError):
-        return set()
-    if (
-        observation.get("target_sha256") != target_sha256
-        or observation.get("read_hit_observed") is not False
-    ):
-        return set()
-    probe = observation.get("probe")
-    if not isinstance(probe, dict):
-        return set()
-    ranges = probe.get("breakpoint_ranges")
-    if not isinstance(ranges, list):
-        return set()
-    return {
-        _range_key(item)
-        for item in ranges
-        if isinstance(item, dict)
-    }
+            continue
+        if (
+            observation.get("target_sha256") != target_sha256
+            or observation.get("read_hit_observed") is not False
+        ):
+            continue
+        probe = observation.get("probe")
+        if not isinstance(probe, dict):
+            continue
+        ranges = probe.get("breakpoint_ranges")
+        if not isinstance(ranges, list):
+            continue
+        output.update(
+            _range_key(item)
+            for item in ranges
+            if isinstance(item, dict)
+        )
+    return output
 
 
 def _overlap_ratio(
@@ -403,8 +436,6 @@ def _runtime_candidate_groups(
         )
         if len(groups) >= MAX_RUNTIME_CANDIDATE_GROUPS:
             break
-    if not groups:
-        raise ValueError("no untested decodable triplet candidate groups remain")
     return groups
 
 
@@ -797,7 +828,6 @@ def main() -> int:
         if isinstance(mapping, dict)
     ]
 
-    client = McpStdioClient(_default_command())
     local_result: dict[str, object] = {
         "target_sha256": target_sha256,
         "trace_plan": str(plan_path),
@@ -806,6 +836,40 @@ def main() -> int:
         "planned_ranges": planned_ranges,
         "attempts": [],
     }
+    if not candidate_groups:
+        exhausted_ranges = [
+            {
+                "slot": slot,
+                "expected_bank": bank,
+                "logical_start": logical_start,
+                "logical_end": logical_end,
+            }
+            for slot, bank, logical_start, logical_end in sorted(excluded_ranges)
+        ]
+        local_path = root / LOCAL_REPORT
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_result["candidate_search_exhausted"] = True
+        local_path.write_text(
+            json.dumps(local_result, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        observation = build_runtime_observation(
+            target_sha256=target_sha256,
+            emulator_version="not-run",
+            frames_per_slot=_frames_per_slot(),
+            slots_attempted=sorted(
+                {int(item["slot"]) for item in exhausted_ranges}
+            ),
+            breakpoint_ranges=exhausted_ranges,
+            hit=None,
+        )
+        safe_path = write_runtime_observation(root, observation)
+        print("SFKR ranked table candidates exhausted; renderer probe is next.")
+        print(f"Local evidence: {local_path}")
+        print(f"Safe observation: {safe_path}")
+        return 0
+
+    client = McpStdioClient(_default_command())
     slots_attempted: list[int] = []
     ranges_attempted: list[dict[str, int]] = []
     safe_hit: dict[str, object] | None = None

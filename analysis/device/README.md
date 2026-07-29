@@ -10,6 +10,7 @@
 - 서로 겹치는 시프트 정렬 후보와 통합 감시 범위
 - 정적 명령 모양 개수와 매퍼 결합 개수
 - 실제 read breakpoint 히트의 PC·physical PC와 네 개 매퍼 레지스터
+- 검증된 렌더러 call-site execute breakpoint의 PC·physical PC와 매퍼 상태
 - 실행한 슬롯·프레임 수, trace 항목 수와 호출 스택 깊이
 - 실행 소비 증거 및 번역 빌드 적격 여부
 - S25U 로컬 테스트 화면의 PNG 해시·크기와 사람 시각 확인 대기 상태
@@ -29,6 +30,12 @@
 좌표와 집계값만 `v5_1_latest_runtime_observation.json`에 기록합니다.
 실제 trace 줄, opcode, 메모리 덤프, 화면과 파일 경로는 이 폴더에
 게시할 수 없습니다.
+
+정적 조회표 후보가 실행 중 읽히지 않으면
+`tools/run_s25u_renderer_probe.py`가 검증된 v5.1 한글 렌더러 호출
+좌표를 추적합니다. `v5_1_latest_renderer_observation.json`에는 호출
+파일 좌표, 논리 주소, 실제 매퍼 뱅크, 레지스터와 trace·호출 스택
+집계만 기록하고 전체 trace와 로컬 경로는 게시하지 않습니다.
 
 런타임 단계가 결과 생성 전에 중단되면
 `tools/v5_1_runtime_diagnostic.py`가 proot, Ubuntu, 실행 파일, 동적

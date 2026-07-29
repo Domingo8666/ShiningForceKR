@@ -42,7 +42,15 @@ else
     if [ "$resolver_status" -ne 0 ]; then
       stage_status="$resolver_status"
       diagnostic_trigger=probe
-    elif [ -n "$source_rom" ]; then
+    else
+      python tools/run_s25u_renderer_probe.py --if-needed
+      renderer_probe_status=$?
+      if [ "$renderer_probe_status" -ne 0 ]; then
+        stage_status="$renderer_probe_status"
+        diagnostic_trigger=probe
+      fi
+    fi
+    if [ "$stage_status" -eq 0 ] && [ -n "$source_rom" ]; then
       python tools/v5_1_test_patch.py \
         --source-rom "$source_rom" \
         --if-ready
