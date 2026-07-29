@@ -1,10 +1,16 @@
-# ROM / patch outputs
+# ROM / emulator state (S25U local only)
 *.gg
 *.sms
 *.bin
 *.state
 *.state?
 *.sav
+original/*
+saves/*
+
+# External reference patch (verified locally)
+patch/fcpatch_070706.ips
+patch/fcpatch_070706.zip
 
 # Video / images
 *.mp4

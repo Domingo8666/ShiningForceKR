@@ -1,0 +1,258 @@
+#!/usr/bin/env python3
+"""Inspect Final Conflict's context-dependent Huffman trees from the English IPS.
+
+This is an independent format parser.  It verifies every byte it consumes came
+from an IPS record, so the clean copyrighted ROM is not needed for tree study.
+Actual script entry lookup and dictionary expansion are intentionally separate
+checkpoints and are not claimed complete here.
+"""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass
+import json
+from pathlib import Path
+
+try:
+    from .patch_io import PatchError, parse_ips, sha256_bytes
+except ImportError:  # direct script execution
+    from patch_io import PatchError, parse_ips, sha256_bytes
+
+VECTOR_OFFSET = 0x29C3F
+VECTOR_ENTRIES = 256
+VECTOR_SIZE = VECTOR_ENTRIES * 2
+BANK_BASE = 0x28000
+EXPECTED_IPS_SIZE = 47290
+EXPECTED_IPS_SHA256 = "3cc1085508c7298d5d20fbfefec929cdfdadbcd60340a66ec0e4c2aa92d48c07"
+EXPECTED_NONEMPTY_TREES = 221
+EXPECTED_EMPTY_TREES = 35
+CANDIDATE_END_SYMBOL = 0xC9
+
+
+@dataclass
+class HuffmanNode:
+    left: "HuffmanNode | None" = None
+    right: "HuffmanNode | None" = None
+    symbol: int | None = None
+
+    @property
+    def is_leaf(self) -> bool:
+        return self.symbol is not None
+
+
+@dataclass(frozen=True)
+class ParsedTree:
+    previous_symbol: int
+    pointer: int
+    structure_offset: int
+    structure_bits: int
+    leaf_count: int
+    symbol_offset: int
+    root: HuffmanNode
+
+
+def build_ips_overlay(patch: bytes, minimum_size: int = 0x80000) -> tuple[bytes, bytes]:
+    parsed = parse_ips(patch)
+    required = minimum_size
+    for record in parsed.records:
+        required = max(required, record.offset + len(record.data))
+    overlay = bytearray(required)
+    known = bytearray(required)
+    for record in parsed.records:
+        end = record.offset + len(record.data)
+        overlay[record.offset:end] = record.data
+        known[record.offset:end] = b"\x01" * len(record.data)
+    return bytes(overlay), bytes(known)
+
+
+def _require_known(known: bytes, start: int, end: int, description: str) -> None:
+    if start < 0 or end > len(known) or any(value == 0 for value in known[start:end]):
+        raise PatchError(
+            f"{description} depends on bytes not supplied by the IPS: "
+            f"0x{start:x}..0x{end:x}"
+        )
+
+
+def _bit_at(data: bytes, known: bytes, base: int, bit_index: int) -> int:
+    offset = base + (bit_index >> 3)
+    _require_known(known, offset, offset + 1, "Huffman bit stream")
+    return (data[offset] >> (7 - (bit_index & 7))) & 1
+
+
+def parse_tree(
+    data: bytes,
+    known: bytes,
+    previous_symbol: int,
+    pointer: int,
+) -> ParsedTree:
+    structure_offset = BANK_BASE + (pointer & 0x3FFF)
+    bit_index = 0
+    leaves: list[HuffmanNode] = []
+    node_count = 0
+
+    def descend(depth: int) -> HuffmanNode:
+        nonlocal bit_index, node_count
+        node_count += 1
+        if depth > 64 or node_count > 511:
+            raise PatchError("invalid or cyclic-looking Huffman tree")
+        marker = _bit_at(data, known, structure_offset, bit_index)
+        bit_index += 1
+        if marker:
+            node = HuffmanNode()
+            leaves.append(node)
+            return node
+        return HuffmanNode(left=descend(depth + 1), right=descend(depth + 1))
+
+    root = descend(0)
+    symbol_offset = structure_offset - len(leaves)
+    _require_known(known, symbol_offset, structure_offset, "Huffman leaf symbols")
+    symbols = list(data[symbol_offset:structure_offset])[::-1]
+    for node, symbol in zip(leaves, symbols):
+        node.symbol = symbol
+    return ParsedTree(
+        previous_symbol=previous_symbol,
+        pointer=pointer,
+        structure_offset=structure_offset,
+        structure_bits=bit_index,
+        leaf_count=len(leaves),
+        symbol_offset=symbol_offset,
+        root=root,
+    )
+
+
+def load_trees(data: bytes, known: bytes) -> dict[int, ParsedTree]:
+    _require_known(known, VECTOR_OFFSET, VECTOR_OFFSET + VECTOR_SIZE, "Huffman vector")
+    trees: dict[int, ParsedTree] = {}
+    for previous_symbol in range(VECTOR_ENTRIES):
+        at = VECTOR_OFFSET + previous_symbol * 2
+        pointer = int.from_bytes(data[at : at + 2], "little")
+        if pointer != 0xFFFF:
+            trees[previous_symbol] = parse_tree(data, known, previous_symbol, pointer)
+    return trees
+
+
+def decode_symbols(
+    data: bytes,
+    known: bytes,
+    trees: dict[int, ParsedTree],
+    start_offset: int,
+    initial_symbol: int = CANDIDATE_END_SYMBOL,
+    end_symbol: int = CANDIDATE_END_SYMBOL,
+    max_symbols: int = 4096,
+    max_bytes: int = 4096,
+) -> tuple[list[int], int]:
+    output: list[int] = []
+    previous = initial_symbol
+    bit_index = 0
+    for _ in range(max_symbols):
+        tree = trees.get(previous)
+        if tree is None:
+            raise PatchError(f"no Huffman tree for previous symbol 0x{previous:02x}")
+        node = tree.root
+        while not node.is_leaf:
+            if (bit_index >> 3) >= max_bytes:
+                raise PatchError("candidate entry exceeded byte limit")
+            bit = _bit_at(data, known, start_offset, bit_index)
+            bit_index += 1
+            node = node.right if bit else node.left
+            if node is None:
+                raise PatchError("malformed Huffman branch")
+        symbol = node.symbol
+        assert symbol is not None
+        output.append(symbol)
+        previous = symbol
+        if symbol == end_symbol:
+            return output, bit_index
+    raise PatchError("candidate entry did not terminate within symbol limit")
+
+
+def render_basic(symbols: list[int]) -> str:
+    rendered: list[str] = []
+    for symbol in symbols:
+        if symbol == 0x01:
+            rendered.append(" ")
+        elif 0x02 <= symbol <= 0x0B:
+            rendered.append(chr(ord("0") + symbol - 0x02))
+        elif 0x0C <= symbol <= 0x25:
+            rendered.append(chr(ord("A") + symbol - 0x0C))
+        elif 0x26 <= symbol <= 0x3F:
+            rendered.append(chr(ord("a") + symbol - 0x26))
+        elif symbol == 0xD0:
+            rendered.append("\n")
+        elif symbol == CANDIDATE_END_SYMBOL:
+            rendered.append("<END>")
+        else:
+            rendered.append(f"<{symbol:02X}>")
+    return "".join(rendered)
+
+
+def verified_overlay(path: Path) -> tuple[bytes, bytes, dict[int, ParsedTree]]:
+    patch = path.read_bytes()
+    if len(patch) != EXPECTED_IPS_SIZE or sha256_bytes(patch) != EXPECTED_IPS_SHA256:
+        raise PatchError("English IPS identity mismatch")
+    data, known = build_ips_overlay(patch)
+    trees = load_trees(data, known)
+    if len(trees) != EXPECTED_NONEMPTY_TREES:
+        raise PatchError(f"expected 221 populated trees, found {len(trees)}")
+    if VECTOR_ENTRIES - len(trees) != EXPECTED_EMPTY_TREES:
+        raise PatchError("unexpected empty-tree count")
+    return data, known, trees
+
+
+def integer(value: str) -> int:
+    return int(value, 0)
+
+
+def main() -> int:
+    root = Path(__file__).resolve().parents[1]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--ips",
+        type=Path,
+        default=root / "patch" / "fcpatch_070706.ips",
+        help="verified local English reference IPS",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    stats_parser = subparsers.add_parser("stats", help="validate and summarize the tree block")
+    stats_parser.add_argument("--json", action="store_true")
+    decode_parser = subparsers.add_parser("decode", help="decode one candidate compressed offset")
+    decode_parser.add_argument("--offset", type=integer, required=True, help="file offset, e.g. 0x203d2")
+    decode_parser.add_argument("--max-symbols", type=int, default=4096)
+    args = parser.parse_args()
+
+    data, known, trees = verified_overlay(args.ips)
+    if args.command == "stats":
+        leaf_counts = [tree.leaf_count for tree in trees.values()]
+        result = {
+            "ips_sha256": EXPECTED_IPS_SHA256,
+            "vector_file_offset": f"0x{VECTOR_OFFSET:x}",
+            "vector_logical_address": "0x5c3f",
+            "populated_trees": len(trees),
+            "empty_trees": VECTOR_ENTRIES - len(trees),
+            "minimum_leaves": min(leaf_counts),
+            "maximum_leaves": max(leaf_counts),
+            "candidate_initial_end_symbol": f"0x{CANDIDATE_END_SYMBOL:02x}",
+        }
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            for key, value in result.items():
+                print(f"{key}: {value}")
+        return 0
+
+    symbols, bits = decode_symbols(
+        data,
+        known,
+        trees,
+        args.offset,
+        max_symbols=args.max_symbols,
+    )
+    print(render_basic(symbols))
+    print(f"symbols={len(symbols)} bits={bits} bytes={(bits + 7) // 8}")
+    print("High-byte word tokens are not expanded until the dictionary checkpoint is verified.")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

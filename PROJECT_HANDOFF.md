@@ -1,51 +1,75 @@
-# Shining Force Gaiden - Final Conflict 한국어 패치 인수인계
+# Shining Force Gaiden: Final Conflict 한국어 패치 인수인계
 
-## 대상
+## 대상과 저장 위치
+
 - 플랫폼: Sega Game Gear
-- 게임: Shining Force Gaiden - Final Conflict (Japan)
-- 메가 CD판이 아님
+- 게임: Shining Force Gaiden: Final Conflict (Japan)
+- 메가 CD판이 아닙니다.
+- 기준 저장소: https://github.com/Domingo8666/ShiningForceKR
+- ROM 작업 위치: S25U 내부 저장공간/ShiningForceKR
+- PC는 프로젝트 자료 저장소로 사용하지 않습니다.
 
-## 확보된 기준 자료
-- clean Japanese ROM: `original/`
-- 현재 기준 패치: `patch/Final_Conflict_Japan_to_Korean_v5.1.bps`
-- 재작업 상태 문서: `docs/korean_patch_rework_status.md`
-- 번역 범위 보고서: `docs/korean_patch_coverage_report.txt`
+## 기준 자료
 
-## 현재 알려진 범위
-- 전체 스크립트 엔트리: 1492
-- 번역 처리 기록: 103
-- 미처리 기록: 1389
-- 위험 미처리 기록: 1297
-- 사용된 한글 글리프 슬롯 기록: 168
+- 깨끗한 일본판 ROM: S25U original/ 로컬 전용
+- 진단 기준 패치: patch/Final_Conflict_Japan_to_Korean_v5.1.bps
+- 외부 영어 참조: fcpatch_070706.ips, S25U 로컬 전용
+- 압축 조사: analysis/compression_research.md
+- 패치 구조: analysis/v5_1_patch_layout.md
+- 문제 목록: docs/issues.md
 
-## 기존 테스트에서 확인된 문제
-1. 대사 전환 시 검은 깜빡임
-2. A 버튼으로 대사를 넘길 때 이전 글자나 잘못된 한글이 순간적으로 섞임
-3. 대사 진행 역삼각형 표시 타이밍 이상
-4. `지누구그` 같은 깨진 문자열
-5. 부자연스러운 번역과 상황에 맞지 않는 단어
-6. 세이브 스테이트의 이전 VRAM·폰트 상태가 테스트를 방해할 가능성
-7. 대사창 테두리와 주변 그래픽은 손상되면 안 됨
+v5.1은 최종판이 아니라 재작업용 진단 기준입니다.
 
-## 재작업 문서가 제시한 안전한 기반
-1. 깨끗한 일본판 ROM
-2. 알려진 영어 IPS 패치 `fcpatch_070706.ips`
-3. 영어 패치의 렌더러·뱅킹 전제를 보존한 한국어 계층
+## 기존 범위 기록
 
-## 우선 기술 목표
-1. v5.1 BPS를 원본 ROM에 적용해 기준 ROM 생성
-2. 원본과 기준 ROM의 해시와 바이너리 차이 기록
-3. 영어 패치 또는 관련 기준 파일 확보 여부 확인
-4. 실제 Huffman 트리 벡터, 스크립트 조회표, 사전, 압축 스크립트 뱅크 탐색
-5. `SFGDecoder`와 일치하는 Python 디코더 구현
-6. 인트로 문장 `And so began Mishaela's new ambition...`을 ROM에서 정상 디코딩
-7. 성공 후에만 한국어 인코더와 새 패치 생성
+기존 보고서는 전체 1,492개, 번역 처리 103개, 미처리 1,389개, 위험 미처리 1,297개, 한글 글리프 168개라고 기록합니다. 단어 사전 확장이 검증되지 않은 결과이므로 완료율 근거로 쓰지 않습니다.
 
-## 작업 규칙
-- `original/` 파일은 절대 덮어쓰지 않는다.
-- 생성 파일은 `build/`에 둔다.
-- 분석 결과는 `analysis/`에 기록한다.
-- 스크립트와 도구는 `tools/`, `src/`, `script/`에 둔다.
-- 변경 전후 SHA-256을 기록한다.
-- 해결되지 않은 문제를 해결됐다고 보고하지 않는다.
-- 실제 에뮬레이터 검증과 정적 분석을 구분한다.
+## 2026-07-29 완료 항목
+
+1. BPS 크기, SHA-256과 소스/대상/패치 CRC 검증
+2. BPS 액션 3,305개와 ROM 확장 구조 기록
+3. 영어 IPS 크기, SHA-256과 288개 레코드 검증
+4. Huffman 벡터 0x29C3F, 256개 엔트리와 221개 트리 확인
+5. 독립 BPS/IPS/Huffman Python 파서와 합성 테스트 추가
+6. ROM과 외부 IPS가 Git에 올라가지 않도록 규칙 강화
+
+## 현재 체크포인트
+
+- 실제 스크립트 조회표와 뱅크 선택 규칙
+- 0x80 이상 단어 사전 확장
+- And so began Mishaela's new ambition... 의 ROM 기반 디코딩
+
+조회표 없이 압축 뱅크의 모든 바이트를 시작점으로 읽는 방식은 거짓 양성이 많아 사용하지 않습니다.
+
+## S25U 명령
+
+~~~sh
+cd ~/storage/shared/ShiningForceKR
+git pull --ff-only
+python -m unittest discover -s tests -v
+python tools/fetch_fc_english_patch.py
+python tools/sfgfc_huffman.py stats
+python tools/analyze_v5_1.py \
+  --rom original/원본파일.gg \
+  --output build/Final_Conflict_Korean_v5.1.gg \
+  --report analysis/local_v5_1_diff_report.md
+~~~
+
+마지막 명령의 원본 파일명만 실제 이름으로 바꿉니다. 해시가 다르면 중단됩니다.
+
+## 다음 순서
+
+1. S25U에서 검증된 v5.1 대상 ROM과 로컬 보고서를 생성합니다.
+2. 소비 코드를 역추적해 조회표를 확정합니다.
+3. 단어 사전을 추출하고 토큰을 확장합니다.
+4. 목표 인트로 문장을 ROM에서 정확히 디코딩합니다.
+5. 왕복 인코딩 검증 뒤 한국어 삽입을 재개합니다.
+6. 콜드 부팅 기준으로 SFKR-001부터 SFKR-007까지 에뮬레이터 검증합니다.
+
+## 금지 사항
+
+- 원본 ROM 덮어쓰기
+- ROM 또는 미리 패치된 ROM 커밋
+- 외부 영어 IPS 커밋
+- 조회표와 사전이 불명확한 상태에서 대량 번역 삽입
+- 정적 분석만으로 화면 문제 해결 선언
