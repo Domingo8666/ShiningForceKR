@@ -27,6 +27,19 @@ class RuntimeStageFailureTests(unittest.TestCase):
         self.assertEqual(receipt["failure_stage"], "baseline-display-capture")
         validate_runtime_failure_receipt(receipt)
 
+    def test_display_postprocessing_stages_are_safe(self) -> None:
+        for stage in (
+            "display-capture-preflight",
+            "display-version-check",
+            "display-pixel-comparison",
+            "display-comparison-artifact",
+            "display-capture-artifact",
+        ):
+            with self.subTest(stage=stage):
+                receipt = build_stage_failure_receipt(stage)
+                self.assertEqual(receipt["failure_stage"], stage)
+                validate_runtime_failure_receipt(receipt)
+
     def test_unknown_pipeline_substage_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             build_stage_failure_receipt("unknown-stage")

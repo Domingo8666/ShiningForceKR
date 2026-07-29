@@ -102,8 +102,13 @@ RUNTIME_FAILURE_STAGES = {
     "decoder-stream-resolution",
     "route-capture",
     "test-patch",
+    "display-capture-preflight",
     "baseline-display-capture",
     "test-display-capture",
+    "display-version-check",
+    "display-pixel-comparison",
+    "display-comparison-artifact",
+    "display-capture-artifact",
     "display-comparison",
 }
 RUNTIME_FAILURE_KINDS = {

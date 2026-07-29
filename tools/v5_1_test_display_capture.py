@@ -22,6 +22,7 @@ try:
     from .patch_io import PatchError, sha256_bytes, sha256_file
     from .run_s25u_runtime_probe import (
         INPUT_SCHEDULE,
+        LOCAL_FAILURE_REPORT,
         McpStdioClient,
         _capture_state,
         _default_command,
@@ -29,6 +30,7 @@ try:
         _step_frames_and_wait,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
+        validate_runtime_failure_receipt,
     )
     from .v5_1_decoder_stream_resolution import (
         validate_decoder_stream_resolution,
@@ -45,6 +47,7 @@ except ImportError:  # direct script execution
     from patch_io import PatchError, sha256_bytes, sha256_file
     from run_s25u_runtime_probe import (
         INPUT_SCHEDULE,
+        LOCAL_FAILURE_REPORT,
         McpStdioClient,
         _capture_state,
         _default_command,
@@ -52,6 +55,7 @@ except ImportError:  # direct script execution
         _step_frames_and_wait,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
+        validate_runtime_failure_receipt,
     )
     from v5_1_decoder_stream_resolution import (
         validate_decoder_stream_resolution,
@@ -127,6 +131,7 @@ CAPTURE_STATUSES = {
     "capture-ready-human-review-required",
     "runtime-target-read-not-observed",
 }
+_CURRENT_FAILURE_STAGE = "display-capture-preflight"
 
 
 def _is_sha256(value: object) -> bool:
@@ -735,6 +740,8 @@ def _capture_display(
 
 
 def main() -> int:
+    global _CURRENT_FAILURE_STAGE
+    _CURRENT_FAILURE_STAGE = "display-capture-preflight"
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--test-rom", type=Path, default=DEFAULT_TEST_ROM)
@@ -857,6 +864,7 @@ def main() -> int:
                 "runtime resolution does not authorize display capture"
             )
 
+    _CURRENT_FAILURE_STAGE = "baseline-display-capture"
     (
         baseline_emulator_version,
         baseline_mapped_bank,
@@ -871,6 +879,7 @@ def main() -> int:
         failure_stage="baseline-display-capture",
         schedule=capture_schedule,
     )
+    _CURRENT_FAILURE_STAGE = "test-display-capture"
     (
         emulator_version,
         mapped_bank,
@@ -885,12 +894,15 @@ def main() -> int:
         failure_stage="test-display-capture",
         schedule=capture_schedule,
     )
+    _CURRENT_FAILURE_STAGE = "display-version-check"
     if baseline_emulator_version != emulator_version:
         raise PatchError("baseline and test captures used different emulator versions")
+    _CURRENT_FAILURE_STAGE = "display-pixel-comparison"
     frame_comparisons, post_comparison = _paired_pixel_comparisons(
         baseline_local,
         test_local,
     )
+    _CURRENT_FAILURE_STAGE = "display-comparison-artifact"
     comparison = build_display_comparison(
         build_report=build_report,
         frame_comparisons=frame_comparisons,
@@ -909,6 +921,7 @@ def main() -> int:
             root=root,
         ).encode("utf-8"),
     )
+    _CURRENT_FAILURE_STAGE = "display-capture-artifact"
     local = {
         "baseline": baseline_local,
         "test": test_local,
@@ -956,5 +969,30 @@ def main() -> int:
     return 0
 
 
+def _guarded_main() -> int:
+    try:
+        return main()
+    except Exception as error:
+        root = Path(__file__).resolve().parents[1]
+        failure_path = root / LOCAL_FAILURE_REPORT
+        keep_existing = False
+        try:
+            existing = json.loads(failure_path.read_text(encoding="utf-8"))
+            if not isinstance(existing, dict):
+                raise ValueError("runtime failure receipt must be an object")
+            validate_runtime_failure_receipt(existing)
+            keep_existing = True
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
+        if not keep_existing:
+            receipt = _runtime_failure_receipt(
+                _CURRENT_FAILURE_STAGE,
+                error,
+                None,
+            )
+            _write_runtime_failure_receipt(root, receipt)
+        raise
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(_guarded_main())
