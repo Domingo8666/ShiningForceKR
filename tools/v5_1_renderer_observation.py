@@ -157,7 +157,10 @@ def validate_renderer_observation(
         "anchor_kind",
     ):
         _require_token(probe[key], key)
-    if probe["anchor_kind"] != "text-decoder-entry":
+    if probe["anchor_kind"] not in {
+        "text-decoder-entry",
+        "huffman-vector-read",
+    }:
         raise ValueError("unexpected text-engine probe anchor")
     _require_int(probe["frame_budget"], "frame_budget", 1, 100_000)
     mappings = probe["mappings_attempted"]
@@ -165,6 +168,23 @@ def validate_renderer_observation(
         raise ValueError("mappings_attempted must contain at most six mappings")
     for index, mapping in enumerate(mappings):
         _validate_mapping(mapping, f"mappings_attempted[{index}]")
+    vector_anchor = probe["anchor_kind"] == "huffman-vector-read"
+    if vector_anchor:
+        expected_mappings = {
+            (0x80100, 1, 0x20, 0x4100),
+            (0x80100, 2, 0x20, 0x8100),
+        }
+        actual_mappings = {
+            (
+                item["probe_file_offset"],
+                item["slot"],
+                item["expected_bank"],
+                item["logical_address"],
+            )
+            for item in mappings
+        }
+        if actual_mappings != expected_mappings:
+            raise ValueError("Huffman-vector probe mappings do not match")
 
     reads = observation["decoder_reads"]
     if not isinstance(reads, list) or len(reads) > 64:
@@ -228,6 +248,23 @@ def validate_renderer_observation(
     if not isinstance(hit, dict) or set(hit) != HIT_KEYS:
         raise ValueError("renderer hit fields do not match")
     _validate_mapping({key: hit[key] for key in MAPPING_KEYS}, "hit")
+    if vector_anchor:
+        logical_access = hit["logical_address"]
+        physical_file_offset = hit["probe_file_offset"]
+        mapped_bank = hit["expected_bank"]
+        if (
+            hit["slot"] not in {1, 2}
+            or mapped_bank != 0x20
+            or not (
+                hit["slot"] * 0x4000 + 0x0100
+                <= logical_access
+                <= hit["slot"] * 0x4000 + 0x02FF
+            )
+            or physical_file_offset
+            != mapped_bank * 0x4000 + (logical_access & 0x3FFF)
+            or not 0x80100 <= physical_file_offset <= 0x802FF
+        ):
+            raise ValueError("Huffman-vector hit does not match mapper evidence")
     for key in (
         "pc_after",
         "physical_pc_after",
@@ -261,6 +298,7 @@ def build_renderer_observation(
     target_sha256: str,
     emulator_version: str,
     route: str,
+    anchor_kind: str,
     frame_budget: int,
     mappings_attempted: list[dict[str, int]],
     hit: dict[str, object] | None,
@@ -281,7 +319,7 @@ def build_renderer_observation(
             "emulator_version": emulator_version,
             "system": "gamegear",
             "route": route,
-            "anchor_kind": "text-decoder-entry",
+            "anchor_kind": anchor_kind,
             "frame_budget": frame_budget,
             "mappings_attempted": mappings_attempted,
         },

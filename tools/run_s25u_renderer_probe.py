@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trace the v5.1 text decoder and its ROM reads on S25U."""
+"""Trace verified v5.1 Korean Huffman-vector reads on S25U."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ from pathlib import Path
 try:
     from .patch_io import sha256_file
     from .run_s25u_runtime_probe import (
-        MAX_REJECTED_BANK_HITS_PER_SLOT,
         REQUIRED_TOOLS,
         McpStdioClient,
         _capture_state,
@@ -22,11 +21,9 @@ try:
         build_renderer_observation,
         write_renderer_observation,
     )
-    from .v5_1_trace_plan import logical_mapping_hypotheses
 except ImportError:  # direct script execution
     from patch_io import sha256_file
     from run_s25u_runtime_probe import (
-        MAX_REJECTED_BANK_HITS_PER_SLOT,
         REQUIRED_TOOLS,
         McpStdioClient,
         _capture_state,
@@ -38,14 +35,15 @@ except ImportError:  # direct script execution
         build_renderer_observation,
         write_renderer_observation,
     )
-    from v5_1_trace_plan import logical_mapping_hypotheses
 
 DEFAULT_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 LOCAL_REPORT = Path("reports/local/v5_1_renderer_probe.json")
 CONSUMER_RESOLUTION = Path(
     "analysis/device/v5_1_latest_consumer_resolution.json"
 )
-TEXT_DECODER_ENTRY = 0x003411
+HUFFMAN_VECTOR_START = 0x080100
+HUFFMAN_VECTOR_END = 0x0802FF
+HUFFMAN_VECTOR_BANK = 0x20
 TEXT_ROUTE = "cold-boot-start-confirm-story"
 TEXT_ROUTE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
     (180, None),
@@ -55,48 +53,50 @@ TEXT_ROUTE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
 ROM_READ_RANGES = ((0x4000, 0x7FFF), (0x8000, 0xBFFF))
 MAX_DECODER_READ_HITS = 96
 MAX_DECODER_READ_SAMPLES = 64
+MAX_REJECTED_VECTOR_HITS = 512
 
 
 def _frame_budget() -> int:
     return sum(frames for frames, _ in TEXT_ROUTE_SCHEDULE)
 
 
-def _decoder_mappings() -> list[dict[str, int]]:
-    output: list[dict[str, int]] = []
-    for item in logical_mapping_hypotheses(TEXT_DECODER_ENTRY, 1):
-        output.append(
-            {
-                "probe_file_offset": TEXT_DECODER_ENTRY,
-                "slot": int(item["slot"]),
-                "expected_bank": int(item["bank"]),
-                "logical_address": int(item["logical_start"]),
-            }
-        )
-    return output
+def _vector_mappings() -> list[dict[str, int]]:
+    return [
+        {
+            "probe_file_offset": HUFFMAN_VECTOR_START,
+            "slot": slot,
+            "expected_bank": HUFFMAN_VECTOR_BANK,
+            "logical_address": slot * 0x4000 + 0x0100,
+        }
+        for slot in (1, 2)
+    ]
 
 
-def _mapped_bank(
-    state: dict[str, object],
-    mapping: dict[str, int],
-) -> int:
-    return int(state[f"slot{int(mapping['slot'])}_bank"])
-
-
-def _probe_hit_matches(
-    state: dict[str, object],
+def _vector_read_matches(
+    sample: dict[str, object],
     mapping: dict[str, int],
 ) -> bool:
+    logical_access = int(sample["logical_access"])
+    physical_file_offset = int(sample["physical_file_offset"])
+    mapped_bank = int(sample["mapped_bank"])
     return (
-        _mapped_bank(state, mapping) == int(mapping["expected_bank"])
-        and int(state["pc_after"]) == int(mapping["logical_address"])
-        and int(state["physical_pc_after"])
-        == int(mapping["probe_file_offset"])
+        int(sample["slot"]) == int(mapping["slot"])
+        and mapped_bank == int(mapping["expected_bank"])
+        and int(mapping["logical_address"])
+        <= logical_access
+        < int(mapping["logical_address"]) + 0x200
+        and physical_file_offset
+        == mapped_bank * 0x4000 + (logical_access & 0x3FFF)
+        and HUFFMAN_VECTOR_START
+        <= physical_file_offset
+        <= HUFFMAN_VECTOR_END
     )
 
 
-def _probe_mappings(
+def _probe_vector_reads(
     client: McpStdioClient,
     mappings: list[dict[str, int]],
+    rom_size: int,
 ) -> tuple[
     dict[str, object] | None,
     dict[str, object] | None,
@@ -104,16 +104,22 @@ def _probe_mappings(
 ]:
     client.call("debug_reset")
     client.call("debug_pause")
-    addresses = [f"{mapping['logical_address']:04X}" for mapping in mappings]
-    for address in addresses:
+    ranges = [
+        (
+            f"{mapping['logical_address']:04X}",
+            f"{mapping['logical_address'] + 0x1FF:04X}",
+        )
+        for mapping in mappings
+    ]
+    for start, end in ranges:
         client.call(
             "set_breakpoint_range",
             {
-                "start_address": address,
-                "end_address": address,
+                "start_address": start,
+                "end_address": end,
                 "memory_area": "rom_ram",
-                "execute": True,
-                "read": False,
+                "execute": False,
+                "read": True,
                 "write": False,
             },
         )
@@ -135,18 +141,38 @@ def _probe_mappings(
                 if status.get("at_breakpoint") is not True:
                     break
                 state, evidence = _capture_state(client)
+                sample = _last_rom_read(state, evidence, rom_size)
                 matching = next(
                     (
                         mapping
                         for mapping in mappings
-                        if _probe_hit_matches(state, mapping)
+                        if sample is not None
+                        and _vector_read_matches(sample, mapping)
                     ),
                     None,
                 )
-                if matching is not None:
-                    return {**matching, **state}, evidence, rejected
+                if matching is not None and sample is not None:
+                    exact_hit = {
+                        "probe_file_offset": int(
+                            sample["physical_file_offset"]
+                        ),
+                        "slot": int(sample["slot"]),
+                        "expected_bank": int(sample["mapped_bank"]),
+                        "logical_address": int(sample["logical_access"]),
+                    }
+                    return {**exact_hit, **state}, evidence, rejected
                 rejected.append(
                     {
+                        "logical_access": (
+                            int(sample["logical_access"])
+                            if sample is not None
+                            else -1
+                        ),
+                        "physical_file_offset": (
+                            int(sample["physical_file_offset"])
+                            if sample is not None
+                            else -1
+                        ),
                         "pc_after": int(state["pc_after"]),
                         "physical_pc_after": int(state["physical_pc_after"]),
                         "slot0_bank": int(state["slot0_bank"]),
@@ -154,16 +180,16 @@ def _probe_mappings(
                         "slot2_bank": int(state["slot2_bank"]),
                     }
                 )
-                if len(rejected) >= MAX_REJECTED_BANK_HITS_PER_SLOT:
+                if len(rejected) >= MAX_REJECTED_VECTOR_HITS:
                     return None, None, rejected
     finally:
-        for address in addresses:
+        for start, end in ranges:
             try:
                 client.call(
                     "remove_breakpoint",
                     {
-                        "address": address,
-                        "end_address": address,
+                        "address": start,
+                        "end_address": end,
                         "memory_area": "rom_ram",
                     },
                 )
@@ -324,14 +350,17 @@ def main() -> int:
     rom = rom_path.read_bytes()
     verify_target_identity(rom)
     target_sha256 = sha256_file(rom_path)
-    mappings = _decoder_mappings()
+    mappings = _vector_mappings()
     safe_hit: dict[str, object] | None = None
     decoder_reads: list[dict[str, object]] = []
     emulator_version = "unknown"
     local_result: dict[str, object] = {
         "target_sha256": target_sha256,
         "rom": str(rom_path),
-        "decoder_entry": TEXT_DECODER_ENTRY,
+        "huffman_vector_range": [
+            HUFFMAN_VECTOR_START,
+            HUFFMAN_VECTOR_END,
+        ],
         "attempts": [],
     }
 
@@ -364,14 +393,44 @@ def main() -> int:
                 "bank_switch": True,
             },
         )
-        hit, evidence, rejected = _probe_mappings(client, mappings)
+        hit, evidence, rejected = _probe_vector_reads(
+            client,
+            mappings,
+            len(rom),
+        )
         safe_hit = hit
         local_read_events: list[dict[str, object]] = []
         if safe_hit is not None:
-            decoder_reads, local_read_events = _capture_decoder_reads(
+            if evidence is None:
+                raise RuntimeError("vector read hit has no trace evidence")
+            first_read = _last_rom_read(safe_hit, evidence, len(rom))
+            if (
+                first_read is None
+                or first_read["classification"]
+                != "korean-huffman-vector"
+            ):
+                raise RuntimeError("vector read hit could not be reconstructed")
+            following_reads, local_read_events = _capture_decoder_reads(
                 client,
                 len(rom),
             )
+            decoder_reads = [first_read]
+            seen_reads = {
+                (
+                    first_read["physical_file_offset"],
+                    first_read["instruction_bank"],
+                    first_read["instruction_pc"],
+                )
+            }
+            for item in following_reads:
+                key = (
+                    item["physical_file_offset"],
+                    item["instruction_bank"],
+                    item["instruction_pc"],
+                )
+                if key not in seen_reads:
+                    seen_reads.add(key)
+                    decoder_reads.append(item)
         local_result["attempts"].append(
             {
                 "route": TEXT_ROUTE,
@@ -397,6 +456,7 @@ def main() -> int:
         target_sha256=target_sha256,
         emulator_version=emulator_version,
         route=TEXT_ROUTE,
+        anchor_kind="huffman-vector-read",
         frame_budget=_frame_budget(),
         mappings_attempted=mappings,
         hit=safe_hit,
@@ -404,11 +464,11 @@ def main() -> int:
     )
     safe_path = write_renderer_observation(root, observation)
     if safe_hit is None:
-        print("SFKR text decoder was not reached on the Start/confirm story route.")
+        print("SFKR Korean Huffman vector was not read on the story route.")
     else:
         print(
-            "SFKR text decoder reached at "
-            f"physical 0x{safe_hit['physical_pc_after']:06X}; "
+            "SFKR Korean Huffman vector read at "
+            f"physical 0x{safe_hit['probe_file_offset']:06X}; "
             f"captured {len(decoder_reads)} unique ROM reads."
         )
     print(f"Local renderer evidence: {local_path}")

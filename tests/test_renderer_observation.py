@@ -16,16 +16,16 @@ from tools.v5_1_renderer_observation import (
 def mappings() -> list[dict[str, int]]:
     return [
         {
-            "probe_file_offset": 0x3411,
-            "slot": 0,
-            "expected_bank": 0,
-            "logical_address": 0x3411,
+            "probe_file_offset": 0x80100,
+            "slot": 1,
+            "expected_bank": 0x20,
+            "logical_address": 0x4100,
         },
         {
-            "probe_file_offset": 0x3411,
-            "slot": 1,
-            "expected_bank": 0,
-            "logical_address": 0x7411,
+            "probe_file_offset": 0x80100,
+            "slot": 2,
+            "expected_bank": 0x20,
+            "logical_address": 0x8100,
         },
     ]
 
@@ -33,12 +33,12 @@ def mappings() -> list[dict[str, int]]:
 def hit() -> dict[str, object]:
     return {
         **mappings()[0],
-        "pc_after": 0x3411,
-        "physical_pc_after": 0x3411,
+        "pc_after": 0x3421,
+        "physical_pc_after": 0x3421,
         "executing_bank": 0,
         "mapper_control": 0,
         "slot0_bank": 0,
-        "slot1_bank": 1,
+        "slot1_bank": 0x20,
         "slot2_bank": 2,
         "registers": {
             "af": 0x1200,
@@ -76,6 +76,7 @@ class RendererObservationTests(unittest.TestCase):
             target_sha256="a" * 64,
             emulator_version="3.9.14",
             route="cold-boot-start-confirm-story",
+            anchor_kind="huffman-vector-read",
             frame_budget=3_300,
             mappings_attempted=mappings(),
             hit=hit(),
@@ -95,6 +96,7 @@ class RendererObservationTests(unittest.TestCase):
             target_sha256="b" * 64,
             emulator_version="3.9.14",
             route="cold-boot-start-confirm-story",
+            anchor_kind="huffman-vector-read",
             frame_budget=3_300,
             mappings_attempted=mappings(),
             hit=None,
@@ -111,8 +113,9 @@ class RendererObservationTests(unittest.TestCase):
             target_sha256="c" * 64,
             emulator_version="3.9.14",
             route="cold-boot-start-confirm-story",
+            anchor_kind="huffman-vector-read",
             frame_budget=3_300,
-            mappings_attempted=[],
+            mappings_attempted=mappings(),
             hit=None,
             decoder_reads=[],
         )

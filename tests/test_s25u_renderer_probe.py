@@ -6,17 +6,17 @@ from unittest.mock import patch
 from tools.run_s25u_renderer_probe import (
     TEXT_ROUTE_SCHEDULE,
     _classify_decoder_read,
-    _decoder_mappings,
     _frame_budget,
     _last_rom_read,
-    _probe_hit_matches,
-    _probe_mappings,
+    _probe_vector_reads,
+    _vector_mappings,
+    _vector_read_matches,
 )
 
 
 class S25URendererProbeTests(unittest.TestCase):
     def test_story_route_uses_start_then_confirm_and_all_breakpoints(self) -> None:
-        mappings = _decoder_mappings()
+        mappings = _vector_mappings()
 
         class FakeClient:
             def __init__(self) -> None:
@@ -37,19 +37,33 @@ class S25URendererProbeTests(unittest.TestCase):
         client = FakeClient()
         expected = mappings[-1]
         state = {
-            "pc_after": expected["logical_address"],
-            "physical_pc_after": expected["probe_file_offset"],
+            "pc_after": 0x3456,
+            "physical_pc_after": 0x3456,
             "slot0_bank": 0,
             "slot1_bank": 1,
             "slot2_bank": expected["expected_bank"],
         }
+        sample = {
+            "slot": 2,
+            "logical_access": 0x8100,
+            "physical_file_offset": 0x80100,
+            "mapped_bank": 0x20,
+        }
         with patch(
             "tools.run_s25u_renderer_probe._capture_state",
             return_value=(state, {"trace": "local-only"}),
+        ), patch(
+            "tools.run_s25u_renderer_probe._last_rom_read",
+            return_value=sample,
         ):
-            hit, evidence, rejected = _probe_mappings(client, mappings)
+            hit, evidence, rejected = _probe_vector_reads(
+                client,
+                mappings,
+                0x17C000,
+            )
 
-        self.assertEqual(hit["probe_file_offset"], 0x3411)
+        self.assertEqual(hit["probe_file_offset"], 0x80100)
+        self.assertEqual(hit["logical_address"], 0x8100)
         self.assertEqual(evidence, {"trace": "local-only"})
         self.assertEqual(rejected, [])
         self.assertEqual(
@@ -58,11 +72,11 @@ class S25URendererProbeTests(unittest.TestCase):
         )
         self.assertEqual(
             [name for name, _ in client.calls].count("set_breakpoint_range"),
-            3,
+            2,
         )
         self.assertEqual(
             [name for name, _ in client.calls].count("remove_breakpoint"),
-            3,
+            2,
         )
         controller_calls = [
             arguments
@@ -87,12 +101,12 @@ class S25URendererProbeTests(unittest.TestCase):
         self.assertGreaterEqual(buttons.count("2"), 8)
         self.assertNotIn("1", buttons)
 
-    def test_decoder_entry_expands_to_three_mapper_hypotheses(self) -> None:
-        mappings = _decoder_mappings()
-        self.assertEqual(len(mappings), 3)
+    def test_vector_range_expands_to_two_switchable_slot_mappings(self) -> None:
+        mappings = _vector_mappings()
+        self.assertEqual(len(mappings), 2)
         self.assertEqual(
             {item["probe_file_offset"] for item in mappings},
-            {0x3411},
+            {0x80100},
         )
         self.assertEqual(
             [
@@ -101,33 +115,35 @@ class S25URendererProbeTests(unittest.TestCase):
                 if item["slot"] == 2
             ][0],
             {
-                "probe_file_offset": 0x3411,
+                "probe_file_offset": 0x80100,
                 "slot": 2,
-                "expected_bank": 0,
-                "logical_address": 0xB411,
+                "expected_bank": 0x20,
+                "logical_address": 0x8100,
             },
         )
 
-    def test_execute_hit_requires_logical_physical_and_mapper_match(self) -> None:
+    def test_vector_read_requires_range_slot_and_mapper_match(self) -> None:
         mapping = {
-            "probe_file_offset": 0x3411,
+            "probe_file_offset": 0x80100,
             "slot": 2,
-            "expected_bank": 0,
-            "logical_address": 0xB411,
+            "expected_bank": 0x20,
+            "logical_address": 0x8100,
         }
-        state = {
-            "pc_after": 0xB411,
-            "physical_pc_after": 0x3411,
-            "slot0_bank": 0,
-            "slot1_bank": 1,
-            "slot2_bank": 0,
+        sample = {
+            "slot": 2,
+            "logical_access": 0x8123,
+            "physical_file_offset": 0x80123,
+            "mapped_bank": 0x20,
         }
-        self.assertTrue(_probe_hit_matches(state, mapping))
-        state["slot2_bank"] = 0x10
-        self.assertFalse(_probe_hit_matches(state, mapping))
-        state["slot2_bank"] = 0
-        state["physical_pc_after"] = 0x43FB2
-        self.assertFalse(_probe_hit_matches(state, mapping))
+        self.assertTrue(_vector_read_matches(sample, mapping))
+        sample["mapped_bank"] = 0x10
+        self.assertFalse(_vector_read_matches(sample, mapping))
+        sample["mapped_bank"] = 0x20
+        sample["physical_file_offset"] = 0x100123
+        self.assertFalse(_vector_read_matches(sample, mapping))
+        sample["physical_file_offset"] = 0x80123
+        sample["logical_access"] = 0x8100
+        self.assertFalse(_vector_read_matches(sample, mapping))
 
     def test_last_rom_read_uses_live_mapper_bank(self) -> None:
         state = {

@@ -124,8 +124,22 @@ class RuntimeBundleTests(unittest.TestCase):
             target_sha256="5" * 64,
             emulator_version="3.9.14",
             route="cold-boot-start-confirm-story",
+            anchor_kind="huffman-vector-read",
             frame_budget=3_300,
-            mappings_attempted=[],
+            mappings_attempted=[
+                {
+                    "probe_file_offset": 0x80100,
+                    "slot": 1,
+                    "expected_bank": 0x20,
+                    "logical_address": 0x4100,
+                },
+                {
+                    "probe_file_offset": 0x80100,
+                    "slot": 2,
+                    "expected_bank": 0x20,
+                    "logical_address": 0x8100,
+                },
+            ],
             hit=None,
             decoder_reads=[],
         )
