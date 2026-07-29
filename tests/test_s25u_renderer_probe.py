@@ -222,7 +222,7 @@ class S25URendererProbeTests(unittest.TestCase):
             all(item["button"] == "2" for item in controller_calls[1:])
         )
         self.assertNotIn("1", [item["button"] for item in controller_calls])
-        self.assertEqual(_frame_budget(), 3_300)
+        self.assertEqual(_frame_budget(), 6_600)
 
     def test_story_route_has_one_start_and_multiple_confirm_inputs(self) -> None:
         buttons = [

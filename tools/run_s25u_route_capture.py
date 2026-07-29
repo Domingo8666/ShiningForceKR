@@ -12,7 +12,6 @@ try:
     from .run_s25u_renderer_probe import (
         DEFAULT_ROM,
         McpStdioClient,
-        TEXT_ROUTE,
         _consumer_already_confirmed,
         _default_command,
         _step_frames_and_wait,
@@ -28,7 +27,6 @@ except ImportError:  # direct script execution
     from run_s25u_renderer_probe import (
         DEFAULT_ROM,
         McpStdioClient,
-        TEXT_ROUTE,
         _consumer_already_confirmed,
         _default_command,
         _step_frames_and_wait,
@@ -42,6 +40,7 @@ except ImportError:  # direct script execution
 
 LOCAL_REPORT = Path("reports/local/v5_1_story_route_capture.json")
 EVIDENCE_DIR = Path("evidence/local/v5_1_story_route")
+ROUTE_NAME = "cold-boot-start-confirm-2"
 REQUIRED_CAPTURE_TOOLS = {
     "controller_button",
     "debug_pause",
@@ -140,7 +139,7 @@ def main() -> int:
         "schema_version": 1,
         "target_sha256": target_sha256,
         "rom": str(rom_path),
-        "route": TEXT_ROUTE,
+        "route": ROUTE_NAME,
         "captures": local_captures,
     }
 
@@ -174,7 +173,7 @@ def main() -> int:
     observation = build_route_capture(
         target_sha256=target_sha256,
         emulator_version=emulator_version,
-        route=TEXT_ROUTE,
+        route=ROUTE_NAME,
         frame_budget=_frame_budget(),
         captures=safe_captures,
     )

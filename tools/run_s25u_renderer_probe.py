@@ -49,11 +49,20 @@ HUFFMAN_VECTOR_START = 0x080100
 HUFFMAN_VECTOR_END = 0x0802FF
 HUFFMAN_VECTOR_BANK = 0x20
 DECODER_ENTRY_CANDIDATES = (0x33FA, 0x3411, 0x3431)
-TEXT_ROUTE = "cold-boot-start-confirm-decoder-entry"
+TEXT_ROUTE = "cold-boot-start-button-matrix"
 TEXT_ROUTE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
     (180, None),
     (240, "start"),
     *((180, "2"),) * 16,
+)
+ALT_TEXT_ROUTE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
+    (180, None),
+    (240, "start"),
+    *((180, "1"),) * 16,
+)
+TEXT_ROUTE_PLANS = (
+    ("start-confirm-2", TEXT_ROUTE_SCHEDULE),
+    ("start-confirm-1", ALT_TEXT_ROUTE_SCHEDULE),
 )
 ROM_READ_RANGES = ((0x4000, 0x7FFF), (0x8000, 0xBFFF))
 MAX_DECODER_READ_HITS = 96
@@ -62,7 +71,11 @@ MAX_REJECTED_VECTOR_HITS = 512
 
 
 def _frame_budget() -> int:
-    return sum(frames for frames, _ in TEXT_ROUTE_SCHEDULE)
+    return sum(
+        frames
+        for _, schedule in TEXT_ROUTE_PLANS
+        for frames, _ in schedule
+    )
 
 
 def _vector_mappings() -> list[dict[str, int]]:
@@ -92,6 +105,8 @@ def _decoder_entry_mappings() -> list[dict[str, int]]:
 def _probe_decoder_entry(
     client: McpStdioClient,
     mappings: list[dict[str, int]],
+    *,
+    schedule: tuple[tuple[int, str | None], ...] = TEXT_ROUTE_SCHEDULE,
 ) -> tuple[
     dict[str, object] | None,
     dict[str, object] | None,
@@ -112,7 +127,7 @@ def _probe_decoder_entry(
             },
         )
     try:
-        for frames, button in TEXT_ROUTE_SCHEDULE:
+        for frames, button in schedule:
             if button is not None:
                 client.call(
                     "controller_button",
@@ -479,10 +494,26 @@ def main() -> int:
                 "bank_switch": True,
             },
         )
-        hit, evidence = _probe_decoder_entry(
-            client,
-            mappings,
-        )
+        hit: dict[str, object] | None = None
+        evidence: dict[str, object] | None = None
+        selected_attempt: dict[str, object] | None = None
+        for route_name, schedule in TEXT_ROUTE_PLANS:
+            hit, evidence = _probe_decoder_entry(
+                client,
+                mappings,
+                schedule=schedule,
+            )
+            selected_attempt = {
+                "route": route_name,
+                "frame_budget": sum(frames for frames, _ in schedule),
+                "mappings": mappings,
+                "hit": hit,
+                "evidence": evidence,
+                "decoder_read_events": [],
+            }
+            local_result["attempts"].append(selected_attempt)
+            if hit is not None:
+                break
         safe_hit = hit
         local_read_events: list[dict[str, object]] = []
         if safe_hit is not None:
@@ -505,16 +536,8 @@ def main() -> int:
                 client,
                 len(rom),
             )
-        local_result["attempts"].append(
-            {
-                "route": TEXT_ROUTE,
-                "frame_budget": _frame_budget(),
-                "mappings": mappings,
-                "hit": hit,
-                "evidence": evidence,
-                "decoder_read_events": local_read_events,
-            }
-        )
+            if selected_attempt is not None:
+                selected_attempt["decoder_read_events"] = local_read_events
     finally:
         local_result["stderr_tail"] = list(client.stderr_tail)
         client.close()
