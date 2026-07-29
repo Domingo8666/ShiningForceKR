@@ -199,6 +199,32 @@ Gearsystem이 응답하지 않을 때도 30초 제한으로 종료해 실패 단
 관측·해석·진단 파일은 각각 검증한 뒤 허용된 경로만 한 번에 커밋하며,
 모바일 작업트리의 다른 로컬 파일은 수정하거나 커밋하지 않습니다.
 
+## S25U 케이블 분리 후 자동실행
+
+USB ADB로 최초 설정과 1회 실행을 확인한 뒤에는 다음 자동실행기를
+Termux에서 계속 실행할 수 있습니다.
+
+~~~sh
+bash tools/run_s25u_autopilot.sh \
+  --source-rom "/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg"
+~~~
+
+자동실행기는 5분마다 canonical `origin/main`을 확인하고, 아직 처리하지
+않은 새 커밋이 있을 때만 전체 S25U 런타임 단계를 한 번 실행합니다.
+실패 결과도 검증된 safe runtime bundle로 게시한 뒤 같은 커밋을 반복
+실행하지 않으므로 배터리와 Git 이력을 불필요하게 소모하지 않습니다.
+원본 ROM과 생성 ROM은 S25U 공유 저장공간에만 남고, 자동 Git 쓰기는
+고정된 safe artifact 여섯 개로 제한됩니다. 다른 tracked 변경, 다른
+브랜치·원격 저장소 또는 안전하지 않은 로컬 커밋을 발견하면 자동실행을
+중단합니다.
+
+상태와 로그는 Git 밖의 Termux 전용 경로
+`~/.local/state/shiningforcekr/`에 저장합니다. 자동실행을 안전하게
+멈추려면 그 폴더에 `STOP` 파일을 만들면 됩니다. 케이블 제거 가능 여부는
+최초 `--force --once` 실행과 GitHub 게시 확인 뒤 판정합니다. Termux가
+강제 종료되거나 S25U가 재부팅되면 별도 부팅 자동 시작 설정 전까지는
+다시 시작해야 합니다.
+
 ## 안전 규칙
 
 - 내부 저장공간/ROM의 원본 파일은 절대 덮어쓰지 않습니다.
