@@ -6,12 +6,48 @@ from tools.run_s25u_runtime_probe import (
     _call_stack_depth,
     _frames_per_slot,
     _last_candidate_access,
+    _mapping_bank_matches,
     _matching_target_candidate,
     _parse_mapper,
+    _probe_slot,
     _target_candidates,
     _tool_payload,
     _watch_ranges,
 )
+
+
+class _FakeProbeClient:
+    def __init__(self, mapper_snapshots: list[str]) -> None:
+        self.mapper_snapshots = iter(mapper_snapshots)
+        self.calls: list[str] = []
+
+    def call(
+        self, name: str, arguments: dict[str, object] | None = None
+    ) -> dict[str, object]:
+        self.calls.append(name)
+        if name == "debug_get_status":
+            return {"at_breakpoint": True, "pc": "031C"}
+        if name == "get_z80_status":
+            return {
+                "physical_PC": "031C",
+                "bank": "00",
+                "AF": "0044",
+                "BC": "0F83",
+                "DE": "8B7D",
+                "HL": "8B7C",
+                "IX": "FFFF",
+                "IY": "FFFF",
+                "SP": "DEFF",
+            }
+        if name == "list_memory_areas":
+            return {"areas": [{"name": "RAM", "id": 1, "size": 0x2000}]}
+        if name == "read_memory":
+            return {"data": next(self.mapper_snapshots)}
+        if name == "get_trace_log":
+            return {"count": 1, "lines": []}
+        if name == "get_call_stack":
+            return {"frames": []}
+        return {}
 
 
 class S25URuntimeProbeTests(unittest.TestCase):
@@ -57,6 +93,50 @@ class S25URuntimeProbeTests(unittest.TestCase):
         self.assertEqual(_parse_mapper("00 01 02 03"), (0, 1, 2, 3))
         with self.assertRaises(ValueError):
             _parse_mapper("00 01 02")
+
+    def test_probe_rejects_wrong_slot_bank_and_keeps_searching(self) -> None:
+        mapping = {
+            "slot": 2,
+            "expected_bank": 0,
+            "logical_start": 0x8B7A,
+            "logical_end": 0x8C2E,
+        }
+        client = _FakeProbeClient(["08 00 01 02", "08 00 01 00"])
+        hit, evidence, rejected = _probe_slot(client, mapping)
+        self.assertIsNotNone(hit)
+        self.assertIsNotNone(evidence)
+        assert hit is not None
+        self.assertTrue(_mapping_bank_matches(hit, mapping))
+        self.assertEqual(hit["slot2_bank"], 0)
+        self.assertEqual(
+            rejected,
+            [
+                {
+                    "slot": 2,
+                    "expected_bank": 0,
+                    "mapped_bank": 2,
+                    "pc_after": 0x031C,
+                    "physical_pc_after": 0x031C,
+                }
+            ],
+        )
+        self.assertEqual(client.calls.count("debug_step_frame"), 2)
+
+    def test_probe_does_not_publish_a_mismatched_hit(self) -> None:
+        mapping = {
+            "slot": 2,
+            "expected_bank": 0,
+            "logical_start": 0x8B7A,
+            "logical_end": 0x8C2E,
+        }
+        client = _FakeProbeClient(["08 00 01 02"])
+        hit, evidence, rejected = _probe_slot(
+            client, mapping, max_rejected_bank_hits=1
+        )
+        self.assertIsNone(hit)
+        self.assertIsNone(evidence)
+        self.assertEqual(len(rejected), 1)
+        self.assertEqual(rejected[0]["mapped_bank"], 2)
 
     def test_call_stack_depth_and_frame_budget(self) -> None:
         self.assertEqual(_call_stack_depth({"frames": [{}, {}, {}]}), 3)

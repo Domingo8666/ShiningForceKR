@@ -86,6 +86,7 @@ INPUT_SCHEDULE: tuple[tuple[int, str | None], ...] = (
     (120, "1"),
     (120, "1"),
 )
+MAX_REJECTED_BANK_HITS_PER_SLOT = 64
 
 
 def _tool_payload(message: dict[str, object]) -> dict[str, Any]:
@@ -358,6 +359,28 @@ def _capture_hit(
     return {**mapping, **safe_state}, local_evidence
 
 
+def _mapping_bank_matches(
+    hit: dict[str, object],
+    mapping: dict[str, int],
+) -> bool:
+    slot = int(mapping["slot"])
+    return int(hit[f"slot{slot}_bank"]) == int(mapping["expected_bank"])
+
+
+def _rejected_bank_hit(
+    hit: dict[str, object],
+    mapping: dict[str, int],
+) -> dict[str, int]:
+    slot = int(mapping["slot"])
+    return {
+        "slot": slot,
+        "expected_bank": int(mapping["expected_bank"]),
+        "mapped_bank": int(hit[f"slot{slot}_bank"]),
+        "pc_after": int(hit["pc_after"]),
+        "physical_pc_after": int(hit["physical_pc_after"]),
+    }
+
+
 def _target_candidates(
     rom: bytes,
     plan: dict[str, object],
@@ -520,7 +543,16 @@ def _follow_target_read(
 def _probe_slot(
     client: McpStdioClient,
     mapping: dict[str, int],
-) -> tuple[dict[str, object] | None, dict[str, object] | None]:
+    *,
+    max_rejected_bank_hits: int = MAX_REJECTED_BANK_HITS_PER_SLOT,
+) -> tuple[
+    dict[str, object] | None,
+    dict[str, object] | None,
+    list[dict[str, int]],
+]:
+    if max_rejected_bank_hits < 1:
+        raise ValueError("max_rejected_bank_hits must be positive")
+    rejected_bank_hits: list[dict[str, int]] = []
     client.call("debug_reset")
     client.call("debug_pause")
     start = f"{mapping['logical_start']:04X}"
@@ -547,10 +579,17 @@ def _probe_slot(
                         "action": "press_and_release",
                     },
                 )
-            client.call("debug_step_frame", {"frames": frames})
-            status = client.call("debug_get_status")
-            if status.get("at_breakpoint") is True:
-                return _capture_hit(client, mapping)
+            while True:
+                client.call("debug_step_frame", {"frames": frames})
+                status = client.call("debug_get_status")
+                if status.get("at_breakpoint") is not True:
+                    break
+                hit, evidence = _capture_hit(client, mapping)
+                if _mapping_bank_matches(hit, mapping):
+                    return hit, evidence, rejected_bank_hits
+                rejected_bank_hits.append(_rejected_bank_hit(hit, mapping))
+                if len(rejected_bank_hits) >= max_rejected_bank_hits:
+                    return None, None, rejected_bank_hits
     finally:
         try:
             client.call(
@@ -563,7 +602,7 @@ def _probe_slot(
             )
         except RuntimeError:
             pass
-    return None, None
+    return None, None, rejected_bank_hits
 
 
 def _default_command() -> list[str]:
@@ -644,11 +683,12 @@ def main() -> int:
         )
         for mapping in ranges:
             slots_attempted.append(mapping["slot"])
-            hit, evidence = _probe_slot(client, mapping)
+            hit, evidence, rejected_bank_hits = _probe_slot(client, mapping)
             attempt: dict[str, object] = {
                 "mapping": mapping,
                 "hit": hit,
                 "evidence": evidence,
+                "rejected_bank_hits": rejected_bank_hits,
                 "target_followup": None,
             }
             local_result["attempts"].append(attempt)
