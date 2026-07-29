@@ -8,7 +8,7 @@
     "emulator_version": "3.9.14",
     "system": "gamegear",
     "frame_sync": "debug-status-paused",
-    "route": "cold-boot-start-confirm-decoder-entry",
+    "route": "cold-boot-start-confirm-2",
     "frame_budget": 3300
   },
   "captures": [
