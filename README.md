@@ -95,7 +95,8 @@ ROM을 쓰지 않고 메모리 검증만 하려면 --no-rom-output을 붙입니�
 ~~~sh
 cd ~/storage/shared/ShiningForceKR
 git pull --ff-only
-bash tools/run_s25u_runtime_stage.sh
+bash tools/run_s25u_runtime_stage.sh \
+  --source-rom "/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg"
 ~~~
 
 원본 ROM과 생성 ROM은 `/storage/emulated/0`의 S25U 내부에 그대로 남습니다.
@@ -119,6 +120,23 @@ GitHub에는 opcode,
 `analysis/device/v5_1_latest_consumer_resolution.json`만 게시하며,
 왕복 인코딩 전까지 `translation_build_eligible`은 false입니다.
 
+schema v2 런타임 증거가 한 엔트리를 확정하면 같은 wrapper가 원본 ROM과
+v5.1 BPS에서 기준 이미지를 메모리로 다시 만들고, `한다`가 기존 엔트리의
+확인된 비트·바이트 경계 안에 들어가는지 검사합니다. 공유 타깃, 인접
+엔트리 겹침, 원본 왕복 불일치, 예상 원본 바이트 불일치가 하나라도 있으면
+아무 산출물도 만들지 않습니다. 모두 통과하면 다음 S25U 로컬 파일만
+생성합니다.
+
+- `build/Final_Conflict_Korean_test_phrase.gg`
+- `build/Final_Conflict_Korean_test_phrase_overlay.ips`
+- `reports/local/v5_1_test_patch_build.json`
+
+모든 변경은 불변 기준 이미지를 대상으로 한 Expected Write로 먼저
+검증하고, 최종 diff와 IPS 재적용 결과가 같을 때만 기록합니다. 이
+산출물은 technical-poc-only이며 게임 화면에서 `한다`의 자형과 주변
+동작을 콜드 부팅으로 확인하기 전에는 배포 패치나 번역 완료 근거가
+아닙니다.
+
 설치 또는 MCP 시작이 중단되면 wrapper가 경로·로그·ROM 정보를 제외한
 불리언 점검 결과만
 `analysis/device/v5_1_latest_runtime_diagnostic.json`에 게시합니다.
@@ -131,6 +149,7 @@ Gearsystem이 응답하지 않을 때도 30초 제한으로 종료해 실패 단
 - 내부 저장공간/ROM의 원본 파일은 절대 덮어쓰지 않습니다.
 - 생성 ROM은 build/에만 씁니다.
 - 변경 전후 해시를 기록합니다.
+- 시험 ROM의 모든 변경은 겹치지 않는 Expected Write와 전체 diff로 검산합니다.
 - 바이트 모양 후보, 정적 분석, 실제 에뮬레이터 소비 증거를 구분합니다.
 - 모바일 공유 데이터는 고정된 안전 스키마를 통과한 필드만 GitHub에 게시합니다.
 - 해결되지 않은 문제를 해결됐다고 보고하지 않습니다.

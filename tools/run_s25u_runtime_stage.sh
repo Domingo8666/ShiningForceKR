@@ -4,6 +4,24 @@ set -uo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
+source_rom=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --source-rom)
+      if [ "$#" -lt 2 ]; then
+        echo "--source-rom requires a path" >&2
+        exit 2
+      fi
+      source_rom="$2"
+      shift 2
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
 stage_status=0
 diagnostic_trigger=manual
 
@@ -24,6 +42,15 @@ else
     if [ "$resolver_status" -ne 0 ]; then
       stage_status="$resolver_status"
       diagnostic_trigger=probe
+    elif [ -n "$source_rom" ]; then
+      python tools/v5_1_test_patch.py \
+        --source-rom "$source_rom" \
+        --if-ready
+      test_build_status=$?
+      if [ "$test_build_status" -ne 0 ]; then
+        stage_status="$test_build_status"
+        diagnostic_trigger=probe
+      fi
     fi
   fi
 fi
