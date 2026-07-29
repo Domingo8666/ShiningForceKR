@@ -2,7 +2,7 @@
   "artifact_kind": "sanitized-runtime-consumer-observation",
   "schema_version": 1,
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "status": "runtime-read-hit-observed",
+  "status": "runtime-read-hit-not-observed",
   "probe": {
     "emulator": "Gearsystem",
     "emulator_version": "3.9.14",
@@ -34,32 +34,9 @@
       }
     ]
   },
-  "hit": {
-    "slot": 2,
-    "expected_bank": 0,
-    "logical_start": 35706,
-    "logical_end": 35886,
-    "pc_after": 796,
-    "physical_pc_after": 796,
-    "executing_bank": 0,
-    "mapper_control": 8,
-    "slot0_bank": 0,
-    "slot1_bank": 1,
-    "slot2_bank": 2,
-    "registers": {
-      "af": 68,
-      "bc": 3971,
-      "de": 35709,
-      "hl": 35708,
-      "ix": 65535,
-      "iy": 65535,
-      "sp": 57087
-    },
-    "trace_entries": 256,
-    "call_stack_depth": 0
-  },
-  "read_hit_observed": true,
+  "hit": null,
+  "read_hit_observed": false,
   "consumer_evidence_confirmed": false,
   "translation_build_eligible": false,
-  "next_checkpoint": "connect-hit-pc-to-selected-entry-and-bounded-decode"
+  "next_checkpoint": "extend-runtime-input-coverage"
 }
