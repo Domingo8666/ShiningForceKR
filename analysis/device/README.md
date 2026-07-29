@@ -28,3 +28,9 @@
 좌표와 집계값만 `v5_1_latest_runtime_observation.json`에 기록합니다.
 실제 trace 줄, opcode, 메모리 덤프, 화면과 파일 경로는 이 폴더에
 게시할 수 없습니다.
+
+런타임 단계가 결과 생성 전에 중단되면
+`tools/v5_1_runtime_diagnostic.py`가 proot, Ubuntu, 실행 파일, 동적
+의존성, MCP 초기화와 필수 도구의 성공 여부만
+`v5_1_latest_runtime_diagnostic.json`에 기록합니다. 오류 메시지와
+로컬 경로는 진단 파일에도 허용하지 않습니다.

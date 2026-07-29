@@ -7,8 +7,10 @@ import argparse
 from collections import deque
 import json
 from pathlib import Path
+import queue
 import subprocess
 import threading
+import time
 from typing import Any
 
 try:
@@ -32,6 +34,9 @@ DEFAULT_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 DEFAULT_TRACE_PLAN = Path("reports/v5_1_emucap_trace_plan.json")
 LOCAL_REPORT = Path("reports/local/v5_1_gearsystem_probe.json")
 GEARSYSTEM_COMMAND = (
+    "export SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy; "
+    "export XDG_RUNTIME_DIR=/tmp/sfkr-runtime; "
+    "mkdir -p \"$XDG_RUNTIME_DIR\"; "
     "cd /opt/sfkr-gearsystem && "
     "exec ./gearsystem --headless --mcp-stdio"
 )
@@ -113,7 +118,13 @@ class McpStdioClient:
         self._stdin = self._process.stdin
         self._stdout = self._process.stdout
         self._next_id = 1
+        self._messages: queue.Queue[dict[str, object]] = queue.Queue()
         self.stderr_tail: deque[str] = deque(maxlen=80)
+        threading.Thread(
+            target=self._drain_stdout,
+            args=(self._stdout,),
+            daemon=True,
+        ).start()
         if self._process.stderr is not None:
             threading.Thread(
                 target=self._drain_stderr,
@@ -124,6 +135,15 @@ class McpStdioClient:
     def _drain_stderr(self, stream: Any) -> None:
         for line in stream:
             self.stderr_tail.append(line.rstrip())
+
+    def _drain_stdout(self, stream: Any) -> None:
+        for line in stream:
+            try:
+                message = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(message, dict):
+                self._messages.put(message)
 
     def _request(self, method: str, params: dict[str, object]) -> dict[str, object]:
         request_id = self._next_id
@@ -136,21 +156,26 @@ class McpStdioClient:
         }
         self._stdin.write(json.dumps(request, separators=(",", ":")) + "\n")
         self._stdin.flush()
+        deadline = time.monotonic() + 30
         while True:
-            line = self._stdout.readline()
-            if not line:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 raise RuntimeError(
-                    "Gearsystem MCP stopped before responding; stderr tail: "
+                    f"Gearsystem MCP timed out during {method}; stderr tail: "
                     + " | ".join(self.stderr_tail)
                 )
             try:
-                response = json.loads(line)
-            except json.JSONDecodeError:
+                response = self._messages.get(timeout=remaining)
+            except queue.Empty as error:
+                raise RuntimeError(
+                    f"Gearsystem MCP timed out during {method}; stderr tail: "
+                    + " | ".join(self.stderr_tail)
+                ) from error
+            if response.get("id") != request_id:
                 continue
-            if isinstance(response, dict) and response.get("id") == request_id:
-                if "error" in response:
-                    raise RuntimeError(f"MCP error: {response['error']}")
-                return response
+            if "error" in response:
+                raise RuntimeError(f"MCP error: {response['error']}")
+            return response
 
     def initialize(self) -> set[str]:
         self._request(

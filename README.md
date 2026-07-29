@@ -91,8 +91,7 @@ ROM을 쓰지 않고 메모리 검증만 하려면 --no-rom-output을 붙입니�
 ~~~sh
 cd ~/storage/shared/ShiningForceKR
 git pull --ff-only
-bash tools/setup_s25u_gearsystem.sh &&
-python tools/run_s25u_runtime_probe.py --publish-safe-observation
+bash tools/run_s25u_runtime_stage.sh
 ~~~
 
 원본 ROM과 생성 ROM은 `/storage/emulated/0`의 S25U 내부에 그대로 남습니다.
@@ -102,6 +101,11 @@ PC·매퍼 레지스터·범위·집계 개수만 허용하는
 `analysis/device/v5_1_latest_runtime_observation.json`만 게시합니다.
 첫 범위 히트만으로 번역 삽입을 허용하지 않고, 히트 PC를 정확한 엔트리와
 bounded decode에 연결한 뒤 다음 게이트를 엽니다.
+
+설치 또는 MCP 시작이 중단되면 wrapper가 경로·로그·ROM 정보를 제외한
+불리언 점검 결과만
+`analysis/device/v5_1_latest_runtime_diagnostic.json`에 게시합니다.
+Gearsystem이 응답하지 않을 때도 30초 제한으로 종료해 실패 단계를 남깁니다.
 
 ## 안전 규칙
 

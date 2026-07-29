@@ -38,6 +38,14 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y ca-certificates curl unzip libstdc++6 libgl1 libegl1 libglx0
 
+if [ -x "$install_dir/gearsystem" ] &&
+   [ -f "$install_dir/.sfkr-version" ] &&
+   [ "$(cat "$install_dir/.sfkr-version")" = "$version" ] &&
+   ! ldd "$install_dir/gearsystem" | grep -q 'not found'; then
+  printf 'Gearsystem %s is already ready at %s\n' "$version" "$install_dir"
+  exit 0
+fi
+
 if ! ldconfig -p 2>/dev/null | grep -q 'libSDL3\.so\.0'; then
   sdl_package=""
   for candidate in libsdl3-0 libsdl3-0.2 libsdl3-0.0; do
@@ -76,6 +84,7 @@ rm -rf "$install_dir"
 mkdir -p "$install_dir"
 unzip -q "$archive" -d "$install_dir"
 chmod 0755 "$install_dir/gearsystem"
+printf '%s\n' "$version" > "$install_dir/.sfkr-version"
 rm -f "$archive"
 
 if ldd "$install_dir/gearsystem" | grep -q 'not found'; then

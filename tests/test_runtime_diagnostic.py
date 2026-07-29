@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+import unittest
+from unittest.mock import patch
+
+from tools.v5_1_runtime_diagnostic import (
+    CHECK_KEYS,
+    collect_runtime_diagnostic,
+    validate_runtime_diagnostic,
+)
+
+
+class RuntimeDiagnosticTests(unittest.TestCase):
+    @patch("tools.v5_1_runtime_diagnostic.shutil.which", return_value=None)
+    def test_first_failed_stage_is_path_free(self, _which: object) -> None:
+        diagnostic = collect_runtime_diagnostic(
+            root=__import__("pathlib").Path("."),
+            trigger="setup",
+            exit_code=7,
+        )
+        self.assertEqual(diagnostic["failed_stage"], "proot-available")
+        self.assertEqual(set(diagnostic["checks"]), CHECK_KEYS)
+        self.assertNotIn("/", str(diagnostic))
+        validate_runtime_diagnostic(diagnostic)
+
+    def test_extra_fields_are_rejected(self) -> None:
+        diagnostic = {
+            "artifact_kind": "sanitized-runtime-stage-diagnostic",
+            "schema_version": 1,
+            "status": "runtime-stage-not-ready",
+            "trigger": "probe",
+            "exit_code": 1,
+            "checks": {
+                "proot_available": True,
+                "ubuntu_available": False,
+                "gearsystem_binary_available": False,
+                "dynamic_dependencies_ready": False,
+                "mcp_initialize_ready": False,
+                "required_tools_ready": False,
+                "local_target_present": True,
+                "trace_plan_present": True,
+                "target_identity_ready": True,
+            },
+            "failed_stage": "ubuntu-available",
+            "runtime_observation_present": False,
+            "next_checkpoint": "repair-first-failed-runtime-stage",
+            "stderr": "must not be shared",
+        }
+        with self.assertRaises(ValueError):
+            validate_runtime_diagnostic(diagnostic)
+
+
+if __name__ == "__main__":
+    unittest.main()
