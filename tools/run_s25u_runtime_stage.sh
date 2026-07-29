@@ -24,4 +24,14 @@ if [ "$probe_status" -ne 0 ]; then
   exit "$probe_status"
 fi
 
+python tools/v5_1_runtime_hit_resolver.py --publish-safe-resolution
+resolver_status=$?
+if [ "$resolver_status" -ne 0 ]; then
+  python tools/v5_1_runtime_diagnostic.py \
+    --trigger probe \
+    --exit-code "$resolver_status" \
+    --publish
+  exit "$resolver_status"
+fi
+
 exit 0
