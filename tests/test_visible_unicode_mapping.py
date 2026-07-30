@@ -35,7 +35,7 @@ def _catalog() -> list[dict[str, object]]:
 def _artifact() -> dict[str, object]:
     return {
         "artifact_kind": "sanitized-v5-1-visible-unicode-mapping",
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "visible-glyph-map-resolved",
         "target_sha256": "1" * 64,
         "captured_utc": "2026-07-30T11:00:00Z",
@@ -47,6 +47,8 @@ def _artifact() -> dict[str, object]:
         },
         "mapping": {
             "decoded_symbol_count": 6,
+            "initial_page": 0,
+            "implicit_initial_page_used": False,
             "page_select_count": 1,
             "visible_glyph_count": 2,
             "unique_glyph_count": 2,
@@ -71,6 +73,8 @@ class VisibleUnicodeMappingTests(unittest.TestCase):
             _catalog(),
         )
         self.assertEqual(safe["page_select_count"], 1)
+        self.assertEqual(safe["initial_page"], 0)
+        self.assertFalse(safe["implicit_initial_page_used"])
         self.assertEqual(safe["visible_glyph_count"], 2)
         self.assertEqual(safe["unique_glyph_count"], 2)
         self.assertEqual(
@@ -81,6 +85,29 @@ class VisibleUnicodeMappingTests(unittest.TestCase):
             ],
             ["한", "다"],
         )
+
+    def test_uses_page_zero_as_an_unconfirmed_initial_candidate(self) -> None:
+        catalog = [
+            {
+                "page": 0,
+                "symbol": 0x02,
+                "status": "unique",
+                "codepoints": ["U+AC00"],
+                "characters": ["가"],
+            },
+            {
+                "page": 0,
+                "symbol": 0x03,
+                "status": "unique",
+                "codepoints": ["U+AC01"],
+                "characters": ["각"],
+            },
+        ]
+        safe, local = map_visible_symbols([0x02, 0x03, 0xC9], catalog)
+        self.assertEqual(safe["visible_glyph_count"], 2)
+        self.assertEqual(safe["initial_page"], 0)
+        self.assertTrue(safe["implicit_initial_page_used"])
+        self.assertEqual(local["tokens"][0]["characters"], ["가"])
 
     def test_counts_unmatched_glyph_without_guessing(self) -> None:
         safe, _ = map_visible_symbols(

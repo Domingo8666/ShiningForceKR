@@ -35,7 +35,7 @@ except ImportError:  # direct script execution
 
 
 ARTIFACT_KIND = "sanitized-v5-1-visible-unicode-mapping"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_visible_unicode_mapping.json"
 )
@@ -69,6 +69,8 @@ RUNTIME_ENTRY_KEYS = {
 }
 MAPPING_KEYS = {
     "decoded_symbol_count",
+    "initial_page",
+    "implicit_initial_page_used",
     "page_select_count",
     "visible_glyph_count",
     "unique_glyph_count",
@@ -103,6 +105,7 @@ def validate_visible_unicode_mapping(value: dict[str, object]) -> None:
         or value["status"]
         not in {
             "visible-glyph-map-resolved",
+            "visible-glyph-map-candidate",
             "visible-glyph-map-incomplete",
         }
     ):
@@ -134,11 +137,15 @@ def validate_visible_unicode_mapping(value: dict[str, object]) -> None:
     mapping = value["mapping"]
     if not isinstance(mapping, dict) or set(mapping) != MAPPING_KEYS:
         raise ValueError("visible Unicode mapping counts do not match")
-    for key in MAPPING_KEYS:
+    for key in MAPPING_KEYS - {"implicit_initial_page_used"}:
         if not _bounded_int(mapping[key], 0, 0x1000):
             raise ValueError(f"visible Unicode {key} is invalid")
     if (
-        mapping["decoded_symbol_count"] < mapping["visible_glyph_count"]
+        not isinstance(mapping["implicit_initial_page_used"], bool)
+        or mapping["implicit_initial_page_used"]
+        is not (mapping["page_select_count"] == 0)
+        or mapping["initial_page"] > 243
+        or mapping["decoded_symbol_count"] < mapping["visible_glyph_count"]
         or mapping["visible_glyph_count"]
         != mapping["unique_glyph_count"]
         + mapping["ambiguous_glyph_count"]
@@ -146,13 +153,20 @@ def validate_visible_unicode_mapping(value: dict[str, object]) -> None:
         or mapping["terminator_count"] != 1
     ):
         raise ValueError("visible Unicode mapping counts are inconsistent")
-    resolved = (
+    complete = (
         mapping["visible_glyph_count"] > 0
         and mapping["ambiguous_glyph_count"] == 0
         and mapping["unmatched_glyph_count"] == 0
         and value["renderer_chain_confirmed"] is True
     )
-    if (value["status"] == "visible-glyph-map-resolved") is not resolved:
+    expected_status = (
+        "visible-glyph-map-candidate"
+        if complete and mapping["implicit_initial_page_used"]
+        else "visible-glyph-map-resolved"
+        if complete
+        else "visible-glyph-map-incomplete"
+    )
+    if value["status"] != expected_status:
         raise ValueError("visible Unicode mapping status is inconsistent")
     if value["local_payload_policy"] != (
         "symbols-codepoints-characters-and-text-local-only"
@@ -160,7 +174,12 @@ def validate_visible_unicode_mapping(value: dict[str, object]) -> None:
         raise ValueError("visible Unicode local payload policy is invalid")
     if value["translation_build_eligible"] is not False:
         raise ValueError("visible Unicode mapping cannot enable release builds")
-    if value["next_checkpoint"] != "extract-full-script-record-set":
+    expected_checkpoint = {
+        "visible-glyph-map-resolved": "extract-full-script-record-set",
+        "visible-glyph-map-candidate": "confirm-runtime-initial-font-page",
+        "visible-glyph-map-incomplete": "classify-visible-symbol-stream",
+    }[expected_status]
+    if value["next_checkpoint"] != expected_checkpoint:
         raise ValueError("visible Unicode next checkpoint is inconsistent")
 
 
@@ -178,7 +197,9 @@ def map_visible_symbols(
             raise ValueError("font catalog coordinate is invalid")
         catalog[(page, symbol)] = entry
 
-    page: int | None = None
+    page = 0
+    initial_page = page
+    explicit_page_selected = False
     page_select_count = 0
     control_symbol_count = 0
     terminator_count = 0
@@ -203,6 +224,7 @@ def map_visible_symbols(
             if not 0x02 <= high <= 0x11 or not 0x02 <= low <= 0x11:
                 raise ValueError("page-select operand is out of range")
             page = (high - 2) << 4 | (low - 2)
+            explicit_page_selected = True
             page_select_count += 1
             control_symbol_count += 3
             tokens.append(
@@ -214,7 +236,7 @@ def map_visible_symbols(
             )
             index += 3
             continue
-        if page is not None and 0x02 <= symbol <= 0x20:
+        if 0x02 <= symbol <= 0x20:
             entry = catalog.get((page, symbol))
             codepoints = [] if entry is None else entry.get("codepoints", [])
             characters = [] if entry is None else entry.get("characters", [])
@@ -247,6 +269,8 @@ def map_visible_symbols(
     visible = unique + ambiguous + unmatched
     safe = {
         "decoded_symbol_count": len(symbols),
+        "initial_page": initial_page,
+        "implicit_initial_page_used": not explicit_page_selected,
         "page_select_count": page_select_count,
         "visible_glyph_count": visible,
         "unique_glyph_count": unique,
@@ -330,11 +354,18 @@ def main() -> int:
         symbols,
         catalog["entries"],
     )
-    resolved = (
+    complete = (
         safe_mapping["visible_glyph_count"] > 0
         and safe_mapping["ambiguous_glyph_count"] == 0
         and safe_mapping["unmatched_glyph_count"] == 0
         and safe_mapping["terminator_count"] == 1
+    )
+    status = (
+        "visible-glyph-map-candidate"
+        if complete and safe_mapping["implicit_initial_page_used"]
+        else "visible-glyph-map-resolved"
+        if complete
+        else "visible-glyph-map-incomplete"
     )
     runtime = visible["runtime_entry"]
     assert isinstance(runtime, dict)
@@ -342,11 +373,7 @@ def main() -> int:
     safe: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
-        "status": (
-            "visible-glyph-map-resolved"
-            if resolved
-            else "visible-glyph-map-incomplete"
-        ),
+        "status": status,
         "target_sha256": visible["baseline_target_sha256"],
         "captured_utc": captured_utc,
         "runtime_entry": {
@@ -359,7 +386,11 @@ def main() -> int:
             "symbols-codepoints-characters-and-text-local-only"
         ),
         "translation_build_eligible": False,
-        "next_checkpoint": "extract-full-script-record-set",
+        "next_checkpoint": {
+            "visible-glyph-map-resolved": "extract-full-script-record-set",
+            "visible-glyph-map-candidate": "confirm-runtime-initial-font-page",
+            "visible-glyph-map-incomplete": "classify-visible-symbol-stream",
+        }[status],
     }
     validate_visible_unicode_mapping(safe)
     local = {
