@@ -21,9 +21,13 @@ try:
         validate_confirmed_group_extract,
     )
     from .v5_1_group_context_resolution import (
-        LOCAL_REPORT_PATH as LOCAL_CONTEXT_PATH,
         PUBLISH_RELATIVE_PATH as CONTEXT_RESOLUTION_PATH,
         validate_group_context_resolution,
+    )
+    from .v5_1_group_runtime_context import (
+        LOCAL_REPORT_PATH as LOCAL_RUNTIME_CONTEXT_PATH,
+        PUBLISH_RELATIVE_PATH as RUNTIME_CONTEXT_PATH,
+        validate_group_runtime_context,
     )
     from .v5_1_renderer_output_trace import _load_json_object
     from .v5_1_visible_unicode_mapping import (
@@ -40,9 +44,13 @@ except ImportError:  # direct script execution
         validate_confirmed_group_extract,
     )
     from v5_1_group_context_resolution import (
-        LOCAL_REPORT_PATH as LOCAL_CONTEXT_PATH,
         PUBLISH_RELATIVE_PATH as CONTEXT_RESOLUTION_PATH,
         validate_group_context_resolution,
+    )
+    from v5_1_group_runtime_context import (
+        LOCAL_REPORT_PATH as LOCAL_RUNTIME_CONTEXT_PATH,
+        PUBLISH_RELATIVE_PATH as RUNTIME_CONTEXT_PATH,
+        validate_group_runtime_context,
     )
     from v5_1_renderer_output_trace import _load_json_object
     from v5_1_visible_unicode_mapping import (
@@ -67,6 +75,7 @@ TOP_LEVEL_KEYS = {
     "target_sha256",
     "source_group_extract_sha256",
     "source_group_context_resolution_sha256",
+    "source_group_runtime_context_sha256",
     "source_visible_mapping_sha256",
     "source_font_catalog_sha256",
     "captured_utc",
@@ -257,6 +266,7 @@ def build_confirmed_group_unicode(
     target_sha256: str,
     source_group_extract_sha256: str,
     source_group_context_resolution_sha256: str,
+    source_group_runtime_context_sha256: str,
     source_visible_mapping_sha256: str,
     source_font_catalog_sha256: str,
     selector: int,
@@ -281,6 +291,9 @@ def build_confirmed_group_unicode(
         "source_group_extract_sha256": source_group_extract_sha256,
         "source_group_context_resolution_sha256": (
             source_group_context_resolution_sha256
+        ),
+        "source_group_runtime_context_sha256": (
+            source_group_runtime_context_sha256
         ),
         "source_visible_mapping_sha256": source_visible_mapping_sha256,
         "source_font_catalog_sha256": source_font_catalog_sha256,
@@ -327,6 +340,7 @@ def validate_confirmed_group_unicode(value: dict[str, object]) -> None:
                 "target_sha256",
                 "source_group_extract_sha256",
                 "source_group_context_resolution_sha256",
+                "source_group_runtime_context_sha256",
                 "source_visible_mapping_sha256",
                 "source_font_catalog_sha256",
             )
@@ -410,14 +424,16 @@ def main() -> int:
     args = parser.parse_args()
     group_path = root / GROUP_EXTRACT_PATH
     context_path = root / CONTEXT_RESOLUTION_PATH
-    local_context_path = root / LOCAL_CONTEXT_PATH
+    runtime_context_path = root / RUNTIME_CONTEXT_PATH
+    local_runtime_context_path = root / LOCAL_RUNTIME_CONTEXT_PATH
     visible_mapping_path = root / VISIBLE_MAPPING_PATH
     local_visible_mapping_path = root / LOCAL_VISIBLE_MAPPING_PATH
     catalog_path = root / LOCAL_FONT_CATALOG_PATH
     prerequisites = (
         group_path,
         context_path,
-        local_context_path,
+        runtime_context_path,
+        local_runtime_context_path,
         visible_mapping_path,
         local_visible_mapping_path,
         catalog_path,
@@ -431,14 +447,11 @@ def main() -> int:
     validate_confirmed_group_extract(group)
     context = _load_json_object(context_path)
     validate_group_context_resolution(context)
-    if context["status"] != "group-initial-context-unique":
-        if args.if_ready:
-            print("Confirmed group Unicode waits for one resolved context")
-            return 0
-        raise SystemExit("confirmed group context is unresolved")
+    runtime_context = _load_json_object(runtime_context_path)
+    validate_group_runtime_context(runtime_context)
     visible = _load_json_object(visible_mapping_path)
     validate_visible_unicode_mapping(visible)
-    local_context = _load_json_object(local_context_path)
+    local_runtime_context = _load_json_object(local_runtime_context_path)
     local_visible = _load_json_object(local_visible_mapping_path)
     catalog = _load_json_object(catalog_path)
     if (
@@ -446,16 +459,26 @@ def main() -> int:
         or context["target_sha256"] != group["target_sha256"]
         or context["source_group_extract_sha256"]
         != sha256_file(group_path)
-        or local_context.get("target_sha256") != group["target_sha256"]
-        or local_context.get("source_group_extract_sha256")
+        or runtime_context["target_sha256"] != group["target_sha256"]
+        or runtime_context["source_group_extract_sha256"]
         != sha256_file(group_path)
+        or runtime_context["source_context_resolution_sha256"]
+        != sha256_file(context_path)
+        or local_runtime_context.get("target_sha256")
+        != group["target_sha256"]
+        or local_runtime_context.get("source_group_extract_sha256")
+        != sha256_file(group_path)
+        or local_runtime_context.get("source_context_resolution_sha256")
+        != sha256_file(context_path)
         or local_visible.get("target_sha256") != group["target_sha256"]
         or catalog.get("artifact_kind")
         != "local-v5-1-galmuri7-font-catalog"
         or catalog.get("status") != "verified-static-local-analysis"
     ):
         raise ValueError("confirmed group Unicode identities disagree")
-    records = local_context.get("analysis", {}).get("resolved_records")
+    records = local_runtime_context.get("analysis", {}).get(
+        "resolved_records"
+    )
     candidates = local_visible.get("mapping", {}).get(
         "initial_page_candidates"
     )
@@ -485,10 +508,13 @@ def main() -> int:
         target_sha256=str(group["target_sha256"]),
         source_group_extract_sha256=sha256_file(group_path),
         source_group_context_resolution_sha256=sha256_file(context_path),
+        source_group_runtime_context_sha256=sha256_file(
+            runtime_context_path
+        ),
         source_visible_mapping_sha256=sha256_file(visible_mapping_path),
         source_font_catalog_sha256=sha256_file(catalog_path),
         selector=int(group_info["selector"]),
-        record_count=int(group_info["declared_entry_count"]),
+        record_count=len(records),
         mapping=safe_counts,
         captured_utc=captured_utc,
     )

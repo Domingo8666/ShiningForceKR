@@ -225,6 +225,7 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_font_transfer_source.json|\
     analysis/device/v5_1_latest_confirmed_group_extract.json|\
     analysis/device/v5_1_latest_group_context_resolution.json|\
+    analysis/device/v5_1_latest_group_runtime_context.json|\
     analysis/device/v5_1_latest_confirmed_group_unicode.json|\
     analysis/device/v5_1_latest_progress_preview.json|\
     analysis/device/v5_1_latest_progress_preview.png)

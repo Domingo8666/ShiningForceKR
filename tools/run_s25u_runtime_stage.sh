@@ -365,6 +365,16 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_group_runtime_context.py --if-ready
+    group_runtime_context_status=$?
+    if [ "$group_runtime_context_status" -ne 0 ]; then
+      stage_status="$group_runtime_context_status"
+      diagnostic_trigger=probe
+      record_stage_failure group-runtime-context
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_confirmed_group_unicode.py --if-ready
     confirmed_group_unicode_status=$?
     if [ "$confirmed_group_unicode_status" -ne 0 ]; then

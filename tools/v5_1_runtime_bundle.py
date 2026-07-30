@@ -50,6 +50,10 @@ try:
         PUBLISH_RELATIVE_PATH as GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH,
         validate_group_context_resolution,
     )
+    from .v5_1_group_runtime_context import (
+        PUBLISH_RELATIVE_PATH as GROUP_RUNTIME_CONTEXT_RELATIVE_PATH,
+        validate_group_runtime_context,
+    )
     from .v5_1_confirmed_group_unicode import (
         PUBLISH_RELATIVE_PATH as CONFIRMED_GROUP_UNICODE_RELATIVE_PATH,
         validate_confirmed_group_unicode,
@@ -110,6 +114,10 @@ except ImportError:  # direct script execution
     from v5_1_group_context_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH,
         validate_group_context_resolution,
+    )
+    from v5_1_group_runtime_context import (
+        PUBLISH_RELATIVE_PATH as GROUP_RUNTIME_CONTEXT_RELATIVE_PATH,
+        validate_group_runtime_context,
     )
     from v5_1_confirmed_group_unicode import (
         PUBLISH_RELATIVE_PATH as CONFIRMED_GROUP_UNICODE_RELATIVE_PATH,
@@ -173,6 +181,8 @@ SAFE_ARTIFACTS = {
         validate_confirmed_group_extract,
     GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH:
         validate_group_context_resolution,
+    GROUP_RUNTIME_CONTEXT_RELATIVE_PATH:
+        validate_group_runtime_context,
     CONFIRMED_GROUP_UNICODE_RELATIVE_PATH:
         validate_confirmed_group_unicode,
     PUBLISH_RECEIPT_RELATIVE_PATH: validate_progress_preview,
@@ -505,6 +515,34 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
     group_context_resolution = artifacts.get(
         GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH
     )
+    group_runtime_context = artifacts.get(
+        GROUP_RUNTIME_CONTEXT_RELATIVE_PATH
+    )
+    if group_runtime_context is not None:
+        if (
+            confirmed_group_extract is None
+            or group_context_resolution is None
+            or renderer is None
+            or group_runtime_context["target_sha256"]
+            != confirmed_group_extract["target_sha256"]
+            or group_runtime_context["source_group_extract_sha256"]
+            != sha256_file(root / CONFIRMED_GROUP_EXTRACT_RELATIVE_PATH)
+            or group_runtime_context["source_context_resolution_sha256"]
+            != sha256_file(root / GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH)
+            or group_runtime_context["source_renderer_observation_sha256"]
+            != sha256_file(
+                root
+                / "analysis/device/v5_1_latest_renderer_observation.json"
+            )
+            or group_runtime_context["group"]["selector"]
+            != confirmed_group_extract["group"]["selector"]
+            or group_runtime_context["group"]["declared_record_count"]
+            != confirmed_group_extract["group"]["declared_entry_count"]
+        ):
+            artifacts.pop(GROUP_RUNTIME_CONTEXT_RELATIVE_PATH)
+    group_runtime_context = artifacts.get(
+        GROUP_RUNTIME_CONTEXT_RELATIVE_PATH
+    )
     confirmed_group_unicode = artifacts.get(
         CONFIRMED_GROUP_UNICODE_RELATIVE_PATH
     )
@@ -512,6 +550,7 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
         if (
             confirmed_group_extract is None
             or group_context_resolution is None
+            or group_runtime_context is None
             or visible_unicode_mapping is None
             or confirmed_group_unicode["target_sha256"]
             != confirmed_group_extract["target_sha256"]
@@ -521,12 +560,18 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
                 "source_group_context_resolution_sha256"
             ]
             != sha256_file(root / GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH)
+            or confirmed_group_unicode[
+                "source_group_runtime_context_sha256"
+            ]
+            != sha256_file(root / GROUP_RUNTIME_CONTEXT_RELATIVE_PATH)
             or confirmed_group_unicode["source_visible_mapping_sha256"]
             != sha256_file(root / VISIBLE_UNICODE_MAPPING_RELATIVE_PATH)
             or confirmed_group_unicode["group"]["selector"]
             != confirmed_group_extract["group"]["selector"]
             or confirmed_group_unicode["group"]["record_count"]
-            != confirmed_group_extract["group"]["declared_entry_count"]
+            != group_runtime_context["coverage"][
+                "runtime_context_exact_entry_count"
+            ]
         ):
             artifacts.pop(CONFIRMED_GROUP_UNICODE_RELATIVE_PATH)
     return artifacts
