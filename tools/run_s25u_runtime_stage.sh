@@ -277,6 +277,16 @@ else
       record_stage_failure display-comparison-artifact
     fi
   fi
+
+  if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_renderer_output_trace.py --if-ready
+    renderer_output_trace_status=$?
+    if [ "$renderer_output_trace_status" -ne 0 ]; then
+      stage_status="$renderer_output_trace_status"
+      diagnostic_trigger=probe
+      record_stage_failure renderer-output-trace
+    fi
+  fi
 fi
 
 python tools/v5_1_runtime_diagnostic.py \

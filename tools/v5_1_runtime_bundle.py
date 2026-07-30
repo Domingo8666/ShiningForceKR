@@ -39,6 +39,10 @@ try:
     from .v5_1_runtime_hit_resolver import validate_consumer_resolution
     from .v5_1_runtime_observation import validate_runtime_observation
     from .v5_1_renderer_observation import validate_renderer_observation
+    from .v5_1_renderer_output_trace import (
+        PUBLISH_RELATIVE_PATH as RENDERER_OUTPUT_TRACE_RELATIVE_PATH,
+        validate_renderer_output_trace,
+    )
     from .v5_1_route_capture import validate_route_capture
     from .v5_1_safe_observation import _git, _normalized_remote
 except ImportError:  # direct script execution
@@ -71,6 +75,10 @@ except ImportError:  # direct script execution
     from v5_1_runtime_hit_resolver import validate_consumer_resolution
     from v5_1_runtime_observation import validate_runtime_observation
     from v5_1_renderer_observation import validate_renderer_observation
+    from v5_1_renderer_output_trace import (
+        PUBLISH_RELATIVE_PATH as RENDERER_OUTPUT_TRACE_RELATIVE_PATH,
+        validate_renderer_output_trace,
+    )
     from v5_1_route_capture import validate_route_capture
     from v5_1_safe_observation import _git, _normalized_remote
 
@@ -103,6 +111,8 @@ SAFE_ARTIFACTS = {
     POC_EXPANSION_PROOF_RELATIVE_PATH: validate_poc_expansion_proof,
     VISIBLE_SCRIPT_ROUNDTRIP_RELATIVE_PATH:
         validate_visible_script_roundtrip,
+    RENDERER_OUTPUT_TRACE_RELATIVE_PATH:
+        validate_renderer_output_trace,
     PUBLISH_RECEIPT_RELATIVE_PATH: validate_progress_preview,
 }
 SAFE_BINARY_ARTIFACTS = {
@@ -299,6 +309,25 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != poc_expansion_proof["runtime_entry"]["logical_start"]
         ):
             artifacts.pop(VISIBLE_SCRIPT_ROUNDTRIP_RELATIVE_PATH)
+    visible_script_roundtrip = artifacts.get(
+        VISIBLE_SCRIPT_ROUNDTRIP_RELATIVE_PATH
+    )
+    renderer_output_trace = artifacts.get(
+        RENDERER_OUTPUT_TRACE_RELATIVE_PATH
+    )
+    if renderer_output_trace is not None:
+        if (
+            visible_script_roundtrip is None
+            or renderer_output_trace["target_sha256"]
+            != visible_script_roundtrip["baseline_target_sha256"]
+            or renderer_output_trace["runtime_entry"]["physical_start"]
+            != visible_script_roundtrip["runtime_entry"]["physical_start"]
+            or renderer_output_trace["runtime_entry"]["logical_start"]
+            != visible_script_roundtrip["runtime_entry"]["logical_start"]
+            or renderer_output_trace["runtime_entry"]["mapped_bank"]
+            != visible_script_roundtrip["runtime_entry"]["mapped_bank"]
+        ):
+            artifacts.pop(RENDERER_OUTPUT_TRACE_RELATIVE_PATH)
     return artifacts
 
 

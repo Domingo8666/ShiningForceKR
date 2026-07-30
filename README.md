@@ -282,6 +282,15 @@ S25U 실기 결과 `시험한다`의 네 글자 연속 자형이 진행 후 화�
 `analysis/device/v5_1_latest_visible_script_roundtrip.json`의 집계와
 왕복 판정만 게시합니다.
 
+다음 자동 단계는 이 레코드가 선택된 정확한 디코더 전달 지점에서
+Gearsystem trace를 한 프레임만 켜고 Game Gear VDP 데이터·제어 포트
+출력을 수집합니다. 심벌, 명령어, 포트 값과 원시 trace는
+`reports/local/`에만 남기고, GitHub에는
+`analysis/device/v5_1_latest_renderer_output_trace.json`의 출력 횟수와
+소비 경로 판정만 게시합니다. 이 결과로 원문 심벌과 실제 화면 글리프를
+차례로 정렬하며, 정렬이 끝나기 전에는 배포용 번역 빌드를 허용하지
+않습니다.
+
 0x33FA 디코더 경로의 캡처에서는 목표 read 순간의 DE와 고정
 `0x3FE8 + DE` 포인터를 기준 ROM에서 다시 대조합니다. 현재 포인터와
 다음 포인터가 목표 stream을 실제로 둘러쌀 때만 블록 엔트리 번호와
@@ -319,7 +328,7 @@ bash tools/manage_s25u_autopilot.sh stop
 실패 결과도 검증된 safe runtime bundle로 게시한 뒤 같은 커밋을 반복
 실행하지 않으므로 배터리와 Git 이력을 불필요하게 소모하지 않습니다.
 원본 ROM과 생성 ROM은 S25U 공유 저장공간에만 남고, 자동 Git 쓰기는
-고정된 safe artifact 여섯 개로 제한됩니다. 다른 tracked 변경, 다른
+고정 스키마를 통과한 safe artifact 경로로만 제한됩니다. 다른 tracked 변경, 다른
 브랜치·원격 저장소 또는 안전하지 않은 로컬 커밋을 발견하면 자동실행을
 중단합니다.
 

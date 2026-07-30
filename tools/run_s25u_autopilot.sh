@@ -198,6 +198,7 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_visible_entry_proof.json|\
     analysis/device/v5_1_latest_poc_expansion_proof.json|\
     analysis/device/v5_1_latest_visible_script_roundtrip.json|\
+    analysis/device/v5_1_latest_renderer_output_trace.json|\
     analysis/device/v5_1_latest_progress_preview.json|\
     analysis/device/v5_1_latest_progress_preview.png)
       return 0
