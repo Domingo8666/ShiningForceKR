@@ -1,0 +1,32 @@
+{
+  "artifact_kind": "sanitized-v5-1-group-text-candidate-resolution",
+  "schema_version": 1,
+  "status": "group-text-candidates-partially-resolved",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_context_resolution_sha256": "5cb708ffcb766cc0333ab0ab3bd790ed99c9bde49e548ade644b927d072a7333",
+  "source_group_delta_sha256": "282857d17d4cd614e99fa0cdb3a1f501172cfc278d54d504d2c16a840e0561b3",
+  "source_visible_mapping_sha256": "15b9aa49998a856c3dea86bdfec2463f0ae1f268c40f0d1ca3a8097f5da57c31",
+  "source_font_catalog_sha256": "13efdcbdc6d5997810fbd99e3e577c7420965d7c3f60f65ad4950c243434c783",
+  "captured_utc": "2026-07-30T14:43:06.472138Z",
+  "group": {
+    "selector": 2,
+    "record_count": 148
+  },
+  "resolution": {
+    "selected_ambiguous_glyph_count": 0,
+    "selected_unique_glyph_count": 404,
+    "selected_unmatched_glyph_count": 65,
+    "candidate_symbol_stream_count": 3169,
+    "candidate_context_decode_count": 4271,
+    "selected_visible_glyph_count": 469,
+    "unique_best_record_count": 120,
+    "ambiguous_best_record_count": 7,
+    "valid_text_stream_count": 796,
+    "selected_page_select_count": 125,
+    "no_valid_text_record_count": 21
+  },
+  "quality_inference_only": true,
+  "local_payload_policy": "contexts-symbols-pages-codepoints-tokens-and-text-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "assemble-provisional-target-script-corpus"
+}
