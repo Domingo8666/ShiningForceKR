@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import time
 
 try:
     from .patch_io import PatchError, sha256_bytes, sha256_file
@@ -96,11 +97,15 @@ CAPTURE_FRAMES_AFTER_HIT = (1, 8, 30, 90)
 ATTRACT_CAPTURE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
     *((1_000, None),) * 12,
 )
+ATTRACT_CAPTURE_TIMEOUT_SECONDS = (
+    sum(frames for frames, _ in ATTRACT_CAPTURE_SCHEDULE) / 50.0
+) + 30.0
 MAX_REJECTED_TARGET_HITS = 64
 DECODER_ENTRY_LOGICAL = 0x33FA
 LOOKUP_TABLE_BASE = 0x3FE8
 REQUIRED_TOOLS = {
     "controller_button",
+    "debug_continue",
     "debug_get_status",
     "debug_pause",
     "debug_reset",
@@ -1142,6 +1147,28 @@ def _target_hit_matches(
     )
 
 
+def _continue_until_breakpoint(
+    client: McpStdioClient,
+    timeout_seconds: float,
+    *,
+    poll_interval_seconds: float = 0.05,
+) -> dict[str, object]:
+    """Run freely until a breakpoint or a bounded wall-clock deadline."""
+
+    if timeout_seconds <= 0:
+        raise ValueError("continuous run timeout must be positive")
+    deadline = time.monotonic() + timeout_seconds
+    client.call("debug_continue")
+    status: dict[str, object] = {}
+    while time.monotonic() < deadline:
+        status = client.call("debug_get_status")
+        if status.get("at_breakpoint") is True:
+            return status
+        time.sleep(poll_interval_seconds)
+    client.call("debug_pause")
+    return client.call("debug_get_status")
+
+
 def _capture_display(
     *,
     rom_path: Path,
@@ -1250,7 +1277,28 @@ def _capture_display(
         entry_selector_confirmed = expected_selector_offset is None
         local["entry_selector_hits"] = []
         rejected_hits: list[dict[str, int]] = []
-        for frames, button in schedule:
+        continuous_attract = bool(schedule) and all(
+            button is None for _, button in schedule
+        )
+        continuous_deadline = (
+            time.monotonic() + ATTRACT_CAPTURE_TIMEOUT_SECONDS
+            if continuous_attract
+            else None
+        )
+        continuous_hit_limit = (
+            MAX_REJECTED_TARGET_HITS * len(schedule)
+            if continuous_attract
+            else MAX_REJECTED_TARGET_HITS
+        )
+        capture_steps = ((0, None),) if continuous_attract else schedule
+        if continuous_attract:
+            print(
+                f"SFKR display capture: {failure_stage} continuous "
+                f"breakpoint watch (up to "
+                f"{int(ATTRACT_CAPTURE_TIMEOUT_SECONDS)} seconds).",
+                flush=True,
+            )
+        for frames, button in capture_steps:
             if button is not None:
                 client.call(
                     "controller_button",
@@ -1260,8 +1308,14 @@ def _capture_display(
                         "action": "press_and_release",
                     },
                 )
-            for _ in range(MAX_REJECTED_TARGET_HITS):
-                status = _step_frames_and_wait(client, frames)
+            for _ in range(continuous_hit_limit):
+                if continuous_deadline is not None:
+                    remaining = continuous_deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    status = _continue_until_breakpoint(client, remaining)
+                else:
+                    status = _step_frames_and_wait(client, frames)
                 if status.get("at_breakpoint") is not True:
                     break
                 state, hit_evidence = _capture_state(client)

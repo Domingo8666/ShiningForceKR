@@ -5,12 +5,15 @@ import copy
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from tools.patch_io import PatchError, sha256_bytes
 from tools.v5_1_test_display_capture import (
     ATTRACT_CAPTURE_SCHEDULE,
+    ATTRACT_CAPTURE_TIMEOUT_SECONDS,
     CAPTURE_FRAMES_AFTER_HIT,
     _build_safe_capture,
+    _continue_until_breakpoint,
     _build_entry_selector_observation,
     _write_human_review_bundle,
     _next_step_text,
@@ -51,6 +54,65 @@ class TestDisplayCaptureTests(unittest.TestCase):
         self.assertEqual(
             sum(frames for frames, _ in ATTRACT_CAPTURE_SCHEDULE),
             12_000,
+        )
+        self.assertEqual(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 270.0)
+
+    def test_continuous_capture_stops_at_the_runtime_breakpoint(self) -> None:
+        class Client:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+                self.statuses = [
+                    {"paused": False, "at_breakpoint": False},
+                    {"paused": True, "at_breakpoint": True},
+                ]
+
+            def call(
+                self,
+                name: str,
+                arguments: dict[str, object] | None = None,
+            ) -> dict[str, object]:
+                self.calls.append(name)
+                if name == "debug_get_status":
+                    return self.statuses.pop(0)
+                return {}
+
+        client = Client()
+        status = _continue_until_breakpoint(
+            client, 10.0, poll_interval_seconds=0.0
+        )
+        self.assertTrue(status["at_breakpoint"])
+        self.assertEqual(
+            client.calls,
+            ["debug_continue", "debug_get_status", "debug_get_status"],
+        )
+
+    def test_continuous_capture_pauses_at_its_deadline(self) -> None:
+        class Client:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+                self.paused = False
+
+            def call(
+                self,
+                name: str,
+                arguments: dict[str, object] | None = None,
+            ) -> dict[str, object]:
+                self.calls.append(name)
+                if name == "debug_pause":
+                    self.paused = True
+                    return {}
+                return {"paused": self.paused}
+
+        client = Client()
+        with mock.patch(
+            "tools.v5_1_test_display_capture.time.monotonic",
+            side_effect=[0.0, 2.0],
+        ):
+            status = _continue_until_breakpoint(client, 1.0)
+        self.assertTrue(status["paused"])
+        self.assertEqual(
+            client.calls,
+            ["debug_continue", "debug_pause", "debug_get_status"],
         )
 
     def test_target_hit_requires_mapper_bank_and_decoder_pc(self) -> None:

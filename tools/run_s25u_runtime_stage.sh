@@ -138,7 +138,12 @@ else
         break
       fi
 
-      python tools/v5_1_test_display_capture.py --if-ready
+      if command -v timeout >/dev/null 2>&1; then
+        timeout -k 15s 720s \
+          python tools/v5_1_test_display_capture.py --if-ready
+      else
+        python tools/v5_1_test_display_capture.py --if-ready
+      fi
       display_capture_status=$?
       if [ "$display_capture_status" -ne 0 ]; then
         stage_status="$display_capture_status"

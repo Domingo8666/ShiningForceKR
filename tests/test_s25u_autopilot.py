@@ -66,6 +66,14 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn("/storage/emulated/0/", MANAGER)
         self.assertIn('"$HOME"/storage/shared/*', MANAGER)
         self.assertIn('kill -0 "$candidate"', MANAGER)
+        self.assertIn("/proc/$candidate/cmdline", MANAGER)
+
+    def test_manager_restart_stops_only_the_owned_process_tree(self) -> None:
+        self.assertIn("restart  Stop the owned process tree", MANAGER)
+        self.assertIn("collect_owned_descendants", MANAGER)
+        self.assertIn("*run_s25u_autopilot.sh*", MANAGER)
+        self.assertIn('kill -TERM "$owned_pid"', MANAGER)
+        self.assertIn('kill -KILL "$owned_pid"', MANAGER)
 
     def test_default_poll_interval_is_one_minute(self) -> None:
         self.assertIn('SFKR_AUTOPILOT_INTERVAL:-60', SCRIPT)
@@ -114,6 +122,9 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertLess(stale_removal, build)
         self.assertLess(build, missing_output_guard)
         self.assertLess(missing_output_guard, capture)
+
+    def test_runtime_stage_bounds_display_capture_wall_time(self) -> None:
+        self.assertIn("timeout -k 15s 720s", RUNTIME_STAGE)
 
     def test_runtime_stage_records_precise_substage_failures(self) -> None:
         self.assertIn("v5_1_runtime_stage_failure.py", RUNTIME_STAGE)

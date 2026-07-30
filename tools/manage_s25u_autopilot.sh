@@ -15,6 +15,7 @@ Usage: bash tools/manage_s25u_autopilot.sh ACTION [options]
 Actions:
   install  Install the private Termux:Boot launcher and start the autopilot
   start    Start the autopilot in the background
+  restart  Stop the owned process tree, then start the autopilot
   stop     Request a safe stop and signal the current autopilot process
   status   Write and print the current status (default)
   logs     Print the last 40 private log lines
@@ -33,7 +34,7 @@ EOF
 
 if [ "$#" -gt 0 ]; then
   case "$1" in
-    install|start|stop|status|logs)
+    install|start|restart|stop|status|logs)
       action="$1"
       shift
       ;;
@@ -114,7 +115,8 @@ launcher_log="$state_dir/launcher.log"
 boot_launcher="$HOME/.termux/boot/shiningforcekr-autopilot"
 
 read_live_pid() {
-  candidate=""
+  local candidate=""
+  local candidate_command=""
   if [ -f "$lock_pid_file" ]; then
     candidate="$(cat "$lock_pid_file" 2>/dev/null || true)"
   fi
@@ -126,7 +128,73 @@ read_live_pid() {
   if ! kill -0 "$candidate" 2>/dev/null; then
     return 1
   fi
+  if [ ! -r "/proc/$candidate/cmdline" ]; then
+    return 1
+  fi
+  candidate_command="$(
+    tr '\000' ' ' <"/proc/$candidate/cmdline" 2>/dev/null || true
+  )"
+  case "$candidate_command" in
+    *run_s25u_autopilot.sh*)
+      ;;
+    *)
+      return 1
+      ;;
+  esac
   printf '%s\n' "$candidate"
+}
+
+collect_owned_descendants() {
+  local parent_pid="$1"
+  local process_status=""
+  local child_pid=""
+  local child_parent=""
+  for process_status in /proc/[0-9]*/status; do
+    [ -r "$process_status" ] || continue
+    child_pid="${process_status#/proc/}"
+    child_pid="${child_pid%/status}"
+    [ "$child_pid" = "$parent_pid" ] && continue
+    child_parent="$(
+      awk '$1 == "PPid:" { print $2; exit }' \
+        "$process_status" 2>/dev/null || true
+    )"
+    if [ "$child_parent" = "$parent_pid" ]; then
+      collect_owned_descendants "$child_pid"
+      owned_descendants="$owned_descendants $child_pid"
+    fi
+  done
+}
+
+stop_autopilot() {
+  touch "$stop_file"
+  running_pid=""
+  if running_pid="$(read_live_pid)"; then
+    owned_descendants=""
+    collect_owned_descendants "$running_pid"
+    for owned_pid in $owned_descendants; do
+      kill -TERM "$owned_pid" 2>/dev/null || true
+    done
+    kill -TERM "$running_pid" 2>/dev/null || true
+
+    stop_attempt=0
+    while [ "$stop_attempt" -lt 10 ] &&
+      kill -0 "$running_pid" 2>/dev/null; do
+      sleep 1
+      stop_attempt=$((stop_attempt + 1))
+    done
+    if read_live_pid >/dev/null 2>&1; then
+      owned_descendants=""
+      collect_owned_descendants "$running_pid"
+      for owned_pid in $owned_descendants; do
+        kill -KILL "$owned_pid" 2>/dev/null || true
+      done
+      kill -KILL "$running_pid" 2>/dev/null || true
+    fi
+    echo "Stopped owned S25U autopilot process tree for PID $running_pid"
+  else
+    echo "S25U autopilot is not running"
+  fi
+  write_status
 }
 
 write_status() {
@@ -278,16 +346,13 @@ case "$action" in
     start_autopilot
     exit $?
     ;;
+  restart)
+    stop_autopilot
+    start_autopilot
+    exit $?
+    ;;
   stop)
-    touch "$stop_file"
-    running_pid=""
-    if running_pid="$(read_live_pid)"; then
-      kill -TERM "$running_pid" 2>/dev/null || true
-      echo "Safe stop requested for PID $running_pid"
-    else
-      echo "S25U autopilot is not running"
-    fi
-    write_status
+    stop_autopilot
     ;;
   status)
     write_status
