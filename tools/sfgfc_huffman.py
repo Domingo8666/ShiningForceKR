@@ -191,6 +191,65 @@ def decode_symbols(
     raise PatchError("candidate entry did not terminate within symbol limit")
 
 
+def decode_symbol_entries(
+    data: bytes,
+    known: bytes,
+    trees: dict[int, ParsedTree],
+    start_offset: int,
+    entry_count: int,
+    initial_symbol: int = CANDIDATE_END_SYMBOL,
+    end_symbol: int = CANDIDATE_END_SYMBOL,
+    max_symbols_per_entry: int = 4096,
+    max_total_bytes: int = 0x4000,
+) -> tuple[list[list[int]], int]:
+    """Decode consecutive entries from one unpadded Huffman bit stream.
+
+    Final Conflict groups many indexed strings behind one byte-aligned pointer.
+    Each string resets the previous-symbol context, but the following string
+    starts at the very next bit rather than at the next byte.
+    """
+
+    if not isinstance(entry_count, int) or isinstance(entry_count, bool):
+        raise PatchError("entry count must be an integer")
+    if not 0 <= entry_count <= 256:
+        raise PatchError("entry count must be between 0 and 256")
+    if max_symbols_per_entry <= 0 or max_total_bytes <= 0:
+        raise PatchError("Huffman entry limits must be positive")
+
+    entries: list[list[int]] = []
+    bit_index = 0
+    for _ in range(entry_count):
+        output: list[int] = []
+        previous = initial_symbol
+        for _ in range(max_symbols_per_entry):
+            tree = trees.get(previous)
+            if tree is None:
+                raise PatchError(
+                    f"no Huffman tree for previous symbol 0x{previous:02x}"
+                )
+            node = tree.root
+            while not node.is_leaf:
+                if (bit_index >> 3) >= max_total_bytes:
+                    raise PatchError("Huffman entry group exceeded byte limit")
+                bit = _bit_at(data, known, start_offset, bit_index)
+                bit_index += 1
+                node = node.right if bit else node.left
+                if node is None:
+                    raise PatchError("malformed Huffman branch")
+            symbol = node.symbol
+            assert symbol is not None
+            output.append(symbol)
+            previous = symbol
+            if symbol == end_symbol:
+                entries.append(output)
+                break
+        else:
+            raise PatchError(
+                "Huffman group entry did not terminate within symbol limit"
+            )
+    return entries, bit_index
+
+
 def _symbol_codes(root: HuffmanNode) -> dict[int, tuple[int, ...]]:
     codes: dict[int, tuple[int, ...]] = {}
 
@@ -243,6 +302,48 @@ def encode_symbols(
         if len(bits) > max_bits:
             raise PatchError("encoded Huffman entry exceeded bit limit")
         previous = symbol
+    output = bytearray((len(bits) + 7) // 8)
+    for index, bit in enumerate(bits):
+        if bit:
+            output[index >> 3] |= 1 << (7 - (index & 7))
+    return bytes(output), len(bits)
+
+
+def encode_symbol_entries(
+    trees: dict[int, ParsedTree],
+    entries: list[list[int]],
+    initial_symbol: int = CANDIDATE_END_SYMBOL,
+    end_symbol: int = CANDIDATE_END_SYMBOL,
+    max_bits: int = 0x4000 * 8,
+) -> tuple[bytes, int]:
+    """Encode consecutive entries without inserting per-entry byte padding."""
+
+    if len(entries) > 256:
+        raise PatchError("Huffman entry group exceeds 256 entries")
+    bits: list[int] = []
+    code_cache: dict[int, dict[int, tuple[int, ...]]] = {}
+    for entry in entries:
+        if not entry or entry[-1] != end_symbol:
+            raise PatchError(
+                "every Huffman group entry must end with the terminator"
+            )
+        previous = initial_symbol
+        for symbol in entry:
+            tree = trees.get(previous)
+            if tree is None:
+                raise PatchError(
+                    f"no Huffman tree for previous symbol 0x{previous:02x}"
+                )
+            codes = code_cache.setdefault(previous, _symbol_codes(tree.root))
+            code = codes.get(symbol)
+            if code is None:
+                raise PatchError(
+                    f"symbol 0x{symbol:02x} is absent after 0x{previous:02x}"
+                )
+            bits.extend(code)
+            if len(bits) > max_bits:
+                raise PatchError("encoded Huffman entry group exceeded bit limit")
+            previous = symbol
     output = bytearray((len(bits) + 7) // 8)
     for index, bit in enumerate(bits):
         if bit:

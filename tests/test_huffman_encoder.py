@@ -7,7 +7,9 @@ from tools.sfgfc_huffman import (
     CANDIDATE_END_SYMBOL,
     HuffmanNode,
     ParsedTree,
+    decode_symbol_entries,
     decode_symbols,
+    encode_symbol_entries,
     encode_symbols,
 )
 
@@ -61,6 +63,36 @@ class HuffmanEncoderTests(unittest.TestCase):
         trees = {end: tree(end, end, end)}
         with self.assertRaises(PatchError):
             encode_symbols(trees, [end])
+
+    def test_consecutive_entries_share_bits_without_byte_padding(self) -> None:
+        end = CANDIDATE_END_SYMBOL
+        trees = {
+            end: tree(end, 0x10, end),
+            0x10: tree(0x10, 0x10, end),
+        }
+        entries = [[0x10, end], [end]]
+        encoded, bits = encode_symbol_entries(trees, entries)
+        self.assertEqual(bits, 3)
+        self.assertEqual(encoded, b"\x60")
+        decoded, decoded_bits = decode_symbol_entries(
+            encoded,
+            b"\x01",
+            trees,
+            0,
+            len(entries),
+            max_symbols_per_entry=8,
+            max_total_bytes=1,
+        )
+        self.assertEqual(decoded, entries)
+        self.assertEqual(decoded_bits, bits)
+
+    def test_consecutive_entry_limits_fail_closed(self) -> None:
+        end = CANDIDATE_END_SYMBOL
+        trees = {end: tree(end, end, 0x10)}
+        with self.assertRaisesRegex(PatchError, "between 0 and 256"):
+            decode_symbol_entries(b"\x00", b"\x01", trees, 0, 257)
+        with self.assertRaisesRegex(PatchError, "every Huffman group entry"):
+            encode_symbol_entries(trees, [[0x10]])
 
 
 if __name__ == "__main__":

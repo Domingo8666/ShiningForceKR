@@ -145,8 +145,9 @@ class TestDisplayCaptureTests(unittest.TestCase):
         self.assertIsNone(capture["visual_review"]["result"])
         self.assertFalse(capture["translation_build_eligible"])
         validate_display_capture(capture)
-        self.assertEqual(capture["schema_version"], 3)
+        self.assertEqual(capture["schema_version"], 4)
         self.assertIsNone(capture["entry_selector"])
+        self.assertIsNone(capture["group_entry"])
 
     def test_decoder_entry_selector_is_bound_to_the_runtime_target(self) -> None:
         baseline = bytearray(0x5000)
@@ -259,6 +260,7 @@ class TestDisplayCaptureTests(unittest.TestCase):
         )
         capture["schema_version"] = 1
         capture.pop("entry_selector")
+        capture.pop("group_entry")
         validate_display_capture(capture)
 
     def test_schema_two_display_capture_remains_valid_during_upgrade(self) -> None:
@@ -271,6 +273,20 @@ class TestDisplayCaptureTests(unittest.TestCase):
             post_advance_capture=None,
         )
         capture["schema_version"] = 2
+        capture.pop("group_entry")
+        validate_display_capture(capture)
+
+    def test_schema_three_display_capture_remains_valid_during_upgrade(self) -> None:
+        capture = _build_safe_capture(
+            build_report=build_report(),
+            resolution=resolution(),
+            emulator_version="3.9.14",
+            mapped_bank=None,
+            captures=[],
+            post_advance_capture=None,
+        )
+        capture["schema_version"] = 3
+        capture.pop("group_entry")
         validate_display_capture(capture)
 
     def test_missing_runtime_read_does_not_claim_capture_success(self) -> None:
