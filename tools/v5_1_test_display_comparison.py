@@ -252,6 +252,11 @@ def validate_display_comparison(comparison: dict[str, object]) -> None:
             and int(item["new_technical_marker_matches"]) > 0
             for item in frames
         )
+        if (
+            isinstance(post_advance, dict)
+            and int(post_advance["new_technical_marker_matches"]) > 0
+        ):
+            marker_detected = True
         if result == "technical-marker-absent-auto-rejected":
             if not complete or marker_detected or not current_rejected:
                 raise ValueError(
@@ -310,9 +315,15 @@ def build_display_comparison(
         int(item["new_technical_marker_matches"]) > 0
         for item in frame_comparisons
     )
+    if (
+        post_advance_comparison is not None
+        and int(post_advance_comparison["new_technical_marker_matches"]) > 0
+    ):
+        marker_detected = True
     rejected = set(prior_rejected_physical_starts or set())
     if complete and marker_detected:
         result = "technical-marker-detected-human-review-required"
+        rejected.discard(stream["physical_start"])
     elif complete:
         result = "technical-marker-absent-auto-rejected"
         rejected.add(stream["physical_start"])

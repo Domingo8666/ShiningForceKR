@@ -29,6 +29,8 @@ class ProgressPreviewTests(unittest.TestCase):
             source = root / "evidence/local/v5_1_test_phrase/test/frame_0090.png"
             source.parent.mkdir(parents=True)
             source.write_bytes(PNG_1X1)
+            post_source = source.parent / "after_advance.png"
+            post_source.write_bytes(PNG_1X1)
             digest = (
                 "431ced6916a2a21a156e38701afe55bbd7f88969fbbfc56d7fe099d47f265460"
             )
@@ -44,6 +46,13 @@ class ProgressPreviewTests(unittest.TestCase):
                         "png_sha256": digest,
                     }
                 ],
+                "post_advance_capture": {
+                    "button": "1",
+                    "frames_after_press": 60,
+                    "width": 1,
+                    "height": 1,
+                    "png_sha256": digest,
+                },
             }
             local_capture = {
                 "captures": [
@@ -54,13 +63,22 @@ class ProgressPreviewTests(unittest.TestCase):
                         "height": 1,
                         "png_sha256": digest,
                     }
-                ]
+                ],
+                "post_advance_capture": {
+                    "file": str(post_source),
+                    "button": "1",
+                    "frames_after_press": 60,
+                    "width": 1,
+                    "height": 1,
+                    "png_sha256": digest,
+                },
             }
             receipt = write_progress_preview(root, safe_capture, local_capture)
             self.assertIsNotNone(receipt)
             assert receipt is not None
             validate_progress_preview(receipt)
             self.assertTrue(receipt["auto_continue"])
+            self.assertEqual(receipt["frame_after_hit"], 150)
             self.assertEqual(
                 load_validated_progress_image(root, receipt),
                 root / PUBLISH_IMAGE_RELATIVE_PATH,

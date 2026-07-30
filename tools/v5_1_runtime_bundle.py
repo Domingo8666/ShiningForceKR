@@ -197,7 +197,13 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             not in {
                 item["png_sha256"]
                 for item in display_capture["captures"]
-            }
+            } | (
+                {
+                    display_capture["post_advance_capture"]["png_sha256"]
+                }
+                if display_capture["post_advance_capture"] is not None
+                else set()
+            )
         ):
             artifacts.pop(PUBLISH_RECEIPT_RELATIVE_PATH)
     return artifacts

@@ -160,19 +160,35 @@ def write_progress_preview(
         return None
     if not isinstance(local_frames, list):
         raise ValueError("local progress capture list is missing")
-    safe_frame = max(
-        safe_frames,
-        key=lambda item: int(item["frame_after_hit"]),
-    )
-    local_frame = next(
-        (
-            item
-            for item in local_frames
-            if item.get("frame_after_hit") == safe_frame["frame_after_hit"]
-            and item.get("png_sha256") == safe_frame["png_sha256"]
-        ),
-        None,
-    )
+    safe_post = safe_capture.get("post_advance_capture")
+    local_post = local_capture.get("post_advance_capture")
+    if isinstance(safe_post, dict) and isinstance(local_post, dict):
+        last_frame = max(
+            int(item["frame_after_hit"]) for item in safe_frames
+        )
+        safe_frame = {
+            "frame_after_hit": (
+                last_frame + int(safe_post["frames_after_press"])
+            ),
+            "width": safe_post["width"],
+            "height": safe_post["height"],
+            "png_sha256": safe_post["png_sha256"],
+        }
+        local_frame = local_post
+    else:
+        safe_frame = max(
+            safe_frames,
+            key=lambda item: int(item["frame_after_hit"]),
+        )
+        local_frame = next(
+            (
+                item
+                for item in local_frames
+                if item.get("frame_after_hit") == safe_frame["frame_after_hit"]
+                and item.get("png_sha256") == safe_frame["png_sha256"]
+            ),
+            None,
+        )
     if not isinstance(local_frame, dict) or not isinstance(
         local_frame.get("file"), str
     ):

@@ -2039,6 +2039,11 @@ def main() -> int:
                 _write_json(local_report_path, local)
             except (OSError, TypeError, ValueError):
                 pass
+            write_progress_preview(
+                root,
+                prior_safe,
+                prior_test_local,
+            )
             _write_bytes_atomic(
                 root / "reports" / "NEXT_STEP.txt",
                 _next_step_text(

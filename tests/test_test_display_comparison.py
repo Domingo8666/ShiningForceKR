@@ -121,6 +121,28 @@ class TestDisplayComparisonTests(unittest.TestCase):
             [0x203DE],
         )
 
+    def test_post_advance_marker_is_not_auto_rejected(self) -> None:
+        comparison = build_display_comparison(
+            build_report=build_report(),
+            frame_comparisons=[
+                {"frame_after_hit": 30, **pixel_comparison(0)}
+            ],
+            post_advance_comparison=pixel_comparison(
+                12,
+                test_markers=1,
+                new_markers=1,
+            ),
+            prior_rejected_physical_starts={0x20473},
+        )
+        self.assertEqual(
+            comparison["result"],
+            "technical-marker-detected-human-review-required",
+        )
+        self.assertNotIn(
+            0x20473,
+            comparison["automatic_rejected_physical_starts"],
+        )
+
     def test_incomplete_pair_cannot_reject_the_stream(self) -> None:
         comparison = build_display_comparison(
             build_report=build_report(),
