@@ -66,6 +66,10 @@ try:
         PUBLISH_RELATIVE_PATH as SOURCE_HUFFMAN_LOCATOR_RELATIVE_PATH,
         validate_source_huffman_locator,
     )
+    from .v5_1_source_record_pairing import (
+        PUBLISH_RELATIVE_PATH as SOURCE_RECORD_PAIRING_RELATIVE_PATH,
+        validate_source_record_pairing,
+    )
     from .v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -155,6 +159,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as SOURCE_HUFFMAN_LOCATOR_RELATIVE_PATH,
         validate_source_huffman_locator,
     )
+    from v5_1_source_record_pairing import (
+        PUBLISH_RELATIVE_PATH as SOURCE_RECORD_PAIRING_RELATIVE_PATH,
+        validate_source_record_pairing,
+    )
     from v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -237,6 +245,8 @@ SAFE_ARTIFACTS = {
         validate_source_group_codec_probe,
     SOURCE_HUFFMAN_LOCATOR_RELATIVE_PATH:
         validate_source_huffman_locator,
+    SOURCE_RECORD_PAIRING_RELATIVE_PATH:
+        validate_source_record_pairing,
     GROUP_TEXT_CANDIDATE_RELATIVE_PATH:
         validate_group_text_candidate_resolution,
     UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH:
@@ -719,6 +729,31 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != group_text_candidates["resolution"]["unique_best_record_count"]
         ):
             artifacts.pop(GROUP_SCRIPT_CORPUS_RELATIVE_PATH)
+    group_script_corpus = artifacts.get(GROUP_SCRIPT_CORPUS_RELATIVE_PATH)
+    source_record_pairing = artifacts.get(SOURCE_RECORD_PAIRING_RELATIVE_PATH)
+    if source_record_pairing is not None:
+        if (
+            confirmed_group_extract is None
+            or group_source_delta is None
+            or group_script_corpus is None
+            or source_record_pairing["source_sha256"]
+            != group_source_delta["source_sha256"]
+            or source_record_pairing["target_sha256"]
+            != confirmed_group_extract["target_sha256"]
+            or source_record_pairing["source_group_extract_sha256"]
+            != sha256_file(root / CONFIRMED_GROUP_EXTRACT_RELATIVE_PATH)
+            or source_record_pairing["source_group_delta_sha256"]
+            != sha256_file(root / GROUP_SOURCE_DELTA_RELATIVE_PATH)
+            or source_record_pairing["source_target_corpus_sha256"]
+            != sha256_file(root / GROUP_SCRIPT_CORPUS_RELATIVE_PATH)
+            or source_record_pairing["group"]["selector"]
+            != confirmed_group_extract["group"]["selector"]
+            or source_record_pairing["group"]["source_record_count"]
+            != confirmed_group_extract["group"]["declared_entry_count"]
+            or source_record_pairing["group"]["target_candidate_record_count"]
+            != group_script_corpus["group"]["candidate_record_count"]
+        ):
+            artifacts.pop(SOURCE_RECORD_PAIRING_RELATIVE_PATH)
     confirmed_group_unicode = artifacts.get(
         CONFIRMED_GROUP_UNICODE_RELATIVE_PATH
     )

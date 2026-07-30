@@ -447,6 +447,20 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    if [ -n "$source_rom" ]; then
+      python tools/v5_1_source_record_pairing.py \
+        --source-rom "$source_rom" \
+        --if-ready
+      source_record_pairing_status=$?
+      if [ "$source_record_pairing_status" -ne 0 ]; then
+        stage_status="$source_record_pairing_status"
+        diagnostic_trigger=probe
+        record_stage_failure source-record-pairing
+      fi
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_confirmed_group_unicode.py --if-ready
     confirmed_group_unicode_status=$?
     if [ "$confirmed_group_unicode_status" -ne 0 ]; then

@@ -232,6 +232,7 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_group_text_candidate_resolution.json|\
     analysis/device/v5_1_latest_unmatched_glyph_fuzzy.json|\
     analysis/device/v5_1_latest_group_script_corpus.json|\
+    analysis/device/v5_1_latest_source_record_pairing.json|\
     analysis/device/v5_1_latest_confirmed_group_unicode.json|\
     analysis/device/v5_1_latest_progress_preview.json|\
     analysis/device/v5_1_latest_progress_preview.png)
