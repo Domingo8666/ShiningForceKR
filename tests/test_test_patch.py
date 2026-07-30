@@ -149,14 +149,30 @@ def confirmed_group_capture(target_sha256: str) -> dict[str, object]:
 
 def confirmed_selected_group_capture(target_sha256: str) -> dict[str, object]:
     capture = confirmed_group_capture(target_sha256)
-    capture["target_read"]["logical_access"] = 0x4001
+    capture["schema_version"] = 5
+    capture["target_read"]["logical_access"] = 0x4000
+    capture["entry_selector"]["baseline_entry_ordinal"] = 1
     capture["group_entry"].update(
         {
-            "entry_start_bit": 2,
+            "status": "target-outside-selected-entry",
+            "entry_ordinal": 1,
+            "entry_start_bit": 10,
             "entry_end_bit_exclusive": 18,
-            "entry_encoded_bits": 16,
+            "entry_encoded_bits": 8,
+            "entry_start_logical_byte": 0x4001,
             "entry_end_logical_byte_inclusive": 0x4002,
-            "target_logical_byte": 0x4001,
+            "target_logical_byte": 0x4000,
+            "target_byte_candidates": [
+                {
+                    "entry_ordinal": 0,
+                    "entry_start_bit": 2,
+                    "entry_end_bit_exclusive": 10,
+                    "entry_encoded_bits": 8,
+                    "entry_symbol_count": 2,
+                    "entry_start_logical_byte": 0x4000,
+                    "entry_end_logical_byte_inclusive": 0x4001,
+                }
+            ],
         }
     )
     return capture
@@ -248,8 +264,18 @@ class TestPatchTests(unittest.TestCase):
             confirmed_selected_group_capture(digest),
             confirmed_stream_resolution(digest),
         )
+        self.assertEqual(
+            selected["kind"],
+            "runtime-group-target-candidate",
+        )
+        self.assertEqual(
+            selected["selection_basis"],
+            "unique-runtime-target-byte-candidate",
+        )
         self.assertEqual(selected["target_file_offset"], 0x8000)
         self.assertEqual(selected["pointer_address"], 0x4000)
+        self.assertEqual(selected["group_entry_ordinal"], 0)
+        self.assertEqual(selected["runtime_encoded_bits"], 8)
         self.assertEqual(
             selected["intermediate_observed_target_file_offset"],
             0x8000,

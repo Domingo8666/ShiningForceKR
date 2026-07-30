@@ -117,6 +117,18 @@ class TestPhraseTests(unittest.TestCase):
         with self.assertRaisesRegex(PatchError, "no display-equivalent"):
             build_length_preserving_test_phrase_plan(self.patch, 32)
 
+    def test_exact_200_bit_observed_entry_phrase_is_deterministic(self) -> None:
+        plan = build_length_preserving_test_phrase_plan(self.patch, 200)
+        self.assertEqual(plan["encoding"]["encoded_bits"], 200)
+        self.assertEqual(
+            plan["encoding"]["encoded_hex"],
+            (
+                "ea4a95d4a95db82baf6fe63dbf98f6fe63dbf98f6fe6"
+                "289688"
+            ),
+        )
+        self.assertEqual(plan["encoding"]["final_selected_page"], 6)
+
     def test_exact_length_rejects_invalid_budget(self) -> None:
         with self.assertRaisesRegex(PatchError, "safe search range"):
             build_length_preserving_test_phrase_plan(self.patch, 0)

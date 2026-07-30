@@ -1470,23 +1470,19 @@ def main() -> int:
         built_entry = build_report.get("runtime_entry")
         if (
             isinstance(built_entry, dict)
-            and built_entry.get("kind") == "runtime-group-entry"
+            and str(built_entry.get("kind", "")).startswith(
+                "runtime-group-"
+            )
         ):
-            entry_start_bit = int(built_entry["group_entry_start_bit"])
-            entry_end_bit = int(
-                built_entry["group_entry_end_bit_exclusive"]
-            )
-            entry_byte_span = (
-                (entry_end_bit - 1) // 8 - entry_start_bit // 8 + 1
-            )
-            probe_byte_offset = 1 if entry_byte_span > 1 else 0
-            logical_access = (
-                int(built_entry["pointer_address"]) + probe_byte_offset
+            logical_access = int(
+                built_entry[
+                    "intermediate_observed_target_logical_address"
+                ]
             )
             expected_bank = int(built_entry["pointer_bank"])
             physical_target_byte = int(
-                built_entry["target_file_offset"]
-            ) + probe_byte_offset
+                built_entry["intermediate_observed_target_file_offset"]
+            )
             instruction_bank = int(
                 built_entry["runtime_instruction_bank"]
             )
@@ -1528,7 +1524,7 @@ def main() -> int:
     built_entry = build_report.get("runtime_entry")
     if (
         isinstance(built_entry, dict)
-        and built_entry.get("kind") == "runtime-group-entry"
+        and str(built_entry.get("kind", "")).startswith("runtime-group-")
     ):
         group_pointer_address = int(
             built_entry["group_pointer_address"]
@@ -1668,7 +1664,11 @@ def main() -> int:
             "cold_boot": True,
         }
     )
-    _write_json(local_report_path, local)
+    _CURRENT_FAILURE_STAGE = "display-capture-local-artifact"
+    try:
+        _write_json(local_report_path, local)
+    except (OSError, TypeError, ValueError):
+        pass
     _CURRENT_FAILURE_STAGE = "display-capture-safe-schema"
     safe = _build_safe_capture(
         build_report=build_report,

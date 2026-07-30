@@ -278,7 +278,7 @@ def select_runtime_group_entry(
     capture: dict[str, object],
     stream_resolution: dict[str, object],
 ) -> dict[str, object]:
-    """Promote the B-selected unpadded entry, not an intermediate byte read."""
+    """Select the unique unpadded entry containing the observed stream read."""
 
     stream = select_runtime_stream(baseline, stream_resolution)
     if (
@@ -302,10 +302,29 @@ def select_runtime_group_entry(
         raise PatchError("runtime group resolution evidence is inconsistent")
 
     pointer_address = int(group["group_pointer_address"])
-    entry_start_bit = int(group["entry_start_bit"])
-    entry_end_bit = int(group["entry_end_bit_exclusive"])
-    entry_bits = int(group["entry_encoded_bits"])
-    entry_ordinal = int(group["entry_ordinal"])
+    observed_target_logical = int(stream["pointer_address"])
+    candidates = group.get("target_byte_candidates")
+    if isinstance(candidates, list):
+        if (
+            len(candidates) != 1
+            or not isinstance(candidates[0], dict)
+            or int(group["target_logical_byte"]) != observed_target_logical
+        ):
+            raise PatchError(
+                "runtime target read does not select one group entry"
+            )
+        selected_range = candidates[0]
+        selection_basis = "unique-runtime-target-byte-candidate"
+        kind = "runtime-group-target-candidate"
+    else:
+        selected_range = group
+        selection_basis = "legacy-b-selected-entry"
+        kind = "runtime-group-entry"
+
+    entry_start_bit = int(selected_range["entry_start_bit"])
+    entry_end_bit = int(selected_range["entry_end_bit_exclusive"])
+    entry_bits = int(selected_range["entry_encoded_bits"])
+    entry_ordinal = int(selected_range["entry_ordinal"])
     mapped_bank = int(stream["pointer_bank"])
     if (
         not 0x4000 <= pointer_address < 0x8000
@@ -319,15 +338,14 @@ def select_runtime_group_entry(
     group_physical_start = (
         mapped_bank * 0x4000 + (pointer_address - 0x4000)
     )
-    stream_logical_address = int(stream["pointer_address"])
     expected_intermediate_target = (
         group_physical_start
-        + (stream_logical_address - pointer_address)
+        + (observed_target_logical - pointer_address)
     )
     if (
         not pointer_address
-        <= stream_logical_address
-        <= int(group["entry_end_logical_byte_inclusive"])
+        <= observed_target_logical
+        <= int(selected_range["entry_end_logical_byte_inclusive"])
         or expected_intermediate_target != int(stream["target_file_offset"])
     ):
         raise PatchError("runtime stream does not belong to the resolved group")
@@ -336,15 +354,17 @@ def select_runtime_group_entry(
     if (
         target_file_offset < 0
         or target_file_offset >= len(baseline)
-        or target_logical_address != int(group["entry_start_logical_byte"])
+        or target_logical_address
+        != int(selected_range["entry_start_logical_byte"])
         or pointer_address
         + (entry_end_bit - 1) // 8
-        != int(group["entry_end_logical_byte_inclusive"])
+        != int(selected_range["entry_end_logical_byte_inclusive"])
     ):
         raise PatchError("runtime group entry byte boundaries disagree")
 
     return {
-        "kind": "runtime-group-entry",
+        "kind": kind,
+        "selection_basis": selection_basis,
         "target_file_offset": target_file_offset,
         "pointer_bank": mapped_bank,
         "pointer_address": target_logical_address,
@@ -359,10 +379,13 @@ def select_runtime_group_entry(
         "runtime_instruction_bank": int(stream["runtime_instruction_bank"]),
         "runtime_instruction_pc": int(stream["runtime_instruction_pc"]),
         "runtime_operand_kind": str(stream["runtime_operand_kind"]),
-        "runtime_symbol_count": int(group["entry_symbol_count"]),
+        "runtime_symbol_count": int(selected_range["entry_symbol_count"]),
         "runtime_encoded_bits": entry_bits,
         "intermediate_observed_target_file_offset": int(
             stream["target_file_offset"]
+        ),
+        "intermediate_observed_target_logical_address": (
+            observed_target_logical
         ),
         "all_target_offsets": [target_file_offset],
     }
@@ -540,7 +563,7 @@ def build_test_patch(
         KO_VECTOR_ENTRIES,
     )
     target_offset = int(runtime_entry["target_file_offset"])
-    if runtime_entry["kind"] == "runtime-group-entry":
+    if str(runtime_entry["kind"]).startswith("runtime-group-"):
         original_symbols = [None] * int(runtime_entry["runtime_symbol_count"])
         original_bits = int(runtime_entry["runtime_encoded_bits"])
         phrase_plan = build_length_preserving_test_phrase_plan(
@@ -594,7 +617,7 @@ def build_test_patch(
             replacement=replacement,
             replacement_bits=replacement_bits,
         )
-        if runtime_entry["kind"] == "runtime-group-entry"
+        if str(runtime_entry["kind"]).startswith("runtime-group-")
         else plan_in_place_write(
             baseline,
             target_offset=target_offset,
@@ -639,12 +662,12 @@ def build_test_patch(
             "encoded_sha256": sha256_bytes(replacement),
             "bit_start_in_first_byte": (
                 int(runtime_entry["group_entry_start_bit_in_byte"])
-                if runtime_entry["kind"] == "runtime-group-entry"
+                if str(runtime_entry["kind"]).startswith("runtime-group-")
                 else 0
             ),
             "technical_tail_policy": (
                 "exact-entry-length"
-                if runtime_entry["kind"] == "runtime-group-entry"
+                if str(runtime_entry["kind"]).startswith("runtime-group-")
                 else "byte-aligned-entry"
             ),
         },
