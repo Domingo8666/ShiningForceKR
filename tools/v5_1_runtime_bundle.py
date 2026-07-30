@@ -174,12 +174,16 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != display_capture["baseline_target_sha256"]
         ):
             raise ValueError("display capture and review identities disagree")
-        expected_hashes = [
-            item["png_sha256"]
-            for item in display_capture["captures"]
-        ]
+        expected_hashes: list[str] = []
+        for item in display_capture["captures"]:
+            digest = str(item["png_sha256"])
+            if digest not in expected_hashes:
+                expected_hashes.append(digest)
         post_advance = display_capture["post_advance_capture"]
-        if post_advance is not None:
+        if (
+            post_advance is not None
+            and post_advance["png_sha256"] not in expected_hashes
+        ):
             expected_hashes.append(post_advance["png_sha256"])
         if display_review["capture_png_sha256s"] != expected_hashes:
             raise ValueError("display capture and review PNG identities disagree")
