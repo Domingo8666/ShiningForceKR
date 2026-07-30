@@ -267,6 +267,16 @@ else
       record_stage_failure display-comparison-artifact
     fi
   fi
+
+  if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_visible_script_record.py --if-ready
+    visible_script_status=$?
+    if [ "$visible_script_status" -ne 0 ]; then
+      stage_status="$visible_script_status"
+      diagnostic_trigger=probe
+      record_stage_failure display-comparison-artifact
+    fi
+  fi
 fi
 
 python tools/v5_1_runtime_diagnostic.py \

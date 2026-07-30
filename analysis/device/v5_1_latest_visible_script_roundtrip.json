@@ -1,0 +1,26 @@
+{
+  "artifact_kind": "sanitized-v5-1-visible-script-roundtrip",
+  "schema_version": 1,
+  "status": "exact-visible-record-roundtrip-pass",
+  "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_expansion_test_sha256": "ce572f5f1688796a0b70b02d9695613325947fcf56c2588ee6841f7b84596ac1",
+  "runtime_entry": {
+    "physical_start": 133395,
+    "logical_start": 18707,
+    "mapped_bank": 8,
+    "record_length_bytes": 16
+  },
+  "roundtrip": {
+    "source_independent_bytes": true,
+    "decoded_symbol_count": 19,
+    "terminator_count": 1,
+    "encoded_bits": 100,
+    "storage_capacity_bits": 128,
+    "trailing_storage_bits": 28,
+    "reencoded_bits": 100,
+    "bit_exact": true
+  },
+  "local_payload_policy": "symbols-and-text-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "map-visible-record-glyphs-to-unicode"
+}

@@ -25,6 +25,10 @@ try:
         PUBLISH_RELATIVE_PATH as POC_EXPANSION_PROOF_RELATIVE_PATH,
         validate_poc_expansion_proof,
     )
+    from .v5_1_visible_script_record import (
+        PUBLISH_RELATIVE_PATH as VISIBLE_SCRIPT_ROUNDTRIP_RELATIVE_PATH,
+        validate_visible_script_roundtrip,
+    )
     from .v5_1_progress_preview import (
         PUBLISH_IMAGE_RELATIVE_PATH,
         PUBLISH_RECEIPT_RELATIVE_PATH,
@@ -52,6 +56,10 @@ except ImportError:  # direct script execution
     from v5_1_poc_expansion_proof import (
         PUBLISH_RELATIVE_PATH as POC_EXPANSION_PROOF_RELATIVE_PATH,
         validate_poc_expansion_proof,
+    )
+    from v5_1_visible_script_record import (
+        PUBLISH_RELATIVE_PATH as VISIBLE_SCRIPT_ROUNDTRIP_RELATIVE_PATH,
+        validate_visible_script_roundtrip,
     )
     from v5_1_progress_preview import (
         PUBLISH_IMAGE_RELATIVE_PATH,
@@ -93,6 +101,8 @@ SAFE_ARTIFACTS = {
         validate_display_review,
     VISIBLE_ENTRY_PROOF_RELATIVE_PATH: validate_visible_entry_proof,
     POC_EXPANSION_PROOF_RELATIVE_PATH: validate_poc_expansion_proof,
+    VISIBLE_SCRIPT_ROUNDTRIP_RELATIVE_PATH:
+        validate_visible_script_roundtrip,
     PUBLISH_RECEIPT_RELATIVE_PATH: validate_progress_preview,
 }
 SAFE_BINARY_ARTIFACTS = {
@@ -273,6 +283,22 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != progress_preview["capture_png_sha256"]
         ):
             artifacts.pop(POC_EXPANSION_PROOF_RELATIVE_PATH)
+    visible_script_roundtrip = artifacts.get(
+        VISIBLE_SCRIPT_ROUNDTRIP_RELATIVE_PATH
+    )
+    if visible_script_roundtrip is not None:
+        if (
+            poc_expansion_proof is None
+            or visible_script_roundtrip["baseline_target_sha256"]
+            != poc_expansion_proof["baseline_target_sha256"]
+            or visible_script_roundtrip["source_expansion_test_sha256"]
+            != poc_expansion_proof["test_target_sha256"]
+            or visible_script_roundtrip["runtime_entry"]["physical_start"]
+            != poc_expansion_proof["runtime_entry"]["physical_start"]
+            or visible_script_roundtrip["runtime_entry"]["logical_start"]
+            != poc_expansion_proof["runtime_entry"]["logical_start"]
+        ):
+            artifacts.pop(VISIBLE_SCRIPT_ROUNDTRIP_RELATIVE_PATH)
     return artifacts
 
 

@@ -105,3 +105,10 @@ PNG에서 `시험한다` 네 글자의 연속 8×8 잉크 마스크를 찾습니
 모두 맞을 때만 `v5_1_latest_poc_expansion_proof.json`을 게시합니다.
 이 파일은 화면 좌표와 개수만 포함하며 다음 로컬 스크립트 추출·왕복
 단계를 허용합니다.
+
+`tools/v5_1_visible_script_record.py`는 확장 PoC가 확인한 물리 좌표에서
+원래 16바이트 레코드를 BPS의 원본 비의존 영역으로만 추출합니다.
+디코딩한 심벌은 `analysis/local/`에만 저장하고, 다시 인코딩한 앞
+100비트가 원본과 완전히 같은 경우에만
+`v5_1_latest_visible_script_roundtrip.json`에 심벌 수·종료자 수·사용
+비트와 남은 저장 비트만 게시합니다.
