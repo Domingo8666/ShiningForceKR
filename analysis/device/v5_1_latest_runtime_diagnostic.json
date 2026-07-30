@@ -4,7 +4,7 @@
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
   "exit_code": 1,
-  "attempt_utc": "2026-07-30T09:45:51Z",
+  "attempt_utc": "2026-07-30T09:53:43Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -20,7 +20,7 @@
   "runtime_observation_present": true,
   "runtime_failure": {
     "schema_version": 1,
-    "failure_stage": "renderer-output-route-selection",
+    "failure_stage": "renderer-output-route-hunt",
     "failure_kind": "runtime-error",
     "mcp_method": "remove_breakpoint"
   },
