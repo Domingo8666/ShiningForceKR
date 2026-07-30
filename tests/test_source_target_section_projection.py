@@ -1,0 +1,105 @@
+from copy import deepcopy
+import hashlib
+from pathlib import Path
+import sys
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tools.v5_1_source_target_anchor import normalize_source_line  # noqa: E402
+from tools.v5_1_source_target_section_projection import (  # noqa: E402
+    build_source_target_section_projection,
+    project_anchored_section,
+    validate_source_target_section_projection,
+)
+
+
+class SourceTargetSectionProjectionTests(unittest.TestCase):
+    def test_projects_complete_section_by_relative_anchor_offset(self) -> None:
+        anchor_text = "synthetic anchor"
+        anchor_hash = hashlib.sha256(
+            normalize_source_line(anchor_text).encode("utf-8")
+        ).hexdigest()
+        target_records = []
+        tiers = [
+            "structure-review",
+            "translation-ready",
+            "glyph-recovery",
+            "translation-ready",
+            "non-hangul-review",
+        ]
+        for index, tier in enumerate(tiers):
+            target_records.append(
+                {
+                    "entry_id": f"entry-{index}",
+                    "aliases": [
+                        {"selector": 7, "ordinal": 145 + index}
+                    ],
+                    "quality_tier": tier,
+                }
+            )
+        source_sections = [
+            {
+                "annotated_lines": [
+                    {"speaker": "speaker-a", "text": "before"},
+                    {"speaker": "speaker-a", "text": anchor_text},
+                    {"speaker": None, "text": "after"},
+                ]
+            }
+        ]
+        counts, local = project_anchored_section(
+            target_records=target_records,
+            source_sections=source_sections,
+            confirmed_selector=7,
+            confirmed_ordinal=147,
+            source_line_sha256=anchor_hash,
+        )
+        self.assertEqual(counts["projected_pair_count"], 3)
+        self.assertEqual(counts["translation_ready_pair_count"], 2)
+        self.assertEqual(counts["speaker_labeled_pair_count"], 2)
+        self.assertEqual(counts["narration_pair_count"], 1)
+        self.assertEqual(
+            [pair["target_ordinal"] for pair in local["pairs"]],
+            [146, 147, 148],
+        )
+
+    def test_builds_candidate_only_safe_receipt(self) -> None:
+        artifact = build_source_target_section_projection(
+            target_sha256="1" * 64,
+            source_record_quality_sha256="2" * 64,
+            source_script_reference_sha256="3" * 64,
+            source_target_anchor_sha256="4" * 64,
+            local_projection_sha256="5" * 64,
+            projection={
+                "target_selector_record_count": 216,
+                "duplicate_target_ordinal_count": 0,
+                "source_section_line_count": 79,
+                "anchor_pair_count": 1,
+                "projected_pair_count": 79,
+                "out_of_range_source_line_count": 0,
+                "translation_ready_pair_count": 20,
+                "glyph_recovery_pair_count": 50,
+                "structure_review_pair_count": 9,
+                "non_hangul_review_pair_count": 0,
+                "speaker_labeled_pair_count": 75,
+                "narration_pair_count": 4,
+            },
+            captured_utc="2026-07-30T22:00:00Z",
+        )
+        validate_source_target_section_projection(artifact)
+        self.assertEqual(
+            artifact["status"],
+            "anchored-section-projection-ready",
+        )
+        self.assertTrue(artifact["human_review_required"])
+        self.assertFalse(artifact["source_pairing_complete"])
+        unsafe = deepcopy(artifact)
+        unsafe["source_text"] = "must remain local"
+        with self.assertRaisesRegex(ValueError, "fields do not match"):
+            validate_source_target_section_projection(unsafe)
+
+
+if __name__ == "__main__":
+    unittest.main()
