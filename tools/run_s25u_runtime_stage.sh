@@ -57,6 +57,22 @@ decoder_register_trace_needed() {
   [ "$trace_needed" = "yes" ]
 }
 
+display_comparison_ready() {
+  comparison_ready="$(
+    python -c 'import json; from pathlib import Path; from tools.v5_1_test_display_comparison import validate_display_comparison; comparison_path=Path("analysis/device/v5_1_latest_display_comparison.json"); build_path=Path("reports/local/v5_1_test_patch_build.json"); comparison=json.loads(comparison_path.read_text(encoding="utf-8")); build=json.loads(build_path.read_text(encoding="utf-8")); validate_display_comparison(comparison); print("yes" if comparison.get("baseline_target_sha256") == build.get("baseline_target_sha256") and comparison.get("test_target_sha256") == build.get("test_target_sha256") else "no")' 2>/dev/null || true
+  )"
+  [ "$comparison_ready" = "yes" ]
+}
+
+run_display_capture() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout -k 15s 180s \
+      python tools/v5_1_test_display_capture.py --if-ready
+  else
+    python tools/v5_1_test_display_capture.py --if-ready
+  fi
+}
+
 record_stage_failure() {
   python tools/v5_1_runtime_stage_failure.py \
     --stage "$1" \
@@ -171,18 +187,32 @@ else
         break
       fi
 
-      if command -v timeout >/dev/null 2>&1; then
-        timeout -k 15s 180s \
-          python tools/v5_1_test_display_capture.py --if-ready
-      else
-        python tools/v5_1_test_display_capture.py --if-ready
-      fi
+      run_display_capture
       display_capture_status=$?
       if [ "$display_capture_status" -ne 0 ]; then
         stage_status="$display_capture_status"
         diagnostic_trigger=probe
         record_stage_failure test-display-capture
         break
+      fi
+
+      if ! display_comparison_ready; then
+        python tools/v5_1_runtime_bundle.py --publish
+        progress_publish_status=$?
+        if [ "$progress_publish_status" -ne 0 ]; then
+          stage_status="$progress_publish_status"
+          diagnostic_trigger=probe
+          record_stage_failure display-capture-safe-publish
+          break
+        fi
+        run_display_capture
+        display_capture_status=$?
+        if [ "$display_capture_status" -ne 0 ]; then
+          stage_status="$display_capture_status"
+          diagnostic_trigger=probe
+          record_stage_failure test-display-capture
+          break
+        fi
       fi
 
       comparison_result="$(

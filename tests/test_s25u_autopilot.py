@@ -128,7 +128,8 @@ class S25UAutopilotTests(unittest.TestCase):
             "[ ! -f build/Final_Conflict_Korean_test_phrase.gg ]"
         )
         capture = RUNTIME_STAGE.index(
-            "python tools/v5_1_test_display_capture.py"
+            "      run_display_capture",
+            missing_output_guard,
         )
         self.assertLess(stale_removal, build)
         self.assertLess(build, missing_output_guard)
@@ -136,6 +137,16 @@ class S25UAutopilotTests(unittest.TestCase):
 
     def test_runtime_stage_bounds_display_capture_wall_time(self) -> None:
         self.assertIn("timeout -k 15s 180s", RUNTIME_STAGE)
+
+    def test_runtime_stage_publishes_progress_then_continues_comparison(
+        self,
+    ) -> None:
+        self.assertIn("if ! display_comparison_ready; then", RUNTIME_STAGE)
+        self.assertIn(
+            "python tools/v5_1_runtime_bundle.py --publish",
+            RUNTIME_STAGE,
+        )
+        self.assertGreaterEqual(RUNTIME_STAGE.count("run_display_capture"), 3)
 
     def test_runtime_stage_records_precise_substage_failures(self) -> None:
         self.assertIn("v5_1_runtime_stage_failure.py", RUNTIME_STAGE)
