@@ -102,6 +102,7 @@ ATTRACT_CAPTURE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
 ATTRACT_CAPTURE_TIMEOUT_SECONDS = 30.0
 MAX_REJECTED_TARGET_HITS = 64
 DECODER_ENTRY_LOGICAL = 0x33FA
+DECODER_SKIP_ENDPOINT_LOGICAL = 0x340B
 DECODER_PAYLOAD_READY_LOGICAL = 0x340C
 LOOKUP_TABLE_BASE = 0x3FE8
 REQUIRED_TOOLS = {
@@ -1167,11 +1168,27 @@ def _target_hit_matches(
     )
 
 
-def _decoder_payload_endpoint_matches(
+def _decoder_skip_endpoint_matches(
     state: dict[str, object],
     target_read: dict[str, object],
 ) -> bool:
-    """Confirm the selected payload immediately before decoder handoff."""
+    """Match the proven final skip-loop state before payload handoff."""
+
+    registers = state.get("registers")
+    slot = int(target_read["slot"])
+    return (
+        int(state["pc_after"]) == DECODER_SKIP_ENDPOINT_LOGICAL
+        and int(state[f"slot{slot}_bank"]) == int(target_read["expected_bank"])
+        and isinstance(registers, dict)
+        and registers.get("hl") == int(target_read["logical_access"]) - 1
+    )
+
+
+def _decoder_payload_ready_matches(
+    state: dict[str, object],
+    target_read: dict[str, object],
+) -> bool:
+    """Confirm the exact payload address after one endpoint instruction."""
 
     registers = state.get("registers")
     slot = int(target_read["slot"])
@@ -1398,8 +1415,8 @@ def _capture_display(
         client.call(
             "set_breakpoint_range",
             {
-                "start_address": f"{DECODER_PAYLOAD_READY_LOGICAL:04X}",
-                "end_address": f"{DECODER_PAYLOAD_READY_LOGICAL:04X}",
+                "start_address": f"{DECODER_SKIP_ENDPOINT_LOGICAL:04X}",
+                "end_address": f"{DECODER_SKIP_ENDPOINT_LOGICAL:04X}",
                 "memory_area": "rom_ram",
                 "execute": True,
                 "read": False,
@@ -1413,8 +1430,8 @@ def _capture_display(
         client.call(
             "remove_breakpoint",
             {
-                "address": f"{DECODER_PAYLOAD_READY_LOGICAL:04X}",
-                "end_address": f"{DECODER_PAYLOAD_READY_LOGICAL:04X}",
+                "address": f"{DECODER_SKIP_ENDPOINT_LOGICAL:04X}",
+                "end_address": f"{DECODER_SKIP_ENDPOINT_LOGICAL:04X}",
                 "memory_area": "rom_ram",
             },
         )
@@ -1539,17 +1556,25 @@ def _capture_display(
                     continue
                 if (
                     endpoint_breakpoint_armed
-                    and _decoder_payload_endpoint_matches(state, target_read)
+                    and _decoder_skip_endpoint_matches(state, target_read)
                 ):
-                    mapped_bank = candidate_bank
-                    local["observed_logical_access"] = logical_access
-                    local["target_hit"] = state
-                    local["target_hit_evidence"] = hit_evidence
-                    local["confirmation_basis"] = (
-                        "decoder-selection-endpoint"
-                    )
-                    target_found = True
-                    break
+                    local["skip_endpoint_hit"] = state
+                    disarm_endpoint_breakpoint()
+                    _step_instruction_and_wait(client)
+                    ready_state, ready_evidence = _capture_state(client)
+                    if _decoder_payload_ready_matches(
+                        ready_state,
+                        target_read,
+                    ):
+                        mapped_bank = candidate_bank
+                        local["observed_logical_access"] = logical_access
+                        local["target_hit"] = ready_state
+                        local["target_hit_evidence"] = ready_evidence
+                        local["confirmation_basis"] = (
+                            "decoder-selection-endpoint"
+                        )
+                        target_found = True
+                        break
                 observed_target = _observed_target_address(state, target_read)
                 if entry_selector_confirmed and observed_target is not None:
                     mapped_bank = candidate_bank
@@ -1657,8 +1682,8 @@ def _capture_display(
                 client.call(
                     "remove_breakpoint",
                     {
-                        "address": f"{DECODER_PAYLOAD_READY_LOGICAL:04X}",
-                        "end_address": f"{DECODER_PAYLOAD_READY_LOGICAL:04X}",
+                        "address": f"{DECODER_SKIP_ENDPOINT_LOGICAL:04X}",
+                        "end_address": f"{DECODER_SKIP_ENDPOINT_LOGICAL:04X}",
                         "memory_area": "rom_ram",
                     },
                 )

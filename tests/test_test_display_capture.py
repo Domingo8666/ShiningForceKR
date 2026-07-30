@@ -13,9 +13,11 @@ from tools.v5_1_test_display_capture import (
     ATTRACT_CAPTURE_TIMEOUT_SECONDS,
     CAPTURE_FRAMES_AFTER_HIT,
     DECODER_PAYLOAD_READY_LOGICAL,
+    DECODER_SKIP_ENDPOINT_LOGICAL,
     _build_safe_capture,
     _continue_until_breakpoint,
-    _decoder_payload_endpoint_matches,
+    _decoder_payload_ready_matches,
+    _decoder_skip_endpoint_matches,
     _display_watch_target,
     _display_watch_range,
     _observed_target_address,
@@ -204,14 +206,20 @@ class TestDisplayCaptureTests(unittest.TestCase):
             "logical_access": 0x4913,
             "expected_bank": 8,
         }
-        state = {
+        skip_state = {
+            "pc_after": DECODER_SKIP_ENDPOINT_LOGICAL,
+            "slot1_bank": 8,
+            "registers": {"hl": 0x4912},
+        }
+        self.assertTrue(_decoder_skip_endpoint_matches(skip_state, target))
+        ready_state = {
             "pc_after": DECODER_PAYLOAD_READY_LOGICAL,
             "slot1_bank": 8,
             "registers": {"hl": 0x4913},
         }
-        self.assertTrue(_decoder_payload_endpoint_matches(state, target))
-        state["registers"]["hl"] = 0x4912
-        self.assertFalse(_decoder_payload_endpoint_matches(state, target))
+        self.assertTrue(_decoder_payload_ready_matches(ready_state, target))
+        ready_state["registers"]["hl"] = 0x4912
+        self.assertFalse(_decoder_payload_ready_matches(ready_state, target))
 
     def test_group_capture_watches_the_complete_rewritten_entry(self) -> None:
         entry = {
