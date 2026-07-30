@@ -175,6 +175,7 @@ class S25UAutopilotTests(unittest.TestCase):
             "target-group-usage",
             "target-group-stream-map",
             "target-group-population",
+            "target-group-population-decode",
             "decoder-caller-resolution",
             "group-context-resolution",
             "group-runtime-context",
@@ -244,6 +245,10 @@ class S25UAutopilotTests(unittest.TestCase):
             RUNTIME_STAGE,
         )
         self.assertIn(
+            "python tools/v5_1_target_group_population_decode.py --if-ready",
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
             "python tools/v5_1_group_context_resolution.py --if-ready",
             RUNTIME_STAGE,
         )
@@ -310,6 +315,14 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertLess(
             RUNTIME_STAGE.index(
                 "python tools/v5_1_target_group_population.py --if-ready"
+            ),
+            RUNTIME_STAGE.index(
+                "python tools/v5_1_target_group_population_decode.py --if-ready"
+            ),
+        )
+        self.assertLess(
+            RUNTIME_STAGE.index(
+                "python tools/v5_1_target_group_population_decode.py --if-ready"
             ),
             RUNTIME_STAGE.index(
                 "python tools/v5_1_decoder_caller_resolution.py --if-ready"
