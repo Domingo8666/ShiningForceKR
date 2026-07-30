@@ -184,7 +184,10 @@ def decoder_register_trace_needed(root: Path) -> bool:
     if (
         not isinstance(failure, dict)
         or failure.get("failure_stage")
-        != "test-patch-fixed-count-read-range"
+        not in {
+            "decoder-register-trace",
+            "test-patch-fixed-count-read-range",
+        }
     ):
         return False
     trace_path = root / PUBLISH_RELATIVE_PATH
@@ -230,30 +233,24 @@ def _find_confirmed_entry(
 ) -> dict[str, object]:
     deadline = time.monotonic() + ENTRY_TIMEOUT_SECONDS
     _arm_entry_breakpoint(client)
-    try:
-        while True:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise RuntimeError("confirmed decoder entry was not reached")
-            status = _continue_until_breakpoint(client, remaining)
-            if status.get("at_breakpoint") is not True:
-                raise RuntimeError("confirmed decoder entry was not reached")
-            state, _ = _capture_state(client)
-            registers = state.get("registers")
-            if (
-                int(state["pc_after"]) == DECODER_ENTRY
-                and isinstance(registers, dict)
-                and registers.get("de") == EXPECTED_SELECTOR_DE
-            ):
-                return state
-            _remove_entry_breakpoint(client)
-            _step_instruction_and_wait(client)
-            _arm_entry_breakpoint(client)
-    finally:
-        try:
-            _remove_entry_breakpoint(client)
-        except RuntimeError:
-            pass
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError("confirmed decoder entry was not reached")
+        status = _continue_until_breakpoint(client, remaining)
+        if status.get("at_breakpoint") is not True:
+            raise RuntimeError("confirmed decoder entry was not reached")
+        state, _ = _capture_state(client)
+        registers = state.get("registers")
+        if (
+            int(state["pc_after"]) == DECODER_ENTRY
+            and isinstance(registers, dict)
+            and registers.get("de") == EXPECTED_SELECTOR_DE
+        ):
+            return state
+        # Gearsystem keeps execution breakpoints armed after a hit.  Stepping
+        # one instruction is enough to leave this call and continue hunting.
+        _step_instruction_and_wait(client)
 
 
 def main() -> int:
@@ -293,6 +290,12 @@ def main() -> int:
         entry_state = _find_confirmed_entry(client)
         _set_unlimited_fast_forward(client, False)
         fast_forward = False
+        try:
+            _remove_entry_breakpoint(client)
+        except Exception:
+            # Some Gearsystem builds report that a just-hit execute
+            # breakpoint is already absent.  It cannot affect bounded steps.
+            pass
 
         states = [_safe_state(entry_state)]
         for _ in range(TRACE_STEPS):

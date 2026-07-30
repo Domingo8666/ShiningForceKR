@@ -97,6 +97,29 @@ class DecoderRegisterTraceTests(unittest.TestCase):
             )
             self.assertFalse(decoder_register_trace_needed(root))
 
+    def test_failed_trace_operation_requests_a_retry(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / "build/Final_Conflict_Korean_v5.1.gg"
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"target")
+            diagnostic_path = (
+                root
+                / "analysis/device/v5_1_latest_runtime_diagnostic.json"
+            )
+            diagnostic_path.parent.mkdir(parents=True)
+            diagnostic_path.write_text(
+                json.dumps(
+                    {
+                        "runtime_failure": {
+                            "failure_stage": "decoder-register-trace"
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertTrue(decoder_register_trace_needed(root))
+
 
 if __name__ == "__main__":
     unittest.main()
