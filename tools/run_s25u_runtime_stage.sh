@@ -64,6 +64,13 @@ display_comparison_ready() {
   [ "$comparison_ready" = "yes" ]
 }
 
+display_reviewed_build_ready() {
+  review_ready="$(
+    python -c 'import json; from pathlib import Path; from tools.patch_io import sha256_file; from tools.v5_1_test_display_review import validate_display_review; review_path=Path("analysis/device/v5_1_latest_display_review.json"); build_path=Path("reports/local/v5_1_test_patch_build.json"); baseline_path=Path("build/Final_Conflict_Korean_v5.1.gg"); test_path=Path("build/Final_Conflict_Korean_test_phrase.gg"); review=json.loads(review_path.read_text(encoding="utf-8")); build=json.loads(build_path.read_text(encoding="utf-8")); validate_display_review(review); valid_build=build.get("artifact_kind") == "s25u-local-korean-test-patch-build" and build.get("status") == "technical-poc-built-needs-runtime-display-proof"; identities=review.get("baseline_target_sha256") == build.get("baseline_target_sha256") and review.get("test_target_sha256") == build.get("test_target_sha256"); files=baseline_path.is_file() and test_path.is_file() and sha256_file(baseline_path) == build.get("baseline_target_sha256") and sha256_file(test_path) == build.get("test_target_sha256"); print("yes" if valid_build and identities and files and review.get("result") == "phrase-visible-pass" else "no")' 2>/dev/null || true
+  )"
+  [ "$review_ready" = "yes" ]
+}
+
 run_display_capture() {
   if command -v timeout >/dev/null 2>&1; then
     timeout -k 15s 180s \
@@ -197,6 +204,11 @@ else
         stage_status=1
         diagnostic_trigger=probe
         record_stage_failure test-patch
+        break
+      fi
+
+      if display_reviewed_build_ready; then
+        echo "SFKR display stage: reusing human review for identical ROM hashes."
         break
       fi
 
