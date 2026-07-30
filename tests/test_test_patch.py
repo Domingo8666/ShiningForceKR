@@ -11,6 +11,7 @@ from tools.v5_1_test_patch import (
     select_runtime_decode_block,
     select_runtime_entry,
     select_runtime_group_entry,
+    select_runtime_length_prefixed_entry,
     select_runtime_stream,
 )
 
@@ -324,6 +325,98 @@ class TestPatchTests(unittest.TestCase):
         self.assertEqual(selected["next_target_file_offset"], 0x8020)
         self.assertEqual(selected["decoder_entry_b_before_increment"], 3)
         self.assertEqual(selected["runtime_symbol_count"], 4)
+
+    def test_register_trace_selects_length_prefixed_payload(self) -> None:
+        baseline = bytearray(0x24000)
+        pointer = 0x43DE
+        physical = 8 * 0x4000 + (pointer - 0x4000)
+        cursor = physical
+        for _ in range(147):
+            baseline[cursor] = 1
+            baseline[cursor + 1] = 0xAA
+            cursor += 2
+        baseline[cursor] = 5
+        digest = sha256_bytes(bytes(baseline))
+        pcs = (
+            0x33FA,
+            0x33FD,
+            0x33FE,
+            0x33FF,
+            0x3400,
+            0x3401,
+            0x3402,
+            0x3403,
+            0x3409,
+            0x3406,
+            0x3407,
+            0x3408,
+            0x3409,
+            0x3406,
+        )
+        states = [
+            {
+                "pc": pc,
+                "af": 0,
+                "bc": 0x9302,
+                "de": 2,
+                "hl": pointer,
+                "sp": 0xDFF0,
+                "slot0_bank": 0,
+                "slot1_bank": 8,
+                "slot2_bank": 6,
+            }
+            for pc in pcs
+        ]
+        states[1]["hl"] = 0x3FE8
+        states[2]["hl"] = 0x3FEA
+        states[4]["hl"] = 0x3FEB
+        states[5]["hl"] = 0x43EB
+        states[7]["bc"] = 0x9402
+        states[8]["bc"] = 0x9402
+        states[10]["de"] = 1
+        states[11]["de"] = 1
+        states[11]["hl"] = pointer + 1
+        states[12]["de"] = 1
+        states[12]["hl"] = pointer + 2
+        states[13]["de"] = 1
+        states[13]["hl"] = pointer + 2
+        states[13]["bc"] = 0x9202
+        trace = {
+            "artifact_kind": "sanitized-decoder-register-trace",
+            "schema_version": 1,
+            "target_sha256": digest,
+            "status": "decoder-register-trace-captured",
+            "captured_utc": "2026-07-30T05:10:25Z",
+            "decoder_entry": 0x33FA,
+            "selector_de": 2,
+            "step_count": len(states) - 1,
+            "states": states,
+            "translation_build_eligible": False,
+            "next_checkpoint": "resolve-decoder-bc-register-role",
+        }
+        capture = {
+            "baseline_target_sha256": digest,
+            "entry_selector": {
+                "status": "resolved",
+                "selectors_match": True,
+                "ordinals_match": True,
+                "baseline_selector_offset": 2,
+                "pointer_address": pointer,
+            },
+            "target_read": {
+                "confirmed": True,
+                "expected_bank": 8,
+            },
+        }
+        selected = select_runtime_length_prefixed_entry(
+            bytes(baseline),
+            capture,
+            trace,
+        )
+        self.assertEqual(selected["skipped_record_count"], 147)
+        self.assertEqual(selected["length_prefix_file_offset"], cursor)
+        self.assertEqual(selected["target_file_offset"], cursor + 1)
+        self.assertEqual(selected["record_length_bytes"], 5)
 
     def test_all_compatible_entries_receive_count_preserving_marker(
         self,

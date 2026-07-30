@@ -1140,10 +1140,17 @@ def _target_hit_matches(
     target_read: dict[str, object],
 ) -> bool:
     slot = int(target_read["slot"])
-    expected_pc_after = int(target_read["instruction_pc"]) + 1
+    instruction_pc = int(target_read["instruction_pc"])
+    expected_pc_after = instruction_pc + 1
     return (
         int(state[f"slot{slot}_bank"]) == int(target_read["expected_bank"])
-        and abs(int(state["pc_after"]) - expected_pc_after) <= 4
+        and (
+            (
+                instruction_pc < 0
+                and int(state["executing_bank"]) == 0
+            )
+            or abs(int(state["pc_after"]) - expected_pc_after) <= 4
+        )
     )
 
 
@@ -1185,6 +1192,17 @@ def _display_watch_range(
         end = start + (encoded_bits - 1) // 8
         if end > 0x7FFF:
             raise PatchError("runtime decoder-block watch range crosses its slot")
+        return start, end
+    if runtime_entry.get("kind") == "runtime-length-prefixed-entry":
+        start = int(runtime_entry["pointer_address"])
+        length = int(runtime_entry["record_length_bytes"])
+        if not 0x4000 <= start <= 0x7FFF or length <= 0:
+            raise PatchError("runtime length-prefixed watch range is invalid")
+        end = start + length - 1
+        if end > 0x7FFF:
+            raise PatchError(
+                "runtime length-prefixed watch range crosses its slot"
+            )
         return start, end
     if not str(runtime_entry.get("kind", "")).startswith("runtime-group-"):
         return logical_access, logical_access
@@ -1660,7 +1678,11 @@ def main() -> int:
                 str(built_entry.get("kind", "")).startswith(
                     "runtime-group-"
                 )
-                or built_entry.get("kind") == "runtime-decoder-block"
+                or built_entry.get("kind")
+                in {
+                    "runtime-decoder-block",
+                    "runtime-length-prefixed-entry",
+                }
             )
         ):
             logical_access, physical_target_byte = _display_watch_target(
@@ -1721,7 +1743,11 @@ def main() -> int:
         isinstance(built_entry, dict)
         and (
             str(built_entry.get("kind", "")).startswith("runtime-group-")
-            or built_entry.get("kind") == "runtime-decoder-block"
+            or built_entry.get("kind")
+            in {
+                "runtime-decoder-block",
+                "runtime-length-prefixed-entry",
+            }
         )
     ):
         group_pointer_address = int(
@@ -1821,7 +1847,11 @@ def main() -> int:
     if (
         not (
             isinstance(built_entry, dict)
-            and built_entry.get("kind") == "runtime-decoder-block"
+            and built_entry.get("kind")
+            in {
+                "runtime-decoder-block",
+                "runtime-length-prefixed-entry",
+            }
         )
         and
         isinstance(entry_selector, dict)

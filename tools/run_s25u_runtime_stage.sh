@@ -200,7 +200,7 @@ else
         break
       fi
       fixed_block_probe="$(
-        python -c 'import json; from pathlib import Path; path=Path("reports/local/v5_1_test_patch_build.json"); value=json.loads(path.read_text(encoding="utf-8")); entry=value.get("runtime_entry"); print("yes" if isinstance(entry, dict) and entry.get("kind") == "runtime-decoder-block" else "no")' 2>/dev/null || true
+        python -c 'import json; from pathlib import Path; path=Path("reports/local/v5_1_test_patch_build.json"); value=json.loads(path.read_text(encoding="utf-8")); entry=value.get("runtime_entry"); print("yes" if isinstance(entry, dict) and (entry.get("kind") == "runtime-decoder-block" or entry.get("kind") == "runtime-length-prefixed-entry") else "no")' 2>/dev/null || true
       )"
       if [ "$fixed_block_probe" = "yes" ]; then
         break

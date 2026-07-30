@@ -36,6 +36,9 @@ try:
         load_trees_at,
     )
     from .v5_1_consumer import verify_target_identity
+    from .v5_1_decoder_register_trace import (
+        validate_decoder_register_trace,
+    )
     from .v5_1_decoder_stream_resolution import (
         validate_decoder_stream_resolution,
     )
@@ -70,6 +73,7 @@ except ImportError:  # direct script execution
         load_trees_at,
     )
     from v5_1_consumer import verify_target_identity
+    from v5_1_decoder_register_trace import validate_decoder_register_trace
     from v5_1_decoder_stream_resolution import (
         validate_decoder_stream_resolution,
     )
@@ -94,6 +98,9 @@ DEFAULT_RESOLUTION = Path(
 )
 DEFAULT_STREAM_RESOLUTION = Path(
     "analysis/device/v5_1_latest_decoder_stream_resolution.json"
+)
+DEFAULT_REGISTER_TRACE = Path(
+    "analysis/device/v5_1_latest_decoder_register_trace.json"
 )
 DEFAULT_GROUP_RESOLUTION = Path(
     "analysis/evidence/v5_1_confirmed_group_capture.json"
@@ -561,6 +568,128 @@ def select_runtime_decode_block(
     }
 
 
+def select_runtime_length_prefixed_entry(
+    baseline: bytes,
+    capture: dict[str, object],
+    register_trace: dict[str, object],
+) -> dict[str, object]:
+    """Resolve B as a count of byte-length-prefixed records to skip."""
+
+    validate_decoder_register_trace(register_trace)
+    if (
+        capture.get("baseline_target_sha256") != sha256_bytes(baseline)
+        or register_trace.get("target_sha256") != sha256_bytes(baseline)
+    ):
+        raise PatchError("runtime length-table identity mismatch")
+    selector = capture.get("entry_selector")
+    target_read = capture.get("target_read")
+    if (
+        not isinstance(selector, dict)
+        or selector.get("status") != "resolved"
+        or selector.get("selectors_match") is not True
+        or selector.get("ordinals_match") is not True
+        or not isinstance(target_read, dict)
+        or target_read.get("confirmed") is not True
+    ):
+        raise PatchError("runtime length-table selector evidence is incomplete")
+
+    states = register_trace["states"]
+    assert isinstance(states, list)
+    expected_pcs = (
+        0x33FA,
+        0x33FD,
+        0x33FE,
+        0x33FF,
+        0x3400,
+        0x3401,
+        0x3402,
+        0x3403,
+        0x3409,
+        0x3406,
+        0x3407,
+        0x3408,
+        0x3409,
+        0x3406,
+    )
+    if len(states) < len(expected_pcs) or tuple(
+        int(state["pc"]) for state in states[: len(expected_pcs)]
+    ) != expected_pcs:
+        raise PatchError("runtime length-table control flow is incomplete")
+
+    entry = states[0]
+    group_pointer_state = states[6]
+    incremented_state = states[7]
+    first_loop_state = states[9]
+    first_length_state = states[10]
+    first_increment_state = states[11]
+    first_advance_state = states[12]
+    second_loop_state = states[13]
+    bc = int(entry["bc"])
+    skip_count = bc >> 8
+    selector_offset = bc & 0xFF
+    pointer_address = int(selector["pointer_address"])
+    first_length = int(first_length_state["de"]) & 0xFF
+    if (
+        int(entry["de"]) != selector_offset
+        or selector_offset != int(selector["baseline_selector_offset"])
+        or int(group_pointer_state["hl"]) != pointer_address
+        or (int(incremented_state["bc"]) >> 8) != skip_count + 1
+        or (int(first_loop_state["bc"]) >> 8) != skip_count
+        or int(first_increment_state["hl"]) != pointer_address + 1
+        or int(first_advance_state["hl"])
+        != pointer_address + 1 + first_length
+        or (int(second_loop_state["bc"]) >> 8) != skip_count - 1
+    ):
+        raise PatchError("runtime length-table register semantics disagree")
+
+    mapped_bank = int(target_read["expected_bank"])
+    group_physical_start = (
+        mapped_bank * 0x4000 + (pointer_address - 0x4000)
+    )
+    cursor = group_physical_start
+    record_offsets: list[int] = []
+    for _ in range(skip_count):
+        if not 0 <= cursor < len(baseline):
+            raise PatchError("runtime length-table record is outside the ROM")
+        record_offsets.append(cursor)
+        length = baseline[cursor]
+        cursor += 1 + length
+    if (
+        baseline[group_physical_start] != first_length
+        or not 0 <= cursor < len(baseline)
+    ):
+        raise PatchError("runtime length-table static bytes disagree")
+    record_length = baseline[cursor]
+    payload_start = cursor + 1
+    payload_end = payload_start + record_length
+    if (
+        record_length <= 0
+        or payload_end > len(baseline)
+        or payload_end > (mapped_bank + 1) * 0x4000
+    ):
+        raise PatchError("runtime selected record boundary is invalid")
+    payload_logical = 0x4000 + (payload_start & 0x3FFF)
+    return {
+        "kind": "runtime-length-prefixed-entry",
+        "selection_basis": "decoder-register-proven-length-prefixed-skip-loop",
+        "target_file_offset": payload_start,
+        "pointer_bank": mapped_bank,
+        "pointer_address": payload_logical,
+        "group_pointer_address": pointer_address,
+        "group_physical_start": group_physical_start,
+        "length_prefix_file_offset": cursor,
+        "length_prefix_logical_address": payload_logical - 1,
+        "record_length_bytes": record_length,
+        "skipped_record_count": skip_count,
+        "target_alias_count": 1,
+        "next_target_file_offset": payload_end,
+        "runtime_instruction_bank": 0,
+        "runtime_instruction_pc": -1,
+        "runtime_operand_kind": "hl-indirect",
+        "all_target_offsets": [payload_start],
+    }
+
+
 def mark_all_count_preserving_entries(
     symbols: list[int],
     marker_symbols: list[int],
@@ -739,6 +868,7 @@ def build_test_patch(
     *,
     stream_resolution: dict[str, object] | None = None,
     group_resolution: dict[str, object] | None = None,
+    register_trace: dict[str, object] | None = None,
 ) -> tuple[bytes, bytes, dict[str, object]]:
     if (
         len(source) != EXPECTED_SOURCE_SIZE
@@ -749,12 +879,12 @@ def build_test_patch(
     baseline = apply_bps(source, patch)
     verify_target_identity(baseline)
     runtime_entry = (
-        select_runtime_decode_block(
+        select_runtime_length_prefixed_entry(
             baseline,
             group_resolution,
-            stream_resolution,
+            register_trace,
         )
-        if group_resolution is not None and stream_resolution is not None
+        if group_resolution is not None and register_trace is not None
         else (
             select_runtime_stream(baseline, stream_resolution)
             if stream_resolution is not None
@@ -775,7 +905,36 @@ def build_test_patch(
         KO_VECTOR_ENTRIES,
     )
     target_offset = int(runtime_entry["target_file_offset"])
-    if runtime_entry["kind"] == "runtime-decoder-block":
+    if runtime_entry["kind"] == "runtime-length-prefixed-entry":
+        record_length = int(runtime_entry["record_length_bytes"])
+        original_symbols, original_bits = decode_symbols(
+            baseline,
+            known,
+            trees,
+            target_offset,
+            initial_symbol=CANDIDATE_END_SYMBOL,
+            end_symbol=CANDIDATE_END_SYMBOL,
+            max_symbols=MAX_ENTRY_SYMBOLS,
+            max_bytes=record_length,
+        )
+        original_encoded, reencoded_bits = encode_symbols(
+            trees,
+            original_symbols,
+            initial_symbol=CANDIDATE_END_SYMBOL,
+            end_symbol=CANDIDATE_END_SYMBOL,
+            max_bits=record_length * 8,
+        )
+        if reencoded_bits != original_bits or not _bits_equal(
+            baseline[target_offset:],
+            original_encoded,
+            original_bits,
+        ):
+            raise PatchError(
+                "length-prefixed entry no-change roundtrip is not exact"
+            )
+        runtime_entry["runtime_symbol_count"] = len(original_symbols)
+        runtime_entry["runtime_encoded_bits"] = original_bits
+    elif runtime_entry["kind"] == "runtime-decoder-block":
         block_capacity_bytes = (
             int(runtime_entry["next_group_physical_start"]) - target_offset
         )
@@ -1071,6 +1230,11 @@ def main() -> int:
         default=DEFAULT_STREAM_RESOLUTION,
     )
     parser.add_argument(
+        "--register-trace",
+        type=Path,
+        default=DEFAULT_REGISTER_TRACE,
+    )
+    parser.add_argument(
         "--group-resolution",
         type=Path,
         default=DEFAULT_GROUP_RESOLUTION,
@@ -1093,14 +1257,21 @@ def main() -> int:
 
     resolution_path = _absolute(root, args.resolution)
     stream_resolution_path = _absolute(root, args.stream_resolution)
+    register_trace_path = _absolute(root, args.register_trace)
     group_resolution_path = _absolute(root, args.group_resolution)
     stream_resolution: dict[str, object] | None = None
+    register_trace: dict[str, object] | None = None
     group_resolution: dict[str, object] | None = None
     if stream_resolution_path.exists():
         candidate = _read_json(stream_resolution_path)
         validate_decoder_stream_resolution(candidate)
         if candidate["consumer_evidence_confirmed"] is True:
             stream_resolution = candidate
+    if register_trace_path.exists():
+        candidate = _read_json(register_trace_path)
+        validate_decoder_register_trace(candidate)
+        if int(candidate["step_count"]) >= 13:
+            register_trace = candidate
     if group_resolution_path.exists():
         candidate = _read_json(group_resolution_path)
         if (
@@ -1157,9 +1328,10 @@ def main() -> int:
             _absolute(root, args.patch).read_bytes(),
             resolution,
             _read_json(_absolute(root, args.trace_plan)),
-            stream_resolution=stream_resolution,
-            group_resolution=group_resolution,
-        )
+        stream_resolution=stream_resolution,
+        group_resolution=group_resolution,
+        register_trace=register_trace,
+    )
         _write_outputs(
             output_rom,
             output_ips,
