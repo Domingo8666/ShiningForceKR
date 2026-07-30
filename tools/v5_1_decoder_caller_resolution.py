@@ -171,42 +171,60 @@ def _valid_selectors(rom: bytes) -> set[int]:
 def _routine_candidates(
     rom: bytes,
     frames: list[dict[str, object]],
-) -> list[dict[str, int]]:
-    output: list[dict[str, int]] = []
+) -> list[dict[str, object]]:
+    output: list[dict[str, object]] = []
     for frame_index, frame in enumerate(frames):
+        function = _parse_hex_word(frame.get("function"))
+        source = _parse_hex_word(frame.get("source"))
         return_address = _parse_hex_word(frame.get("return"))
+        direct_call = False
+        opcode: int | None = None
+        call_offset: int | None = None
+        call_target: int | None = None
         if (
             return_address is None
             or return_address < 3
             or return_address > 0x4000
         ):
+            pass
+        else:
+            call_offset = return_address - 3
+            opcode = rom[call_offset]
+            if opcode in DIRECT_CALL_OPCODES:
+                call_target = int.from_bytes(
+                    rom[call_offset + 1 : return_address],
+                    "little",
+                )
+                direct_call = True
+        target = function if function is not None else call_target
+        if target is None:
             continue
-        call_offset = return_address - 3
-        opcode = rom[call_offset]
-        if opcode not in DIRECT_CALL_OPCODES:
-            continue
-        target = int.from_bytes(rom[call_offset + 1 : return_address], "little")
         output.append(
             {
                 "frame_index": frame_index,
+                "source": source,
                 "return_address": return_address,
                 "call_offset": call_offset,
                 "opcode": opcode,
                 "target": target,
+                "stack_function": function,
+                "direct_call_target": call_target,
+                "direct_call_confirmed": direct_call,
             }
         )
     return output
 
 
 def _select_containing_routine(
-    candidates: list[dict[str, int]],
+    candidates: list[dict[str, object]],
 ) -> int | None:
     plausible = {
-        item["target"]
+        int(item["target"])
         for item in candidates
         if (
-            item["target"] <= DECODER_ENTRY
-            and DECODER_ENTRY - item["target"] <= MAX_ROUTINE_DISTANCE
+            int(item["target"]) <= DECODER_ENTRY
+            and DECODER_ENTRY - int(item["target"])
+            <= MAX_ROUTINE_DISTANCE
         )
     }
     if not plausible:
@@ -287,14 +305,17 @@ def analyze_decoder_caller(
                 _parse_hex_word(frame.get("return")) is not None
                 for frame in frames
             ),
-            "direct_call_frame_count": len(candidates),
+            "direct_call_frame_count": sum(
+                item["direct_call_confirmed"] is True
+                for item in candidates
+            ),
             "containing_routine_candidate_count": len(
                 {
-                    item["target"]
+                    int(item["target"])
                     for item in candidates
                     if (
-                        item["target"] <= DECODER_ENTRY
-                        and DECODER_ENTRY - item["target"]
+                        int(item["target"]) <= DECODER_ENTRY
+                        and DECODER_ENTRY - int(item["target"])
                         <= MAX_ROUTINE_DISTANCE
                     )
                 }
@@ -326,7 +347,7 @@ def analyze_decoder_caller(
     }
     local = {
         "call_stack_frames": frames,
-        "direct_call_frames": candidates,
+        "routine_candidates": candidates,
         "selected_containing_routine": routine,
         "caller_signatures": calls,
         "selector_candidates": sorted(selector_candidates),

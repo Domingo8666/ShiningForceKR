@@ -48,7 +48,13 @@ class DecoderCallerResolutionTests(unittest.TestCase):
                     "hit": {"pc_after": 0x33FA},
                     "evidence": {
                         "call_stack": {
-                            "stack": [{"return": "$0103"}]
+                            "stack": [
+                                {
+                                    "function": "$3000",
+                                    "source": "$0100",
+                                    "return": "$0103",
+                                }
+                            ]
                         }
                     },
                 }
@@ -69,6 +75,36 @@ class DecoderCallerResolutionTests(unittest.TestCase):
             2,
         )
         self.assertEqual(local["selector_candidates"], [0, 2])
+
+    def test_uses_emulator_function_field_for_banked_return_frame(self) -> None:
+        rom = bytearray(0x5000)
+        rom[LOOKUP_TABLE_BASE : LOOKUP_TABLE_BASE + 2] = bytes(
+            (0x20, 0x40)
+        )
+        probe = {
+            "attempts": [
+                {
+                    "hit": {"pc_after": 0x33FA},
+                    "evidence": {
+                        "call_stack": {
+                            "stack": [
+                                {
+                                    "function": "$3000",
+                                    "source": "$8000",
+                                    "return": "$8003",
+                                }
+                            ]
+                        }
+                    },
+                }
+            ]
+        }
+        safe, local = analyze_decoder_caller(bytes(rom), probe)
+        self.assertTrue(
+            safe["stack"]["containing_routine_resolved"]
+        )
+        self.assertEqual(safe["stack"]["direct_call_frame_count"], 0)
+        self.assertEqual(local["selected_containing_routine"], 0x3000)
 
     def test_builds_safe_receipt_and_rejects_local_leakage(self) -> None:
         artifact = build_decoder_caller_resolution(
