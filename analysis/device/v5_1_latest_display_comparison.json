@@ -2,7 +2,7 @@
   "artifact_kind": "sanitized-s25u-test-display-comparison",
   "schema_version": 2,
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "test_target_sha256": "fc063d908ab52b17af2f07a6c904a1cce71270ea28126a1780de3d7c28c03711",
+  "test_target_sha256": "ce572f5f1688796a0b70b02d9695613325947fcf56c2588ee6841f7b84596ac1",
   "compared_stream": {
     "physical_start": 133395,
     "logical_start": 18707,
@@ -97,12 +97,12 @@
       "bottom_exclusive": 144
     },
     "baseline_pixel_sha256": "ea4fa3598805eeabd227c537d4425b191b4af5a4b9879911059b384dfdbd13ba",
-    "test_pixel_sha256": "1bb9555e3c1ca77472504800d1565085e0aed089303f202ea4f54161b774b945",
+    "test_pixel_sha256": "58ebff40398dcc69c81e634d8bd977d85053eade7cc70d290f71435f66ace776",
     "baseline_technical_marker_matches": 0,
     "test_technical_marker_matches": 1,
     "new_technical_marker_matches": 1,
     "baseline_png_sha256": "0d7294005257f149b8f19de061fb684cb99e93236c461c304225ef4eacd4d9ef",
-    "test_png_sha256": "c1fff0a4b56c39c5a952da5c12640744c083a6182198cb0af1f01238b9785627"
+    "test_png_sha256": "13dba0b785866d37252a0a25bd66eaa180c6086c78d6c758844220541dba2e79"
   },
   "result": "technical-marker-detected-human-review-required",
   "automatic_rejected_physical_starts": [],
