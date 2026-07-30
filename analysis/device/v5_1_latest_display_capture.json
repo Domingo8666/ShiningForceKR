@@ -19,16 +19,16 @@
     "confirmed": true
   },
   "entry_selector": {
-    "status": "unresolved",
+    "status": "resolved",
     "lookup_table_base": 16360,
-    "baseline_selector_offset": 12,
-    "test_selector_offset": 234,
-    "selectors_match": false,
-    "entry_index": null,
-    "pointer_address": null,
-    "next_pointer_address": null,
-    "target_offset_within_entry": null,
-    "pointer_bounds_target": false
+    "baseline_selector_offset": 2,
+    "test_selector_offset": 2,
+    "selectors_match": true,
+    "entry_index": 1,
+    "pointer_address": 17374,
+    "next_pointer_address": 18531,
+    "target_offset_within_entry": 211,
+    "pointer_bounds_target": true
   },
   "captures": [
     {
