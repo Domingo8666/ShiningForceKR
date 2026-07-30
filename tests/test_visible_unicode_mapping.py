@@ -159,6 +159,16 @@ class VisibleUnicodeMappingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "status"):
             validate_visible_unicode_mapping(value)
 
+    def test_validates_tied_implicit_pages_as_incomplete(self) -> None:
+        value = _artifact()
+        value["status"] = "visible-glyph-map-incomplete"
+        value["mapping"]["initial_page"] = 21
+        value["mapping"]["initial_page_candidate_count"] = 9
+        value["mapping"]["implicit_initial_page_used"] = True
+        value["mapping"]["page_select_count"] = 0
+        value["next_checkpoint"] = "confirm-runtime-initial-font-page"
+        validate_visible_unicode_mapping(value)
+
 
 if __name__ == "__main__":
     unittest.main()

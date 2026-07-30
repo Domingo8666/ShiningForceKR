@@ -164,12 +164,10 @@ def validate_visible_unicode_mapping(value: dict[str, object]) -> None:
         and value["renderer_chain_confirmed"] is True
     )
     expected_status = (
-        "visible-glyph-map-candidate"
-        if complete
-        and mapping["implicit_initial_page_used"]
-        and mapping["initial_page_candidate_count"] == 1
-        else "visible-glyph-map-resolved"
-        if complete
+        "visible-glyph-map-resolved"
+        if complete and not mapping["implicit_initial_page_used"]
+        else "visible-glyph-map-candidate"
+        if complete and mapping["initial_page_candidate_count"] == 1
         else "visible-glyph-map-incomplete"
     )
     if value["status"] != expected_status:
@@ -180,11 +178,13 @@ def validate_visible_unicode_mapping(value: dict[str, object]) -> None:
         raise ValueError("visible Unicode local payload policy is invalid")
     if value["translation_build_eligible"] is not False:
         raise ValueError("visible Unicode mapping cannot enable release builds")
-    expected_checkpoint = {
-        "visible-glyph-map-resolved": "extract-full-script-record-set",
-        "visible-glyph-map-candidate": "confirm-runtime-initial-font-page",
-        "visible-glyph-map-incomplete": "classify-visible-symbol-stream",
-    }[expected_status]
+    expected_checkpoint = (
+        "extract-full-script-record-set"
+        if expected_status == "visible-glyph-map-resolved"
+        else "confirm-runtime-initial-font-page"
+        if complete and mapping["implicit_initial_page_used"]
+        else "classify-visible-symbol-stream"
+    )
     if value["next_checkpoint"] != expected_checkpoint:
         raise ValueError("visible Unicode next checkpoint is inconsistent")
 
@@ -410,12 +410,10 @@ def main() -> int:
         and safe_mapping["terminator_count"] == 1
     )
     status = (
-        "visible-glyph-map-candidate"
-        if complete
-        and safe_mapping["implicit_initial_page_used"]
-        and safe_mapping["initial_page_candidate_count"] == 1
-        else "visible-glyph-map-resolved"
-        if complete
+        "visible-glyph-map-resolved"
+        if complete and not safe_mapping["implicit_initial_page_used"]
+        else "visible-glyph-map-candidate"
+        if complete and safe_mapping["initial_page_candidate_count"] == 1
         else "visible-glyph-map-incomplete"
     )
     runtime = visible["runtime_entry"]
@@ -437,11 +435,13 @@ def main() -> int:
             "symbols-codepoints-characters-and-text-local-only"
         ),
         "translation_build_eligible": False,
-        "next_checkpoint": {
-            "visible-glyph-map-resolved": "extract-full-script-record-set",
-            "visible-glyph-map-candidate": "confirm-runtime-initial-font-page",
-            "visible-glyph-map-incomplete": "classify-visible-symbol-stream",
-        }[status],
+        "next_checkpoint": (
+            "extract-full-script-record-set"
+            if status == "visible-glyph-map-resolved"
+            else "confirm-runtime-initial-font-page"
+            if complete and safe_mapping["implicit_initial_page_used"]
+            else "classify-visible-symbol-stream"
+        ),
     }
     validate_visible_unicode_mapping(safe)
     local = {
