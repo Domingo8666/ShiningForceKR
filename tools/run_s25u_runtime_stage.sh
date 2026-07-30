@@ -389,6 +389,16 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_group_text_candidate_resolution.py --if-ready
+    group_text_candidate_status=$?
+    if [ "$group_text_candidate_status" -ne 0 ]; then
+      stage_status="$group_text_candidate_status"
+      diagnostic_trigger=probe
+      record_stage_failure group-text-candidate-resolution
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_confirmed_group_unicode.py --if-ready
     confirmed_group_unicode_status=$?
     if [ "$confirmed_group_unicode_status" -ne 0 ]; then

@@ -58,6 +58,10 @@ try:
         PUBLISH_RELATIVE_PATH as GROUP_SOURCE_DELTA_RELATIVE_PATH,
         validate_group_source_delta,
     )
+    from .v5_1_group_text_candidate_resolution import (
+        PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
+        validate_group_text_candidate_resolution,
+    )
     from .v5_1_confirmed_group_unicode import (
         PUBLISH_RELATIVE_PATH as CONFIRMED_GROUP_UNICODE_RELATIVE_PATH,
         validate_confirmed_group_unicode,
@@ -127,6 +131,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as GROUP_SOURCE_DELTA_RELATIVE_PATH,
         validate_group_source_delta,
     )
+    from v5_1_group_text_candidate_resolution import (
+        PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
+        validate_group_text_candidate_resolution,
+    )
     from v5_1_confirmed_group_unicode import (
         PUBLISH_RELATIVE_PATH as CONFIRMED_GROUP_UNICODE_RELATIVE_PATH,
         validate_confirmed_group_unicode,
@@ -193,6 +201,8 @@ SAFE_ARTIFACTS = {
         validate_group_runtime_context,
     GROUP_SOURCE_DELTA_RELATIVE_PATH:
         validate_group_source_delta,
+    GROUP_TEXT_CANDIDATE_RELATIVE_PATH:
+        validate_group_text_candidate_resolution,
     CONFIRMED_GROUP_UNICODE_RELATIVE_PATH:
         validate_confirmed_group_unicode,
     PUBLISH_RECEIPT_RELATIVE_PATH: validate_progress_preview,
@@ -570,6 +580,29 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != confirmed_group_extract["group"]["declared_entry_count"]
         ):
             artifacts.pop(GROUP_SOURCE_DELTA_RELATIVE_PATH)
+    group_source_delta = artifacts.get(GROUP_SOURCE_DELTA_RELATIVE_PATH)
+    group_text_candidates = artifacts.get(
+        GROUP_TEXT_CANDIDATE_RELATIVE_PATH
+    )
+    if group_text_candidates is not None:
+        if (
+            group_context_resolution is None
+            or group_source_delta is None
+            or visible_unicode_mapping is None
+            or group_text_candidates["target_sha256"]
+            != group_context_resolution["target_sha256"]
+            or group_text_candidates["source_context_resolution_sha256"]
+            != sha256_file(root / GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH)
+            or group_text_candidates["source_group_delta_sha256"]
+            != sha256_file(root / GROUP_SOURCE_DELTA_RELATIVE_PATH)
+            or group_text_candidates["source_visible_mapping_sha256"]
+            != sha256_file(root / VISIBLE_UNICODE_MAPPING_RELATIVE_PATH)
+            or group_text_candidates["group"]["selector"]
+            != group_context_resolution["group"]["selector"]
+            or group_text_candidates["group"]["record_count"]
+            != group_context_resolution["group"]["record_count"]
+        ):
+            artifacts.pop(GROUP_TEXT_CANDIDATE_RELATIVE_PATH)
     confirmed_group_unicode = artifacts.get(
         CONFIRMED_GROUP_UNICODE_RELATIVE_PATH
     )
