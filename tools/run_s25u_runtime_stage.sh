@@ -409,6 +409,16 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_group_script_corpus.py --if-ready
+    group_script_corpus_status=$?
+    if [ "$group_script_corpus_status" -ne 0 ]; then
+      stage_status="$group_script_corpus_status"
+      diagnostic_trigger=probe
+      record_stage_failure group-script-corpus
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_confirmed_group_unicode.py --if-ready
     confirmed_group_unicode_status=$?
     if [ "$confirmed_group_unicode_status" -ne 0 ]; then

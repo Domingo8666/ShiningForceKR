@@ -66,6 +66,10 @@ try:
         PUBLISH_RELATIVE_PATH as UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH,
         validate_unmatched_glyph_fuzzy,
     )
+    from .v5_1_group_script_corpus import (
+        PUBLISH_RELATIVE_PATH as GROUP_SCRIPT_CORPUS_RELATIVE_PATH,
+        validate_group_script_corpus,
+    )
     from .v5_1_confirmed_group_unicode import (
         PUBLISH_RELATIVE_PATH as CONFIRMED_GROUP_UNICODE_RELATIVE_PATH,
         validate_confirmed_group_unicode,
@@ -143,6 +147,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH,
         validate_unmatched_glyph_fuzzy,
     )
+    from v5_1_group_script_corpus import (
+        PUBLISH_RELATIVE_PATH as GROUP_SCRIPT_CORPUS_RELATIVE_PATH,
+        validate_group_script_corpus,
+    )
     from v5_1_confirmed_group_unicode import (
         PUBLISH_RELATIVE_PATH as CONFIRMED_GROUP_UNICODE_RELATIVE_PATH,
         validate_confirmed_group_unicode,
@@ -213,6 +221,8 @@ SAFE_ARTIFACTS = {
         validate_group_text_candidate_resolution,
     UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH:
         validate_unmatched_glyph_fuzzy,
+    GROUP_SCRIPT_CORPUS_RELATIVE_PATH:
+        validate_group_script_corpus,
     CONFIRMED_GROUP_UNICODE_RELATIVE_PATH:
         validate_confirmed_group_unicode,
     PUBLISH_RECEIPT_RELATIVE_PATH: validate_progress_preview,
@@ -628,6 +638,26 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != sha256_file(root / GROUP_TEXT_CANDIDATE_RELATIVE_PATH)
         ):
             artifacts.pop(UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH)
+    unmatched_glyph_fuzzy = artifacts.get(
+        UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH
+    )
+    group_script_corpus = artifacts.get(GROUP_SCRIPT_CORPUS_RELATIVE_PATH)
+    if group_script_corpus is not None:
+        if (
+            group_text_candidates is None
+            or unmatched_glyph_fuzzy is None
+            or group_script_corpus["target_sha256"]
+            != group_text_candidates["target_sha256"]
+            or group_script_corpus["source_text_candidate_sha256"]
+            != sha256_file(root / GROUP_TEXT_CANDIDATE_RELATIVE_PATH)
+            or group_script_corpus["source_fuzzy_glyph_sha256"]
+            != sha256_file(root / UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH)
+            or group_script_corpus["group"]["selector"]
+            != group_text_candidates["group"]["selector"]
+            or group_script_corpus["group"]["candidate_record_count"]
+            != group_text_candidates["resolution"]["unique_best_record_count"]
+        ):
+            artifacts.pop(GROUP_SCRIPT_CORPUS_RELATIVE_PATH)
     confirmed_group_unicode = artifacts.get(
         CONFIRMED_GROUP_UNICODE_RELATIVE_PATH
     )
