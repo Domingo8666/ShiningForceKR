@@ -80,7 +80,7 @@ DECODER_REGISTER_TRACE_PATH = Path(
 TRACE_PAGE_SIZE = 1000
 TRACE_BUFFER_SIZE = 100000
 TRACE_RETURN_TIMEOUT_SECONDS = 15.0
-ROUTE_TIMEOUT_SECONDS = 30.0
+ROUTE_TIMEOUT_SECONDS = 60.0
 DECODER_OUTPUT_CANDIDATES = {
     0x3411,
     0x3431,
@@ -684,14 +684,18 @@ def _reach_exact_payload(
             )
             if status.get("at_breakpoint") is not True:
                 break
-            state, _ = _capture_state(client)
-            registers = _registers(state)
+            z80 = client.call("get_z80_status")
+            candidate_de = _parse_hex_word(z80.get("DE"), "DE")
+            candidate_bc = _parse_hex_word(z80.get("BC"), "BC")
             if (
-                int(state["pc_after"]) == DECODER_ENTRY_LOGICAL
-                and registers.get("de") == selector_de
-                and (registers.get("bc", 0) >> 8) == entry_ordinal
+                candidate_de == selector_de
+                and (candidate_bc >> 8) == entry_ordinal
             ):
-                selected_state = state
+                selected_state, _ = _capture_state(client)
+                if int(selected_state["pc_after"]) != DECODER_ENTRY_LOGICAL:
+                    raise RuntimeError(
+                        "matching decoder registers were not at the entry"
+                    )
                 break
             _remove_breakpoint(client, DECODER_ENTRY_LOGICAL)
             entry_armed = False
