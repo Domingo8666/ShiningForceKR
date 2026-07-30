@@ -21,6 +21,10 @@ try:
         PUBLISH_RELATIVE_PATH as VISIBLE_ENTRY_PROOF_RELATIVE_PATH,
         validate_visible_entry_proof,
     )
+    from .v5_1_poc_expansion_proof import (
+        PUBLISH_RELATIVE_PATH as POC_EXPANSION_PROOF_RELATIVE_PATH,
+        validate_poc_expansion_proof,
+    )
     from .v5_1_progress_preview import (
         PUBLISH_IMAGE_RELATIVE_PATH,
         PUBLISH_RECEIPT_RELATIVE_PATH,
@@ -44,6 +48,10 @@ except ImportError:  # direct script execution
     from v5_1_visible_entry_proof import (
         PUBLISH_RELATIVE_PATH as VISIBLE_ENTRY_PROOF_RELATIVE_PATH,
         validate_visible_entry_proof,
+    )
+    from v5_1_poc_expansion_proof import (
+        PUBLISH_RELATIVE_PATH as POC_EXPANSION_PROOF_RELATIVE_PATH,
+        validate_poc_expansion_proof,
     )
     from v5_1_progress_preview import (
         PUBLISH_IMAGE_RELATIVE_PATH,
@@ -84,6 +92,7 @@ SAFE_ARTIFACTS = {
     Path("analysis/device/v5_1_latest_display_review.json"):
         validate_display_review,
     VISIBLE_ENTRY_PROOF_RELATIVE_PATH: validate_visible_entry_proof,
+    POC_EXPANSION_PROOF_RELATIVE_PATH: validate_poc_expansion_proof,
     PUBLISH_RECEIPT_RELATIVE_PATH: validate_progress_preview,
 }
 SAFE_BINARY_ARTIFACTS = {
@@ -245,6 +254,25 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != display_review["reviewed_stream"]["mapped_bank"]
         ):
             artifacts.pop(VISIBLE_ENTRY_PROOF_RELATIVE_PATH)
+    poc_expansion_proof = artifacts.get(POC_EXPANSION_PROOF_RELATIVE_PATH)
+    if poc_expansion_proof is not None:
+        if (
+            display_capture is None
+            or display_comparison is None
+            or display_review is None
+            or progress_preview is None
+            or poc_expansion_proof["baseline_target_sha256"]
+            != display_capture["baseline_target_sha256"]
+            or poc_expansion_proof["test_target_sha256"]
+            != display_capture["test_target_sha256"]
+            or poc_expansion_proof["test_target_sha256"]
+            != display_comparison["test_target_sha256"]
+            or poc_expansion_proof["test_target_sha256"]
+            != display_review["test_target_sha256"]
+            or poc_expansion_proof["display_proof"]["capture_png_sha256"]
+            != progress_preview["capture_png_sha256"]
+        ):
+            artifacts.pop(POC_EXPANSION_PROOF_RELATIVE_PATH)
     return artifacts
 
 

@@ -257,6 +257,16 @@ else
       record_stage_failure visible-entry-proof
     fi
   fi
+
+  if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_poc_expansion_proof.py --if-ready
+    expansion_proof_status=$?
+    if [ "$expansion_proof_status" -ne 0 ]; then
+      stage_status="$expansion_proof_status"
+      diagnostic_trigger=probe
+      record_stage_failure display-comparison-artifact
+    fi
+  fi
 fi
 
 python tools/v5_1_runtime_diagnostic.py \

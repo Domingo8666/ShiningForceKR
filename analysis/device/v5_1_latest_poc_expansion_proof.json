@@ -1,0 +1,43 @@
+{
+  "artifact_kind": "sanitized-s25u-poc-expansion-proof",
+  "schema_version": 1,
+  "status": "expanded-poc-visible-pass",
+  "purpose": "technical-poc-expanded-visible-entry",
+  "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "test_target_sha256": "ce572f5f1688796a0b70b02d9695613325947fcf56c2588ee6841f7b84596ac1",
+  "source_visible_entry_test_sha256": "fc063d908ab52b17af2f07a6c904a1cce71270ea28126a1780de3d7c28c03711",
+  "phrase_codepoints": [
+    "U+C2DC",
+    "U+D5D8",
+    "U+D55C",
+    "U+B2E4"
+  ],
+  "runtime_entry": {
+    "physical_start": 133395,
+    "logical_start": 18707,
+    "mapped_bank": 8,
+    "record_length_bytes": 16,
+    "original_encoded_bits": 100,
+    "replacement_encoded_bits": 100,
+    "roundtrip_exact": true
+  },
+  "display_proof": {
+    "capture_png_sha256": "13dba0b785866d37252a0a25bd66eaa180c6086c78d6c758844220541dba2e79",
+    "width": 160,
+    "height": 144,
+    "frame_after_hit": 150,
+    "exact_phrase_matches": 1,
+    "exact_phrase_coordinate": {
+      "x": 24,
+      "y": 112
+    },
+    "baseline_suffix_marker_matches": 0,
+    "test_suffix_marker_matches": 1,
+    "post_advance_changed_pixels": 12095,
+    "surrounding_text_readable": true,
+    "portrait_intact": true,
+    "dialogue_box_intact": true
+  },
+  "translation_build_eligible": false,
+  "next_checkpoint": "extract-and-roundtrip-visible-script-record"
+}
