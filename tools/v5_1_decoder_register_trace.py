@@ -7,7 +7,6 @@ import argparse
 from datetime import datetime, timezone
 import json
 from pathlib import Path
-import time
 
 try:
     from .patch_io import sha256_file
@@ -21,9 +20,10 @@ try:
         _write_runtime_failure_receipt,
     )
     from .v5_1_consumer import verify_target_identity
-    from .v5_1_test_display_capture import (
-        _continue_until_breakpoint,
-        _set_unlimited_fast_forward,
+    from .run_s25u_renderer_probe import (
+        ATTRACT_ROUTE_SCHEDULE,
+        _decoder_entry_mappings,
+        _probe_decoder_entry,
     )
 except ImportError:  # direct script execution
     from patch_io import sha256_file
@@ -37,9 +37,10 @@ except ImportError:  # direct script execution
         _write_runtime_failure_receipt,
     )
     from v5_1_consumer import verify_target_identity
-    from v5_1_test_display_capture import (
-        _continue_until_breakpoint,
-        _set_unlimited_fast_forward,
+    from run_s25u_renderer_probe import (
+        ATTRACT_ROUTE_SCHEDULE,
+        _decoder_entry_mappings,
+        _probe_decoder_entry,
     )
 
 ARTIFACT_KIND = "sanitized-decoder-register-trace"
@@ -52,7 +53,6 @@ DECODER_ENTRY = 0x33FA
 EXPECTED_SELECTOR_DE = 2
 TRACE_STEPS = 64
 MIN_USEFUL_PARTIAL_STEPS = 8
-ENTRY_TIMEOUT_SECONDS = 30.0
 STATE_KEYS = {
     "pc",
     "af",
@@ -213,56 +213,6 @@ def decoder_register_trace_needed(root: Path) -> bool:
         return True
 
 
-def _remove_entry_breakpoint(client: McpStdioClient) -> None:
-    client.call(
-        "remove_breakpoint",
-        {
-            "address": f"{DECODER_ENTRY:04X}",
-            "end_address": f"{DECODER_ENTRY:04X}",
-            "memory_area": "rom_ram",
-        },
-    )
-
-
-def _arm_entry_breakpoint(client: McpStdioClient) -> None:
-    client.call(
-        "set_breakpoint_range",
-        {
-            "start_address": f"{DECODER_ENTRY:04X}",
-            "end_address": f"{DECODER_ENTRY:04X}",
-            "memory_area": "rom_ram",
-            "execute": True,
-            "read": False,
-            "write": False,
-        },
-    )
-
-
-def _find_confirmed_entry(
-    client: McpStdioClient,
-) -> dict[str, object]:
-    deadline = time.monotonic() + ENTRY_TIMEOUT_SECONDS
-    _arm_entry_breakpoint(client)
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            raise RuntimeError("confirmed decoder entry was not reached")
-        status = _continue_until_breakpoint(client, remaining)
-        if status.get("at_breakpoint") is not True:
-            raise RuntimeError("confirmed decoder entry was not reached")
-        state, _ = _capture_state(client)
-        registers = state.get("registers")
-        if (
-            int(state["pc_after"]) == DECODER_ENTRY
-            and isinstance(registers, dict)
-            and registers.get("de") == EXPECTED_SELECTOR_DE
-        ):
-            return state
-        # Gearsystem keeps execution breakpoints armed after a hit.  Stepping
-        # one instruction is enough to leave this call and continue hunting.
-        _step_instruction_and_wait(client)
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rom", type=Path, default=DEFAULT_ROM)
@@ -292,16 +242,11 @@ def main() -> int:
         }
         return _write_trace(root, trace)
 
-    required = REQUIRED_TOOLS | {
-        "set_fast_forward_speed",
-        "toggle_fast_forward",
-    }
     client = McpStdioClient(_default_command())
-    fast_forward = False
     stage = "decoder-register-trace"
     try:
         tools = client.initialize()
-        missing = sorted(required - tools)
+        missing = sorted(REQUIRED_TOOLS - tools)
         if missing:
             raise RuntimeError(f"Gearsystem MCP tools missing: {missing}")
         client.call("load_media", {"file_path": str(rom_path)})
@@ -312,19 +257,20 @@ def main() -> int:
             or int(media.get("rom_size", 0)) != len(rom)
         ):
             raise RuntimeError("Gearsystem did not load the target ROM")
-        client.call("debug_reset")
-        client.call("debug_pause")
-        _set_unlimited_fast_forward(client, True)
-        fast_forward = True
-        entry_state = _find_confirmed_entry(client)
-        _set_unlimited_fast_forward(client, False)
-        fast_forward = False
-        try:
-            _remove_entry_breakpoint(client)
-        except Exception:
-            # Some Gearsystem builds report that a just-hit execute
-            # breakpoint is already absent.  It cannot affect bounded steps.
-            pass
+        entry_state, _ = _probe_decoder_entry(
+            client,
+            _decoder_entry_mappings(),
+            schedule=ATTRACT_ROUTE_SCHEDULE,
+        )
+        if entry_state is None:
+            raise RuntimeError("confirmed decoder entry was not reached")
+        registers = entry_state.get("registers")
+        if (
+            int(entry_state["pc_after"]) != DECODER_ENTRY
+            or not isinstance(registers, dict)
+            or registers.get("de") != EXPECTED_SELECTOR_DE
+        ):
+            raise RuntimeError("decoder entry selector did not match")
 
         states.append(_safe_state(entry_state))
         for _ in range(TRACE_STEPS):
@@ -341,11 +287,6 @@ def main() -> int:
         _write_runtime_failure_receipt(root, receipt)
         raise
     finally:
-        if fast_forward:
-            try:
-                _set_unlimited_fast_forward(client, False)
-            except RuntimeError:
-                pass
         client.close()
 
 
