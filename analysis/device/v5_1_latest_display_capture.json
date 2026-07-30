@@ -1,6 +1,6 @@
 {
   "artifact_kind": "sanitized-s25u-test-display-capture",
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "capture-ready-human-review-required",
   "purpose": "technical-poc-only",
   "phrase_codepoints": [
@@ -17,6 +17,18 @@
     "expected_bank": 8,
     "mapped_bank": 8,
     "confirmed": true
+  },
+  "entry_selector": {
+    "status": "unresolved",
+    "lookup_table_base": 16360,
+    "baseline_selector_offset": 12,
+    "test_selector_offset": 234,
+    "selectors_match": false,
+    "entry_index": null,
+    "pointer_address": null,
+    "next_pointer_address": null,
+    "target_offset_within_entry": null,
+    "pointer_bounds_target": false
   },
   "captures": [
     {
