@@ -1,0 +1,31 @@
+{
+  "artifact_kind": "sanitized-v5-1-source-group-codec-probe",
+  "schema_version": 1,
+  "status": "source-group-codec-vector-unusable",
+  "source_sha256": "4705256cc1a242aab7fea170369eb64723f796e27c6edfe0f93a674a8ba00f42",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_group_extract_sha256": "0fed1746e31ea0be5e46b5436c64ef4f2b74f10b009e148a51be40799a47ce72",
+  "source_group_delta_sha256": "9183947461ec7b952f2dae2976c178d647f9a4d7d295c4d6304d41da4fe31db1",
+  "captured_utc": "2026-07-30T15:26:10.246161Z",
+  "group": {
+    "selector": 2,
+    "record_count": 148
+  },
+  "codec_probe": {
+    "canonical_context_roundtrip_record_count": 0,
+    "records_with_any_roundtrip_count": 0,
+    "zero_length_record_count": 0,
+    "populated_context_count": 0,
+    "records_with_multiple_streams_count": 0,
+    "vector_parse_succeeded": false,
+    "attempted_record_count": 148,
+    "records_with_unique_stream_count": 0,
+    "records_without_roundtrip_count": 148,
+    "candidate_context_roundtrip_count": 0,
+    "candidate_symbol_stream_count": 0
+  },
+  "local_payload_policy": "source-bytes-contexts-symbols-codepoints-and-text-local-only",
+  "source_pairing_complete": false,
+  "translation_build_eligible": false,
+  "next_checkpoint": "locate-clean-source-huffman-vector"
+}
