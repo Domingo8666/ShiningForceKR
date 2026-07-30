@@ -257,7 +257,7 @@ class TestPatchTests(unittest.TestCase):
         self.assertEqual(selected["group_entry_start_bit"], 2)
         self.assertEqual(selected["runtime_encoded_bits"], 1)
 
-    def test_runtime_group_entry_uses_interior_read_as_skip_candidate(self) -> None:
+    def test_runtime_group_entry_uses_unique_read_containing_entry(self) -> None:
         baseline = bytes(self.baseline)
         digest = sha256_bytes(baseline)
         selected = select_runtime_group_entry(
@@ -267,15 +267,16 @@ class TestPatchTests(unittest.TestCase):
         )
         self.assertEqual(
             selected["kind"],
-            "runtime-group-selected-entry-candidate",
+            "runtime-group-observed-entry",
         )
         self.assertEqual(
             selected["selection_basis"],
-            "runtime-b-skip-candidate-needs-direct-read",
+            "unique-runtime-read-containing-entry",
         )
-        self.assertEqual(selected["target_file_offset"], 0x8001)
-        self.assertEqual(selected["pointer_address"], 0x4001)
-        self.assertEqual(selected["group_entry_ordinal"], 1)
+        self.assertEqual(selected["target_file_offset"], 0x8000)
+        self.assertEqual(selected["pointer_address"], 0x4000)
+        self.assertEqual(selected["group_entry_ordinal"], 0)
+        self.assertEqual(selected["decoder_entry_b_ordinal"], 1)
         self.assertEqual(
             selected["intermediate_observed_target_file_offset"],
             0x8000,

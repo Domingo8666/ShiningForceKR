@@ -1474,10 +1474,10 @@ def main() -> int:
                 "runtime-group-"
             )
         ):
-            selected_entry_probe = (
-                built_entry.get("kind")
-                == "runtime-group-selected-entry-candidate"
-            )
+            selected_entry_probe = built_entry.get("kind") in {
+                "runtime-group-selected-entry-candidate",
+                "runtime-group-observed-entry",
+            }
             logical_access = int(
                 built_entry["pointer_address"]
                 if selected_entry_probe

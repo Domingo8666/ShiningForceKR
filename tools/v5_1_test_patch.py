@@ -276,12 +276,12 @@ def select_runtime_group_entry(
     capture: dict[str, object],
     stream_resolution: dict[str, object],
 ) -> dict[str, object]:
-    """Select a bounded group entry from the decoder's observed skip state.
+    """Select the one bounded group entry containing the observed ROM read.
 
-    A read inside an earlier entry can be evidence that the decoder is walking
-    the shared group before the B-selected entry.  That case remains a
-    technical candidate until the display capture observes the selected
-    entry's own first byte.
+    The decoder-entry B register is retained as evidence, but it is not treated
+    as an entry selector when it disagrees with the uniquely bounded entry
+    containing the runtime read.  A prior experiment that interpreted B as a
+    skip count never read the predicted entry start, so the direct read wins.
     """
 
     stream = select_runtime_stream(baseline, stream_resolution)
@@ -324,7 +324,7 @@ def select_runtime_group_entry(
             )
         )
     )
-    skip_candidate = (
+    observed_entry = (
         group.get("status") == "target-outside-selected-entry"
         and group.get("observed_b_matches_target_candidates") is False
         and len(candidates) == 1
@@ -336,12 +336,13 @@ def select_runtime_group_entry(
     if direct_selection:
         selection_basis = "runtime-b-and-target-agree"
         kind = "runtime-group-entry"
-    elif skip_candidate:
-        selection_basis = "runtime-b-skip-candidate-needs-direct-read"
-        kind = "runtime-group-selected-entry-candidate"
+    elif observed_entry:
+        selected_range = candidates[0]
+        selection_basis = "unique-runtime-read-containing-entry"
+        kind = "runtime-group-observed-entry"
     else:
         raise PatchError(
-            "runtime read does not distinguish one B-selected group entry"
+            "runtime read does not distinguish one bounded group entry"
         )
 
     entry_start_bit = int(selected_range["entry_start_bit"])
@@ -380,17 +381,13 @@ def select_runtime_group_entry(
                 "runtime read is outside the directly selected group entry"
             )
     else:
-        captured_range = candidates[0]
-        assert isinstance(captured_range, dict)
         if not (
-            int(captured_range["entry_start_logical_byte"])
+            int(selected_range["entry_start_logical_byte"])
             <= observed_target_logical
-            <= int(captured_range["entry_end_logical_byte_inclusive"])
-            and observed_target_logical
-            < int(selected_range["entry_start_logical_byte"])
+            <= int(selected_range["entry_end_logical_byte_inclusive"])
         ):
             raise PatchError(
-                "runtime read is not a bounded pre-selection group entry"
+                "runtime read is not inside the uniquely bounded group entry"
             )
     target_file_offset = group_physical_start + entry_start_bit // 8
     target_logical_address = pointer_address + entry_start_bit // 8
@@ -414,6 +411,7 @@ def select_runtime_group_entry(
         "group_pointer_address": pointer_address,
         "group_physical_start": group_physical_start,
         "group_entry_ordinal": entry_ordinal,
+        "decoder_entry_b_ordinal": int(group["entry_ordinal"]),
         "group_entry_start_bit": entry_start_bit,
         "group_entry_end_bit_exclusive": entry_end_bit,
         "group_entry_start_bit_in_byte": entry_start_bit & 7,
