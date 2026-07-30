@@ -81,6 +81,7 @@ def _trace_summary(*, data_writes: int = 1) -> dict[str, int]:
         "primary_renderer_entry_hit_count": 1,
         "primary_renderer_data_write_count": data_writes,
         "primary_renderer_control_write_count": 1,
+        "post_renderer_data_write_count": data_writes,
     }
 
 
@@ -192,6 +193,46 @@ class RendererOutputTraceTests(unittest.TestCase):
         self.assertEqual(summary["primary_renderer_data_write_count"], 1)
         self.assertEqual(summary["primary_renderer_control_write_count"], 1)
 
+    def test_counts_data_after_primary_renderer_control(self) -> None:
+        summary, _ = analyze_trace_lines(
+            [
+                (
+                    "21:7000 A:00 BC:0000 DE:0000 HL:0000 SP:D000  "
+                    "C3 00 7A"
+                ),
+                (
+                    "21:706A A:38 BC:0000 DE:0000 HL:0000 SP:D000  "
+                    "D3 BF"
+                ),
+                (
+                    "00:1234 A:42 BC:0000 DE:0000 HL:0000 SP:D000  "
+                    "D3 BE"
+                ),
+            ]
+        )
+        self.assertEqual(summary["primary_renderer_entry_hit_count"], 1)
+        self.assertEqual(summary["primary_renderer_control_write_count"], 1)
+        self.assertEqual(summary["post_renderer_data_write_count"], 1)
+
+    def test_requires_primary_control_after_the_renderer_entry(self) -> None:
+        summary, _ = analyze_trace_lines(
+            [
+                (
+                    "21:706A A:38 BC:0000 DE:0000 HL:0000 SP:D000  "
+                    "D3 BF"
+                ),
+                (
+                    "21:7000 A:00 BC:0000 DE:0000 HL:0000 SP:D000  "
+                    "C3 00 7A"
+                ),
+                (
+                    "00:1234 A:42 BC:0000 DE:0000 HL:0000 SP:D000  "
+                    "D3 BE"
+                ),
+            ]
+        )
+        self.assertEqual(summary["post_renderer_data_write_count"], 0)
+
     def test_selects_outermost_call_return(self) -> None:
         self.assertEqual(
             _outer_return_address(
@@ -249,6 +290,25 @@ class RendererOutputTraceTests(unittest.TestCase):
         )
         self.assertFalse(artifact["consumer_chain_confirmed"])
         self.assertFalse(artifact["translation_build_eligible"])
+
+    def test_does_not_promote_unrelated_frame_output(self) -> None:
+        summary = _trace_summary()
+        summary["primary_renderer_entry_hit_count"] = 0
+        summary["primary_renderer_data_write_count"] = 0
+        summary["post_renderer_data_write_count"] = 0
+        artifact = build_renderer_output_trace(
+            target_sha256="1" * 64,
+            visible_roundtrip=_visible_roundtrip(),
+            selector_de=2,
+            entry_ordinal=147,
+            trace_summary=summary,
+            captured_utc="2026-07-30T06:00:00Z",
+        )
+        self.assertEqual(
+            artifact["status"],
+            "renderer-output-events-not-observed",
+        )
+        self.assertFalse(artifact["consumer_chain_confirmed"])
 
     def test_rejects_raw_or_extra_fields(self) -> None:
         artifact = build_renderer_output_trace(

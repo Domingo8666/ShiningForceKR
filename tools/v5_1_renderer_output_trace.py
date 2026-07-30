@@ -71,7 +71,7 @@ except ImportError:  # direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-renderer-output-trace"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 DEFAULT_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 VISIBLE_ROUNDTRIP_PATH = Path(
     "analysis/device/v5_1_latest_visible_script_roundtrip.json"
@@ -163,6 +163,7 @@ RENDERER_WINDOW_KEYS = {
     "primary_renderer_entry_hit_count",
     "primary_renderer_data_write_count",
     "primary_renderer_control_write_count",
+    "post_renderer_data_write_count",
 }
 _VDP_EVENT_LINE = re.compile(
     r"^\s*\[IO\]\s+OUT\s+Port:\$(?P<port>BE|BF)"
@@ -262,6 +263,7 @@ def validate_renderer_output_trace(value: dict[str, object]) -> None:
         ("primary_renderer_entry_hit_count", 0, 0x100000),
         ("primary_renderer_data_write_count", 0, 0x100000),
         ("primary_renderer_control_write_count", 0, 0x100000),
+        ("post_renderer_data_write_count", 0, 0x100000),
     ):
         if not _bounded_int(renderer[key], minimum, maximum):
             raise ValueError(f"renderer output {key} is invalid")
@@ -270,11 +272,14 @@ def validate_renderer_output_trace(value: dict[str, object]) -> None:
         > renderer["vdp_data_write_count"]
         or renderer["primary_renderer_control_write_count"]
         > renderer["vdp_control_write_count"]
+        or renderer["post_renderer_data_write_count"]
+        > renderer["vdp_data_write_count"]
     ):
         raise ValueError("renderer-attributed output counts exceed frame counts")
     observed = (
         renderer["primary_renderer_entry_hit_count"] > 0
-        and renderer["primary_renderer_data_write_count"] > 0
+        and renderer["primary_renderer_control_write_count"] > 0
+        and renderer["post_renderer_data_write_count"] > 0
     )
     if (
         value["consumer_chain_confirmed"] is not observed
@@ -366,10 +371,10 @@ def analyze_trace_lines(
 ) -> tuple[dict[str, int], dict[str, object]]:
     parsed_count = 0
     candidate_hits: list[int] = []
-    primary_renderer_entry_hits: list[int] = []
+    primary_renderer_entry_hits: list[dict[str, int]] = []
     outputs: list[dict[str, int]] = []
     io_events: list[dict[str, int]] = []
-    for line in lines:
+    for trace_index, line in enumerate(lines):
         event_match = _VDP_EVENT_LINE.search(line)
         if event_match is not None:
             io_events.append(
@@ -387,11 +392,14 @@ def analyze_trace_lines(
         if pc in DECODER_OUTPUT_CANDIDATES:
             candidate_hits.append(pc)
         if bank == PRIMARY_RENDERER_BANK and pc == PRIMARY_RENDERER_RANGES[0][0]:
-            primary_renderer_entry_hits.append(pc)
+            primary_renderer_entry_hits.append(
+                {"pc": pc, "trace_index": trace_index}
+            )
         output = _classify_vdp_output(parsed)
         if output is not None:
             output["pc"] = pc
             output["bank"] = bank
+            output["trace_index"] = trace_index
             outputs.append(output)
     instruction_data = [
         item for item in outputs if item["port"] == 0xBE
@@ -420,6 +428,35 @@ def analyze_trace_lines(
             for start, end in PRIMARY_RENDERER_RANGES
         )
     ]
+    first_primary_entry_index = min(
+        (
+            item["trace_index"]
+            for item in primary_renderer_entry_hits
+        ),
+        default=None,
+    )
+    first_primary_output_index = (
+        None
+        if first_primary_entry_index is None
+        else min(
+            (
+                item["trace_index"]
+                for item in primary_outputs
+                if item["port"] == 0xBF
+                and item["trace_index"] > first_primary_entry_index
+            ),
+            default=None,
+        )
+    )
+    post_renderer_data = (
+        []
+        if first_primary_output_index is None
+        else [
+            item
+            for item in instruction_data
+            if item["trace_index"] > first_primary_output_index
+        ]
+    )
     safe = {
         "trace_entries_observed": len(lines),
         "parsed_instruction_count": parsed_count,
@@ -436,6 +473,7 @@ def analyze_trace_lines(
         "primary_renderer_control_write_count": sum(
             item["port"] == 0xBF for item in primary_outputs
         ),
+        "post_renderer_data_write_count": len(post_renderer_data),
     }
     local = {
         "raw_trace_lines": lines,
@@ -463,7 +501,8 @@ def build_renderer_output_trace(
     assert isinstance(roundtrip, dict)
     observed = (
         trace_summary["primary_renderer_entry_hit_count"] > 0
-        and trace_summary["primary_renderer_data_write_count"] > 0
+        and trace_summary["primary_renderer_control_write_count"] > 0
+        and trace_summary["post_renderer_data_write_count"] > 0
     )
     safe: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
@@ -522,6 +561,9 @@ def build_renderer_output_trace(
             ],
             "primary_renderer_control_write_count": trace_summary[
                 "primary_renderer_control_write_count"
+            ],
+            "post_renderer_data_write_count": trace_summary[
+                "post_renderer_data_write_count"
             ],
         },
         "consumer_chain_confirmed": observed,
