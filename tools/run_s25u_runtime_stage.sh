@@ -42,6 +42,13 @@ decoder_selection_ready() {
   [ "$selection_ready" = "yes" ]
 }
 
+group_selection_ready() {
+  group_ready="$(
+    python -c 'import json; from pathlib import Path; from tools.patch_io import sha256_file; from tools.v5_1_test_display_capture import validate_display_capture; path=Path("analysis/device/v5_1_latest_display_capture.json"); target=Path("build/Final_Conflict_Korean_v5.1.gg"); value=json.loads(path.read_text(encoding="utf-8")); validate_display_capture(value); group=value.get("group_entry"); print("yes" if target.is_file() and value.get("baseline_target_sha256") == sha256_file(target) and isinstance(group, dict) and group.get("prefix_roundtrip_exact") is True and isinstance(group.get("entry_ordinal"), int) else "no")' 2>/dev/null || true
+  )"
+  [ "$group_ready" = "yes" ]
+}
+
 record_stage_failure() {
   python tools/v5_1_runtime_stage_failure.py \
     --stage "$1" \
@@ -57,7 +64,7 @@ if [ "$setup_status" -ne 0 ]; then
   stage_status="$setup_status"
   diagnostic_trigger=setup
 else
-  if decoder_selection_ready; then
+  if decoder_selection_ready || group_selection_ready; then
     echo "SFKR runtime stage: using the confirmed decoder stream."
   else
     python tools/run_s25u_runtime_probe.py
@@ -105,7 +112,7 @@ else
     comparison_attempt=1
     comparison_attempt_limit=8
     while [ "$comparison_attempt" -le "$comparison_attempt_limit" ]; do
-      if ! decoder_selection_ready; then
+      if ! decoder_selection_ready && ! group_selection_ready; then
         break
       fi
 

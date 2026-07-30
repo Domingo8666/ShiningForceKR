@@ -84,12 +84,15 @@ class S25UAutopilotTests(unittest.TestCase):
 
     def test_confirmed_stream_skips_redundant_runtime_research(self) -> None:
         self.assertIn("decoder_selection_ready()", RUNTIME_STAGE)
+        self.assertIn("group_selection_ready()", RUNTIME_STAGE)
         self.assertIn(
             "using the confirmed decoder stream",
             RUNTIME_STAGE,
         )
         self.assertLess(
-            RUNTIME_STAGE.index("if decoder_selection_ready; then"),
+            RUNTIME_STAGE.index(
+                "if decoder_selection_ready || group_selection_ready; then"
+            ),
             RUNTIME_STAGE.index("python tools/run_s25u_runtime_probe.py"),
         )
 
