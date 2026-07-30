@@ -467,12 +467,48 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
-    python tools/v5_1_source_target_section_projection.py --if-ready
+    source_target_section_projection_output="$(
+      python tools/v5_1_source_target_section_projection.py --if-ready 2>&1
+    )"
     source_target_section_projection_status=$?
+    printf '%s\n' "$source_target_section_projection_output"
     if [ "$source_target_section_projection_status" -ne 0 ]; then
       stage_status="$source_target_section_projection_status"
       diagnostic_trigger=probe
-      record_stage_failure source-target-section-projection
+      source_target_section_projection_failure_stage=source-target-section-projection
+      case "$source_target_section_projection_output" in
+        *"section projection identity disagrees"*)
+          source_target_section_projection_failure_stage=section-projection-identity
+          ;;
+        *"section projection anchor is not unique"*)
+          source_target_section_projection_failure_stage=section-projection-anchor
+          ;;
+        *"section projection target record is invalid"*|\
+        *"section projection target aliases are missing"*)
+          source_target_section_projection_failure_stage=section-projection-target
+          ;;
+        *"section projection source section is invalid"*|\
+        *"section projection source annotations are missing"*|\
+        *"section projection source line is invalid"*)
+          source_target_section_projection_failure_stage=section-projection-source
+          ;;
+        *"section projection target quality tier is invalid"*)
+          source_target_section_projection_failure_stage=section-projection-tier
+          ;;
+        *"section projection source speaker is invalid"*)
+          source_target_section_projection_failure_stage=section-projection-speaker
+          ;;
+        *"section projection local inputs are missing"*|\
+        *"source-target section projection input is missing"*)
+          source_target_section_projection_failure_stage=section-projection-input
+          ;;
+        *"section projection result is inconsistent"*|\
+        *"section projection counts do not match"*|\
+        *"section projection policy is invalid"*)
+          source_target_section_projection_failure_stage=section-projection-validation
+          ;;
+      esac
+      record_stage_failure "$source_target_section_projection_failure_stage"
     fi
   fi
 

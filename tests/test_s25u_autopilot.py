@@ -4,6 +4,7 @@ import re
 import unittest
 from pathlib import Path
 
+from tools.run_s25u_runtime_probe import RUNTIME_FAILURE_STAGES
 from tools.v5_1_runtime_bundle import SAFE_ARTIFACTS, SAFE_BINARY_ARTIFACTS
 
 
@@ -191,6 +192,16 @@ class S25UAutopilotTests(unittest.TestCase):
             "confirmed-group-unicode",
         ):
             self.assertIn(f"record_stage_failure {stage}", RUNTIME_STAGE)
+
+    def test_every_literal_runtime_failure_stage_has_a_safe_token(self) -> None:
+        literal_stages = set(
+            re.findall(
+                r"record_stage_failure ([a-z0-9-]+)",
+                RUNTIME_STAGE,
+            )
+        )
+        self.assertTrue(literal_stages)
+        self.assertLessEqual(literal_stages, RUNTIME_FAILURE_STAGES)
 
     def test_runtime_stage_prepares_the_verified_local_font_catalog(self) -> None:
         self.assertIn("visible_font_catalog_ready()", RUNTIME_STAGE)
