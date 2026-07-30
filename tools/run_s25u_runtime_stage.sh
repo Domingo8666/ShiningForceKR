@@ -389,6 +389,20 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    if [ -n "$source_rom" ]; then
+      python tools/v5_1_source_group_codec_probe.py \
+        --source-rom "$source_rom" \
+        --if-ready
+      source_group_codec_probe_status=$?
+      if [ "$source_group_codec_probe_status" -ne 0 ]; then
+        stage_status="$source_group_codec_probe_status"
+        diagnostic_trigger=probe
+        record_stage_failure source-group-codec-probe
+      fi
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_group_text_candidate_resolution.py --if-ready
     group_text_candidate_status=$?
     if [ "$group_text_candidate_status" -ne 0 ]; then

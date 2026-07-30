@@ -227,6 +227,7 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_group_context_resolution.json|\
     analysis/device/v5_1_latest_group_runtime_context.json|\
     analysis/device/v5_1_latest_group_source_delta.json|\
+    analysis/device/v5_1_latest_source_group_codec_probe.json|\
     analysis/device/v5_1_latest_group_text_candidate_resolution.json|\
     analysis/device/v5_1_latest_unmatched_glyph_fuzzy.json|\
     analysis/device/v5_1_latest_group_script_corpus.json|\
