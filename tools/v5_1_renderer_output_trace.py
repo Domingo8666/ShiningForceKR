@@ -21,8 +21,10 @@ try:
         McpStdioClient,
         _capture_state,
         _default_command,
+        _runtime_failure_receipt,
         _step_frames_and_wait,
         _step_instruction_and_wait,
+        _write_runtime_failure_receipt,
     )
     from .v5_1_runtime_hit_resolver import _parse_trace_line
     from .v5_1_test_display_capture import (
@@ -42,8 +44,10 @@ except ImportError:  # direct script execution
         McpStdioClient,
         _capture_state,
         _default_command,
+        _runtime_failure_receipt,
         _step_frames_and_wait,
         _step_instruction_and_wait,
+        _write_runtime_failure_receipt,
     )
     from v5_1_runtime_hit_resolver import _parse_trace_line
     from v5_1_test_display_capture import (
@@ -75,9 +79,9 @@ PUBLISH_RELATIVE_PATH = Path(
 DECODER_REGISTER_TRACE_PATH = Path(
     "analysis/device/v5_1_latest_decoder_register_trace.json"
 )
-TRACE_WINDOW_FRAMES = 1
-TRACE_REQUEST_COUNT = 4096
-TRACE_FALLBACK_COUNT = 256
+TRACE_PAGE_SIZE = 1000
+TRACE_BUFFER_SIZE = 100000
+TRACE_RETURN_TIMEOUT_SECONDS = 15.0
 ROUTE_TIMEOUT_SECONDS = 30.0
 DECODER_OUTPUT_CANDIDATES = {
     0x3411,
@@ -136,7 +140,7 @@ DECODER_WINDOW_KEYS = {
     "unique_candidate_entry_count",
 }
 RENDERER_WINDOW_KEYS = {
-    "frames_observed",
+    "bounded_return_windows",
     "trace_entries_observed",
     "parsed_instruction_count",
     "vdp_data_write_count",
@@ -145,7 +149,8 @@ RENDERER_WINDOW_KEYS = {
     "unique_output_pattern_count",
 }
 _VDP_EVENT_LINE = re.compile(
-    r"\bVDP\b.*\b(?:write|port)\b|\b(?:OUT|port)\b.*\b(?:BE|BF)\b",
+    r"^\s*\[IO\]\s+OUT\s+Port:\$(?P<port>BE|BF)"
+    r"\s+Value:\$(?P<value>[0-9A-Fa-f]{2})\s*$",
     re.IGNORECASE,
 )
 
@@ -231,7 +236,7 @@ def validate_renderer_output_trace(value: dict[str, object]) -> None:
     if not isinstance(renderer, dict) or set(renderer) != RENDERER_WINDOW_KEYS:
         raise ValueError("renderer output renderer fields do not match")
     for key, minimum, maximum in (
-        ("frames_observed", 1, 16),
+        ("bounded_return_windows", 1, 16),
         ("trace_entries_observed", 0, 0x100000),
         ("parsed_instruction_count", 0, 0x100000),
         ("vdp_data_write_count", 0, 0x100000),
@@ -241,10 +246,7 @@ def validate_renderer_output_trace(value: dict[str, object]) -> None:
     ):
         if not _bounded_int(renderer[key], minimum, maximum):
             raise ValueError(f"renderer output {key} is invalid")
-    observed = (
-        renderer["vdp_data_write_count"] > 0
-        or renderer["vdp_event_line_count"] > 0
-    )
+    observed = renderer["vdp_data_write_count"] > 0
     if (
         value["consumer_chain_confirmed"] is not observed
         or (
@@ -323,10 +325,16 @@ def analyze_trace_lines(
     parsed_count = 0
     candidate_hits: list[int] = []
     outputs: list[dict[str, int]] = []
-    event_line_count = 0
+    io_events: list[dict[str, int]] = []
     for line in lines:
-        if _VDP_EVENT_LINE.search(line):
-            event_line_count += 1
+        event_match = _VDP_EVENT_LINE.search(line)
+        if event_match is not None:
+            io_events.append(
+                {
+                    "port": int(event_match.group("port"), 16),
+                    "value": int(event_match.group("value"), 16),
+                }
+            )
         parsed = _parse_trace_line(line)
         if parsed is None:
             continue
@@ -339,8 +347,20 @@ def analyze_trace_lines(
             output["pc"] = pc
             output["bank"] = int(parsed["bank"])
             outputs.append(output)
-    data = [item for item in outputs if item["port"] == 0xBE]
-    control = [item for item in outputs if item["port"] == 0xBF]
+    instruction_data = [
+        item for item in outputs if item["port"] == 0xBE
+    ]
+    instruction_control = [
+        item for item in outputs if item["port"] == 0xBF
+    ]
+    event_data = [
+        item for item in io_events if item["port"] == 0xBE
+    ]
+    event_control = [
+        item for item in io_events if item["port"] == 0xBF
+    ]
+    data = event_data if io_events else instruction_data
+    control = event_control if io_events else instruction_control
     patterns = {
         (item["bank"], item["pc"], item["port"])
         for item in outputs
@@ -350,7 +370,7 @@ def analyze_trace_lines(
         "parsed_instruction_count": parsed_count,
         "vdp_data_write_count": len(data),
         "vdp_control_write_count": len(control),
-        "vdp_event_line_count": event_line_count,
+        "vdp_event_line_count": len(io_events),
         "unique_output_pattern_count": len(patterns),
         "candidate_entry_hit_count": len(candidate_hits),
         "unique_candidate_entry_count": len(set(candidate_hits)),
@@ -359,6 +379,7 @@ def analyze_trace_lines(
         "raw_trace_lines": lines,
         "candidate_entry_hits": candidate_hits,
         "vdp_outputs": outputs,
+        "vdp_io_events": io_events,
     }
     return safe, local
 
@@ -377,10 +398,7 @@ def build_renderer_output_trace(
     roundtrip = visible_roundtrip["roundtrip"]
     assert isinstance(runtime, dict)
     assert isinstance(roundtrip, dict)
-    observed = (
-        trace_summary["vdp_data_write_count"] > 0
-        or trace_summary["vdp_event_line_count"] > 0
-    )
+    observed = trace_summary["vdp_data_write_count"] > 0
     safe: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
@@ -411,7 +429,7 @@ def build_renderer_output_trace(
             ],
         },
         "renderer_window": {
-            "frames_observed": TRACE_WINDOW_FRAMES,
+            "bounded_return_windows": 1,
             "trace_entries_observed": trace_summary[
                 "trace_entries_observed"
             ],
@@ -480,6 +498,161 @@ def _registers(state: dict[str, object]) -> dict[str, int]:
         for key, item in value.items()
         if isinstance(item, int) and not isinstance(item, bool)
     }
+
+
+def _parse_hex_word(value: object, field: str) -> int:
+    if not isinstance(value, str):
+        raise RuntimeError(f"Gearsystem call stack {field} is not a string")
+    normalized = value.removeprefix("$").removeprefix("0x")
+    if re.fullmatch(r"[0-9A-Fa-f]{1,4}", normalized) is None:
+        raise RuntimeError(f"Gearsystem call stack {field} is invalid")
+    return int(normalized, 16)
+
+
+def _outer_return_address(
+    call_stack: dict[str, object],
+    *,
+    current_pc: int,
+) -> int:
+    stack = call_stack.get("stack")
+    if not isinstance(stack, list) or len(stack) < 2:
+        raise RuntimeError("renderer output call stack is too shallow")
+    # Gearsystem emits the innermost frame first.  The last frame therefore
+    # returns only after the complete outer text consumer has finished.
+    outer = stack[-1]
+    if not isinstance(outer, dict):
+        raise RuntimeError("renderer output outer call frame is invalid")
+    address = _parse_hex_word(outer.get("return"), "return")
+    if address == current_pc:
+        raise RuntimeError("renderer output return breakpoint equals current PC")
+    return address
+
+
+def _read_trace_window(
+    client: McpStdioClient,
+    *,
+    start: int,
+    end: int,
+) -> tuple[list[str], list[dict[str, object]]]:
+    if not 0 <= start <= end <= TRACE_BUFFER_SIZE:
+        raise RuntimeError("renderer output trace window is outside the buffer")
+    lines: list[str] = []
+    pages: list[dict[str, object]] = []
+    cursor = start
+    while cursor < end:
+        requested = min(TRACE_PAGE_SIZE, end - cursor)
+        payload = client.call(
+            "get_trace_log",
+            {"start": cursor, "count": requested},
+        )
+        page_lines = payload.get("lines")
+        if not isinstance(page_lines, list) or not all(
+            isinstance(line, str) for line in page_lines
+        ):
+            raise RuntimeError("Gearsystem returned an invalid trace page")
+        actual_start = int(payload.get("start", -1))
+        actual_count = int(payload.get("count", -1))
+        if (
+            actual_start != cursor
+            or actual_count != len(page_lines)
+            or actual_count <= 0
+            or actual_count > requested
+        ):
+            raise RuntimeError("Gearsystem trace page bounds disagree")
+        lines.extend(page_lines)
+        pages.append(
+            {
+                "start": actual_start,
+                "count": actual_count,
+                "total_entries": int(payload.get("total_entries", -1)),
+            }
+        )
+        cursor += actual_count
+    return lines, pages
+
+
+def _trace_to_outer_return(
+    client: McpStdioClient,
+    *,
+    ready_state: dict[str, object],
+) -> tuple[list[str], dict[str, object]]:
+    call_stack = client.call("get_call_stack")
+    return_address = _outer_return_address(
+        call_stack,
+        current_pc=int(ready_state["pc_after"]),
+    )
+    return_armed = False
+    fast_forward = False
+    trace_enabled = False
+    trace_start = 0
+    trace_end = 0
+    try:
+        _set_execute_breakpoint(client, return_address)
+        return_armed = True
+        started = client.call(
+            "set_trace_log",
+            {
+                "enabled": True,
+                "cpu_irq": False,
+                "vdp_write": True,
+                "vdp_status": False,
+                "psg": False,
+                "ym2413": False,
+                "io_port": True,
+                "bank_switch": True,
+            },
+        )
+        trace_enabled = True
+        trace_start = int(started.get("total_entries", -1))
+        if not 0 <= trace_start <= TRACE_BUFFER_SIZE:
+            raise RuntimeError("Gearsystem trace start count is invalid")
+        _set_unlimited_fast_forward(client, True)
+        fast_forward = True
+        status = _continue_until_breakpoint(
+            client,
+            TRACE_RETURN_TIMEOUT_SECONDS,
+        )
+        if (
+            status.get("at_breakpoint") is not True
+            or _parse_hex_word(status.get("pc"), "pc") != return_address
+        ):
+            raise RuntimeError("outer renderer return was not reached")
+        _set_unlimited_fast_forward(client, False)
+        fast_forward = False
+        stopped = client.call("set_trace_log", {"enabled": False})
+        trace_enabled = False
+        trace_end = int(stopped.get("total_entries", -1))
+        if trace_end < trace_start:
+            raise RuntimeError("Gearsystem trace buffer wrapped")
+        lines, pages = _read_trace_window(
+            client,
+            start=trace_start,
+            end=trace_end,
+        )
+        local = {
+            "call_stack": call_stack,
+            "outer_return_address": return_address,
+            "trace_start": trace_start,
+            "trace_end": trace_end,
+            "trace_pages": pages,
+        }
+        return lines, local
+    finally:
+        if fast_forward:
+            try:
+                _set_unlimited_fast_forward(client, False)
+            except Exception:
+                pass
+        if trace_enabled:
+            try:
+                client.call("set_trace_log", {"enabled": False})
+            except Exception:
+                pass
+        if return_armed:
+            try:
+                _remove_breakpoint(client, return_address)
+            except Exception:
+                pass
 
 
 def _reach_exact_payload(
@@ -650,12 +823,15 @@ def main() -> int:
     client = McpStdioClient(_default_command())
     selected_state: dict[str, object] | None = None
     ready_state: dict[str, object] | None = None
-    trace_payload: dict[str, object] = {}
+    trace_lines: list[str] = []
+    local_trace_window: dict[str, object] = {}
+    runtime_stage = "renderer-output-mcp-initialize"
     try:
         tools = client.initialize()
         missing = sorted(REQUIRED_TOOLS - tools)
         if missing:
             raise RuntimeError(f"Gearsystem MCP tools missing: {missing}")
+        runtime_stage = "renderer-output-load-media"
         client.call("load_media", {"file_path": str(rom_path)})
         media = client.call("get_media_info")
         if (
@@ -667,6 +843,7 @@ def main() -> int:
         client.call("debug_reset")
         client.call("debug_pause")
         client.call("set_trace_log", {"enabled": False})
+        runtime_stage = "renderer-output-route-selection"
         selected_state, ready_state = _reach_exact_payload(
             client,
             selector_de=selector_de,
@@ -674,40 +851,20 @@ def main() -> int:
             logical_start=int(runtime["logical_start"]),
             mapped_bank=int(runtime["mapped_bank"]),
         )
-        client.call(
-            "set_trace_log",
-            {
-                "enabled": True,
-                "cpu_irq": False,
-                "vdp_write": True,
-                "vdp_status": False,
-                "psg": False,
-                "ym2413": False,
-                "io_port": True,
-                "bank_switch": True,
-            },
+        runtime_stage = "renderer-output-trace-run"
+        trace_lines, local_trace_window = _trace_to_outer_return(
+            client,
+            ready_state=ready_state,
         )
-        _step_frames_and_wait(client, TRACE_WINDOW_FRAMES)
-        try:
-            trace_payload = client.call(
-                "get_trace_log",
-                {"count": TRACE_REQUEST_COUNT},
-            )
-        except Exception:
-            trace_payload = client.call(
-                "get_trace_log",
-                {"count": TRACE_FALLBACK_COUNT},
-            )
-        client.call("set_trace_log", {"enabled": False})
+    except Exception as error:
+        receipt = _runtime_failure_receipt(runtime_stage, error, client)
+        _write_runtime_failure_receipt(root, receipt)
+        raise
     finally:
         client.close()
 
-    raw_lines = trace_payload.get("lines", [])
-    if not isinstance(raw_lines, list) or not all(
-        isinstance(line, str) for line in raw_lines
-    ):
-        raise RuntimeError("Gearsystem returned an invalid trace log")
-    trace_summary, local_trace = analyze_trace_lines(raw_lines)
+    runtime_stage = "renderer-output-artifact"
+    trace_summary, local_trace = analyze_trace_lines(trace_lines)
     captured_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     safe = build_renderer_output_trace(
         target_sha256=target_sha256,
@@ -726,7 +883,7 @@ def main() -> int:
         "expected_symbols_hex": local_visible.get("symbols_hex"),
         "selected_state": selected_state,
         "ready_state": ready_state,
-        "trace_payload": trace_payload,
+        "trace_window": local_trace_window,
         "trace_analysis": local_trace,
         "publication_policy": (
             "never-publish-symbols-opcodes-values-or-raw-trace"

@@ -9,10 +9,34 @@ if str(ROOT) not in sys.path:
 
 from tools.v5_1_renderer_output_trace import (  # noqa: E402
     _classify_vdp_output,
+    _outer_return_address,
+    _read_trace_window,
     analyze_trace_lines,
     build_renderer_output_trace,
     validate_renderer_output_trace,
 )
+
+
+class _TracePageClient:
+    def __init__(self, lines: list[str]) -> None:
+        self.lines = lines
+        self.calls: list[tuple[str, dict[str, object]]] = []
+
+    def call(
+        self,
+        name: str,
+        arguments: dict[str, object],
+    ) -> dict[str, object]:
+        self.calls.append((name, arguments))
+        start = int(arguments["start"])
+        count = int(arguments["count"])
+        page = self.lines[start : start + count]
+        return {
+            "total_entries": len(self.lines),
+            "start": start,
+            "count": len(page),
+            "lines": page,
+        }
 
 
 def _visible_roundtrip() -> dict[str, object]:
@@ -116,6 +140,46 @@ class RendererOutputTraceTests(unittest.TestCase):
         self.assertEqual(summary["candidate_entry_hit_count"], 1)
         self.assertNotIn("vdp_outputs", summary)
         self.assertEqual(local["vdp_outputs"][0]["value"], 0x42)
+
+    def test_prefers_exact_io_events_without_double_counting(self) -> None:
+        summary, local = analyze_trace_lines(
+            [
+                (
+                    "00:3411 A:42 BC:0000 DE:0000 HL:0000 SP:D000  "
+                    "D3 BE"
+                ),
+                "  [IO]   OUT     Port:$BE  Value:$42",
+                "  [IO]   OUT     Port:$BF  Value:$80",
+            ]
+        )
+        self.assertEqual(summary["vdp_data_write_count"], 1)
+        self.assertEqual(summary["vdp_control_write_count"], 1)
+        self.assertEqual(summary["vdp_event_line_count"], 2)
+        self.assertEqual(len(local["vdp_io_events"]), 2)
+
+    def test_selects_outermost_call_return(self) -> None:
+        self.assertEqual(
+            _outer_return_address(
+                {
+                    "stack": [
+                        {"return": "$402A"},
+                        {"return": "$1234"},
+                    ]
+                },
+                current_pc=0x340C,
+            ),
+            0x1234,
+        )
+
+    def test_reads_trace_in_api_sized_pages(self) -> None:
+        client = _TracePageClient([f"line-{index}" for index in range(2205)])
+        lines, pages = _read_trace_window(client, start=100, end=2205)
+        self.assertEqual(len(lines), 2105)
+        self.assertEqual([page["count"] for page in pages], [1000, 1000, 105])
+        self.assertEqual(
+            [int(arguments["count"]) for _, arguments in client.calls],
+            [1000, 1000, 105],
+        )
 
     def test_validates_captured_safe_artifact(self) -> None:
         artifact = build_renderer_output_trace(
