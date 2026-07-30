@@ -71,7 +71,8 @@ except ImportError:  # direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-test-display-capture"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+LEGACY_SCHEMA_VERSION = 1
 DEFAULT_TEST_ROM = Path("build/Final_Conflict_Korean_test_phrase.gg")
 DEFAULT_BASELINE_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 DEFAULT_BUILD_REPORT = Path("reports/local/v5_1_test_patch_build.json")
@@ -128,6 +129,16 @@ TOP_LEVEL_KEYS = {
     "translation_build_eligible",
     "next_checkpoint",
 }
+TOP_LEVEL_KEYS_V2 = TOP_LEVEL_KEYS | {"entry_selector"}
+ENTRY_SELECTOR_KEYS = {
+    "lookup_table_base",
+    "selector_offset",
+    "entry_index",
+    "pointer_address",
+    "next_pointer_address",
+    "target_offset_within_entry",
+    "pointer_bounds_target",
+}
 CAPTURE_STATUSES = {
     "capture-ready-human-review-required",
     "runtime-target-read-not-observed",
@@ -140,11 +151,17 @@ def _is_sha256(value: object) -> bool:
 
 
 def validate_display_capture(capture: dict[str, object]) -> None:
-    if set(capture) != TOP_LEVEL_KEYS:
+    schema_version = capture.get("schema_version")
+    expected_keys = (
+        TOP_LEVEL_KEYS_V2
+        if schema_version == SCHEMA_VERSION
+        else TOP_LEVEL_KEYS
+    )
+    if set(capture) != expected_keys:
         raise ValueError("display capture top-level fields do not match")
     if capture["artifact_kind"] != ARTIFACT_KIND:
         raise ValueError("unexpected display capture artifact kind")
-    if capture["schema_version"] != SCHEMA_VERSION:
+    if schema_version not in {LEGACY_SCHEMA_VERSION, SCHEMA_VERSION}:
         raise ValueError("unexpected display capture schema version")
     if capture["status"] not in CAPTURE_STATUSES:
         raise ValueError("unexpected display capture status")
@@ -203,6 +220,39 @@ def validate_display_capture(capture: dict[str, object]) -> None:
         raise ValueError("target_read confirmed must be boolean")
     if confirmed != (mapped_bank == target_read["expected_bank"]):
         raise ValueError("target_read confirmation and mapper bank disagree")
+
+    if schema_version == SCHEMA_VERSION:
+        selector = capture["entry_selector"]
+        if selector is not None:
+            if not isinstance(selector, dict) or set(selector) != ENTRY_SELECTOR_KEYS:
+                raise ValueError("entry_selector fields do not match")
+            for key in (
+                "lookup_table_base",
+                "selector_offset",
+                "entry_index",
+                "pointer_address",
+                "next_pointer_address",
+                "target_offset_within_entry",
+            ):
+                value = selector[key]
+                if not isinstance(value, int) or isinstance(value, bool):
+                    raise ValueError(f"entry_selector {key} must be an integer")
+            if (
+                selector["lookup_table_base"] != 0x3FE8
+                or not 0 <= selector["selector_offset"] <= 0x16
+                or selector["selector_offset"] % 2
+                or selector["entry_index"] * 2 != selector["selector_offset"]
+                or selector["pointer_address"]
+                + selector["target_offset_within_entry"]
+                != target_read["logical_access"]
+                or selector["pointer_address"] > target_read["logical_access"]
+                or selector["next_pointer_address"]
+                <= target_read["logical_access"]
+                or selector["pointer_bounds_target"] is not True
+            ):
+                raise ValueError("entry_selector evidence is inconsistent")
+            if not confirmed:
+                raise ValueError("entry_selector requires a confirmed target read")
 
     captures = capture["captures"]
     if not isinstance(captures, list):
@@ -402,6 +452,7 @@ def _build_safe_capture(
     mapped_bank: int | None,
     captures: list[dict[str, object]],
     post_advance_capture: dict[str, object] | None,
+    entry_selector: dict[str, object] | None = None,
 ) -> dict[str, object]:
     target_read = resolution["target_read"]
     assert isinstance(target_read, dict)
@@ -431,6 +482,7 @@ def _build_safe_capture(
             "mapped_bank": mapped_bank,
             "confirmed": confirmed,
         },
+        "entry_selector": entry_selector,
         "captures": captures,
         "post_advance_capture": post_advance_capture,
         "visual_review": {
@@ -641,6 +693,63 @@ def _write_human_review_bundle(
         ).encode("utf-8"),
     )
     return baseline_path, test_path, post_path, readme_path
+
+
+def _resolve_entry_selector(
+    *,
+    local_capture: dict[str, object],
+    baseline_rom: bytes,
+    target_read: dict[str, object],
+) -> dict[str, object] | None:
+    if (
+        int(target_read.get("instruction_bank", -1)) != 0
+        or int(target_read.get("instruction_pc", -1)) != 0x3406
+        or int(target_read.get("slot", -1)) != 1
+    ):
+        return None
+    state = local_capture.get("target_hit")
+    if not isinstance(state, dict):
+        return None
+    registers = state.get("registers")
+    if not isinstance(registers, dict):
+        return None
+    selector_offset = registers.get("de")
+    if (
+        not isinstance(selector_offset, int)
+        or isinstance(selector_offset, bool)
+        or not 0 <= selector_offset <= 0x16
+        or selector_offset % 2
+    ):
+        raise PatchError("decoder entry selector offset is invalid")
+    lookup_table_base = 0x3FE8
+    pointer_offset = lookup_table_base + selector_offset
+    if pointer_offset + 2 > len(baseline_rom):
+        raise PatchError("decoder entry selector is outside the baseline ROM")
+    pointer_address = int.from_bytes(
+        baseline_rom[pointer_offset : pointer_offset + 2],
+        "little",
+    )
+    expected_address = int(target_read["logical_access"])
+    next_pointer_offset = pointer_offset + 2
+    if next_pointer_offset + 2 > 0x4000:
+        raise PatchError("decoder entry selector has no bounded next entry")
+    next_pointer_address = int.from_bytes(
+        baseline_rom[next_pointer_offset : next_pointer_offset + 2],
+        "little",
+    )
+    if not (
+        0x4000 <= pointer_address <= expected_address < next_pointer_address <= 0x7FFF
+    ):
+        raise PatchError("decoder entry selector does not bound the target stream")
+    return {
+        "lookup_table_base": lookup_table_base,
+        "selector_offset": selector_offset,
+        "entry_index": selector_offset // 2,
+        "pointer_address": pointer_address,
+        "next_pointer_address": next_pointer_address,
+        "target_offset_within_entry": expected_address - pointer_address,
+        "pointer_bounds_target": True,
+    }
 
 
 def _target_hit_matches(
@@ -1014,6 +1123,19 @@ def main() -> int:
         ),
     )
     comparison_path = write_display_comparison(root, comparison)
+    baseline_rom = baseline_rom_path.read_bytes()
+    baseline_entry_selector = _resolve_entry_selector(
+        local_capture=baseline_local,
+        baseline_rom=baseline_rom,
+        target_read=resolution["target_read"],
+    )
+    test_entry_selector = _resolve_entry_selector(
+        local_capture=test_local,
+        baseline_rom=baseline_rom,
+        target_read=resolution["target_read"],
+    )
+    if baseline_entry_selector != test_entry_selector:
+        raise PatchError("baseline and test decoder entry selectors disagree")
     _write_human_review_bundle(
         comparison,
         baseline_local=baseline_local,
@@ -1055,6 +1177,7 @@ def main() -> int:
         mapped_bank=mapped_bank,
         captures=captures,
         post_advance_capture=post_advance_capture,
+        entry_selector=test_entry_selector,
     )
     safe_path = root / PUBLISH_RELATIVE_PATH
     _write_json(safe_path, safe)

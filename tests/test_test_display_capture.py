@@ -15,6 +15,7 @@ from tools.v5_1_test_display_capture import (
     _next_step_text,
     _paired_pixel_comparisons,
     _parse_screenshot,
+    _resolve_entry_selector,
     _target_hit_matches,
     validate_display_capture,
 )
@@ -142,6 +143,76 @@ class TestDisplayCaptureTests(unittest.TestCase):
         self.assertTrue(capture["target_read"]["confirmed"])
         self.assertIsNone(capture["visual_review"]["result"])
         self.assertFalse(capture["translation_build_eligible"])
+        validate_display_capture(capture)
+        self.assertEqual(capture["schema_version"], 2)
+        self.assertIsNone(capture["entry_selector"])
+
+    def test_decoder_entry_selector_is_bound_to_the_runtime_target(self) -> None:
+        baseline = bytearray(0x5000)
+        baseline[0x3FEA:0x3FEC] = (0x43DE).to_bytes(2, "little")
+        baseline[0x3FEC:0x3FEE] = (0x4863).to_bytes(2, "little")
+        selector = _resolve_entry_selector(
+            local_capture={
+                "target_hit": {
+                    "registers": {
+                        "de": 2,
+                    }
+                }
+            },
+            baseline_rom=bytes(baseline),
+            target_read={
+                "slot": 1,
+                "logical_access": 0x44B1,
+                "instruction_bank": 0,
+                "instruction_pc": 0x3406,
+            },
+        )
+        self.assertEqual(
+            selector,
+            {
+                "lookup_table_base": 0x3FE8,
+                "selector_offset": 2,
+                "entry_index": 1,
+                "pointer_address": 0x43DE,
+                "next_pointer_address": 0x4863,
+                "target_offset_within_entry": 0xD3,
+                "pointer_bounds_target": True,
+            },
+        )
+
+    def test_decoder_entry_selector_rejects_a_wrong_pointer(self) -> None:
+        baseline = bytearray(0x5000)
+        baseline[0x3FEA:0x3FEC] = (0x4500).to_bytes(2, "little")
+        baseline[0x3FEC:0x3FEE] = (0x4863).to_bytes(2, "little")
+        with self.assertRaisesRegex(PatchError, "does not bound"):
+            _resolve_entry_selector(
+                local_capture={
+                    "target_hit": {
+                        "registers": {
+                            "de": 2,
+                        }
+                    }
+                },
+                baseline_rom=bytes(baseline),
+                target_read={
+                    "slot": 1,
+                    "logical_access": 0x44B1,
+                    "instruction_bank": 0,
+                    "instruction_pc": 0x3406,
+                },
+            )
+
+    def test_schema_one_display_capture_remains_valid_during_upgrade(self) -> None:
+        capture = _build_safe_capture(
+            build_report=build_report(),
+            resolution=resolution(),
+            emulator_version="3.9.14",
+            mapped_bank=None,
+            captures=[],
+            post_advance_capture=None,
+        )
+        capture["schema_version"] = 1
+        capture.pop("entry_selector")
         validate_display_capture(capture)
 
     def test_missing_runtime_read_does_not_claim_capture_success(self) -> None:
