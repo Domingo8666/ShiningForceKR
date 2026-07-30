@@ -1,27 +1,29 @@
 {
   "artifact_kind": "sanitized-v5-1-visible-unicode-mapping",
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "visible-glyph-map-incomplete",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "captured_utc": "2026-07-30T12:01:42.830361Z",
+  "captured_utc": "2026-07-30T12:15:04.902719Z",
   "runtime_entry": {
-    "logical_start": 18707,
+    "physical_start": 133395,
     "record_length_bytes": 16,
     "mapped_bank": 8,
-    "physical_start": 133395
+    "logical_start": 18707
   },
   "mapping": {
     "decoded_symbol_count": 19,
+    "initial_page": 0,
+    "implicit_initial_page_used": true,
     "page_select_count": 0,
-    "visible_glyph_count": 0,
-    "unique_glyph_count": 0,
+    "visible_glyph_count": 18,
+    "unique_glyph_count": 14,
     "ambiguous_glyph_count": 0,
-    "unmatched_glyph_count": 0,
-    "control_symbol_count": 19,
+    "unmatched_glyph_count": 4,
+    "control_symbol_count": 1,
     "terminator_count": 1
   },
   "renderer_chain_confirmed": true,
   "local_payload_policy": "symbols-codepoints-characters-and-text-local-only",
   "translation_build_eligible": false,
-  "next_checkpoint": "extract-full-script-record-set"
+  "next_checkpoint": "classify-visible-symbol-stream"
 }
