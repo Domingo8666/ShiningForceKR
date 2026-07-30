@@ -1566,42 +1566,45 @@ def _capture_display(
                                 _step_instruction_and_wait(client)
                             arm_endpoint_breakpoint()
                             status = _step_frames_and_wait(client, 1)
-                            if status.get("at_breakpoint") is True:
-                                endpoint_state, endpoint_evidence = (
-                                    _capture_state(client)
+                            if status.get("at_breakpoint") is not True:
+                                raise RuntimeError(
+                                    "decoder skip endpoint was not reached"
                                 )
-                                if _decoder_skip_endpoint_matches(
-                                    endpoint_state,
-                                    target_read,
-                                ):
-                                    local["skip_endpoint_hit"] = endpoint_state
-                                    disarm_endpoint_breakpoint()
-                                    _step_instruction_and_wait(client)
-                                    ready_state, ready_evidence = _capture_state(
-                                        client
-                                    )
-                                    if _decoder_payload_ready_matches(
-                                        ready_state,
-                                        target_read,
-                                    ):
-                                        mapped_bank = int(
-                                            ready_state[f"slot{slot}_bank"]
-                                        )
-                                        local["observed_logical_access"] = (
-                                            logical_access
-                                        )
-                                        local["target_hit"] = ready_state
-                                        local["target_hit_evidence"] = (
-                                            ready_evidence
-                                        )
-                                        local["skip_endpoint_hit_evidence"] = (
-                                            endpoint_evidence
-                                        )
-                                        local["confirmation_basis"] = (
-                                            "decoder-selection-endpoint"
-                                        )
-                                        target_found = True
-                                        break
+                            endpoint_state, endpoint_evidence = _capture_state(
+                                client
+                            )
+                            if not _decoder_skip_endpoint_matches(
+                                endpoint_state,
+                                target_read,
+                            ):
+                                raise RuntimeError(
+                                    "decoder skip endpoint registers disagree"
+                                )
+                            local["skip_endpoint_hit"] = endpoint_state
+                            disarm_endpoint_breakpoint()
+                            _step_instruction_and_wait(client)
+                            ready_state, ready_evidence = _capture_state(client)
+                            if not _decoder_payload_ready_matches(
+                                ready_state,
+                                target_read,
+                            ):
+                                raise RuntimeError(
+                                    "decoder payload handoff registers disagree"
+                                )
+                            mapped_bank = int(
+                                ready_state[f"slot{slot}_bank"]
+                            )
+                            local["observed_logical_access"] = logical_access
+                            local["target_hit"] = ready_state
+                            local["target_hit_evidence"] = ready_evidence
+                            local["skip_endpoint_hit_evidence"] = (
+                                endpoint_evidence
+                            )
+                            local["confirmation_basis"] = (
+                                "decoder-selection-endpoint"
+                            )
+                            target_found = True
+                            break
                     else:
                         disarm_entry_breakpoint()
                         _step_instruction_and_wait(client)
@@ -1950,6 +1953,85 @@ def main() -> int:
         )
         else None
     )
+    if expected_entry_ordinal is not None:
+        _CURRENT_FAILURE_STAGE = "test-progress-display-capture"
+        (
+            emulator_version,
+            mapped_bank,
+            captures,
+            post_advance_capture,
+            test_local,
+        ) = _capture_display(
+            rom_path=rom_path,
+            rom_size=rom_path.stat().st_size,
+            target_read=resolution["target_read"],
+            expected_selector_offset=expected_selector_offset,
+            expected_entry_ordinal=expected_entry_ordinal,
+            evidence_dir=evidence_dir / "test",
+            failure_stage="test-progress-display-capture",
+            schedule=capture_schedule,
+        )
+        observed_test_access = test_local.get("observed_logical_access")
+        if mapped_bank == int(resolution["target_read"]["expected_bank"]):
+            if not isinstance(observed_test_access, int):
+                raise PatchError(
+                    "confirmed payload handoff has no logical address"
+                )
+            resolution["target_read"]["logical_access"] = observed_test_access
+            resolution["target_read"]["physical_target_byte"] = (
+                int(resolution["target_read"]["expected_bank"]) * 0x4000
+                + (observed_test_access & 0x3FFF)
+            )
+        local = {
+            "artifact_kind": "s25u-local-test-progress-display-capture",
+            "schema_version": 1,
+            "test": test_local,
+            "test_target_sha256": build_report["test_target_sha256"],
+            "baseline_target_sha256": build_report[
+                "baseline_target_sha256"
+            ],
+            "cold_boot": True,
+        }
+        try:
+            _write_json(local_report_path, local)
+        except (OSError, TypeError, ValueError):
+            pass
+        safe = _build_safe_capture(
+            build_report=build_report,
+            resolution=resolution,
+            emulator_version=emulator_version,
+            mapped_bank=mapped_bank,
+            captures=captures,
+            post_advance_capture=post_advance_capture,
+            confirmation_basis=str(
+                test_local.get(
+                    "confirmation_basis",
+                    "runtime-read-breakpoint",
+                )
+            ),
+        )
+        safe_path = root / PUBLISH_RELATIVE_PATH
+        _write_json(safe_path, safe)
+        progress_preview = write_progress_preview(root, safe, test_local)
+        _write_bytes_atomic(
+            root / "reports" / "NEXT_STEP.txt",
+            (
+                "시험 화면 진행 사진을 생성했습니다. 자동작업은 계속되며 "
+                "사진의 한글 글리프는 사람 확인이 필요합니다.\n"
+            ).encode("utf-8"),
+        )
+        print(
+            "SFKR progress display capture: "
+            f"{safe['status']} ({len(captures) + int(post_advance_capture is not None)} "
+            "local PNG frame(s))"
+        )
+        if progress_preview is not None:
+            print(
+                "SFKR progress preview: "
+                "analysis/device/v5_1_latest_progress_preview.png "
+                "(automatic work continues)"
+            )
+        return 0
     _CURRENT_FAILURE_STAGE = "baseline-display-capture"
     (
         baseline_emulator_version,
