@@ -51,10 +51,12 @@ try:
         _alignment_pointer,
         validate_consumer_resolution,
     )
+    from .v5_1_poc_expansion import build_expanded_phrase_plan
     from .v5_1_test_phrase import (
         build_test_phrase_plan,
         build_length_preserving_test_phrase_plan,
     )
+    from .v5_1_visible_entry_proof import validate_visible_entry_proof
 except ImportError:  # direct script execution
     from analyze_v5_1 import EXPECTED_SOURCE_SHA256, EXPECTED_SOURCE_SIZE
     from expected_writes import (
@@ -86,10 +88,12 @@ except ImportError:  # direct script execution
         _alignment_pointer,
         validate_consumer_resolution,
     )
+    from v5_1_poc_expansion import build_expanded_phrase_plan
     from v5_1_test_phrase import (
         build_test_phrase_plan,
         build_length_preserving_test_phrase_plan,
     )
+    from v5_1_visible_entry_proof import validate_visible_entry_proof
 
 
 DEFAULT_PATCH = Path("patch/Final_Conflict_Japan_to_Korean_v5.1.bps")
@@ -104,6 +108,9 @@ DEFAULT_REGISTER_TRACE = Path(
 )
 DEFAULT_GROUP_RESOLUTION = Path(
     "analysis/evidence/v5_1_confirmed_group_capture.json"
+)
+DEFAULT_VISIBLE_ENTRY_PROOF = Path(
+    "analysis/device/v5_1_latest_visible_entry_proof.json"
 )
 DEFAULT_TRACE_PLAN = Path("reports/v5_1_emucap_trace_plan.json")
 DEFAULT_OUTPUT_ROM = Path("build/Final_Conflict_Korean_test_phrase.gg")
@@ -880,6 +887,7 @@ def build_test_patch(
     stream_resolution: dict[str, object] | None = None,
     group_resolution: dict[str, object] | None = None,
     register_trace: dict[str, object] | None = None,
+    visible_entry_proof: dict[str, object] | None = None,
 ) -> tuple[bytes, bytes, dict[str, object]]:
     if (
         len(source) != EXPECTED_SOURCE_SIZE
@@ -1083,10 +1091,35 @@ def build_test_patch(
     ):
         raise PatchError("runtime and rebuilt entry bit lengths disagree")
     if runtime_entry["kind"] != "runtime-decoder-block":
-        phrase_plan = build_length_preserving_test_phrase_plan(
-            patch,
-            original_bits,
-        )
+        if visible_entry_proof is not None:
+            validate_visible_entry_proof(visible_entry_proof)
+            proof_entry = visible_entry_proof["runtime_entry"]
+            assert isinstance(proof_entry, dict)
+            if (
+                runtime_entry["kind"] != "runtime-length-prefixed-entry"
+                or visible_entry_proof["baseline_target_sha256"]
+                != sha256_bytes(baseline)
+                or proof_entry["physical_start"] != target_offset
+                or proof_entry["logical_start"]
+                != runtime_entry["pointer_address"]
+                or proof_entry["mapped_bank"] != runtime_entry["pointer_bank"]
+                or proof_entry["record_length_bytes"]
+                != runtime_entry["record_length_bytes"]
+                or proof_entry["encoded_bits"] != original_bits
+            ):
+                raise PatchError(
+                    "visible entry proof and rebuilt runtime entry disagree"
+                )
+            phrase_plan = build_expanded_phrase_plan(
+                patch,
+                original_bits,
+                visible_entry_proof,
+            )
+        else:
+            phrase_plan = build_length_preserving_test_phrase_plan(
+                patch,
+                original_bits,
+            )
         encoding = phrase_plan["encoding"]
         assert isinstance(encoding, dict)
         replacement = bytes.fromhex(str(encoding["encoded_hex"]))
@@ -1250,6 +1283,11 @@ def main() -> int:
         type=Path,
         default=DEFAULT_GROUP_RESOLUTION,
     )
+    parser.add_argument(
+        "--visible-entry-proof",
+        type=Path,
+        default=DEFAULT_VISIBLE_ENTRY_PROOF,
+    )
     parser.add_argument("--trace-plan", type=Path, default=DEFAULT_TRACE_PLAN)
     parser.add_argument("--output-rom", type=Path, default=DEFAULT_OUTPUT_ROM)
     parser.add_argument("--output-ips", type=Path, default=DEFAULT_OUTPUT_IPS)
@@ -1270,9 +1308,11 @@ def main() -> int:
     stream_resolution_path = _absolute(root, args.stream_resolution)
     register_trace_path = _absolute(root, args.register_trace)
     group_resolution_path = _absolute(root, args.group_resolution)
+    visible_entry_proof_path = _absolute(root, args.visible_entry_proof)
     stream_resolution: dict[str, object] | None = None
     register_trace: dict[str, object] | None = None
     group_resolution: dict[str, object] | None = None
+    visible_entry_proof: dict[str, object] | None = None
     if stream_resolution_path.exists():
         candidate = _read_json(stream_resolution_path)
         validate_decoder_stream_resolution(candidate)
@@ -1295,6 +1335,11 @@ def main() -> int:
             and candidate["group_entry"].get("prefix_roundtrip_exact") is True
         ):
             group_resolution = candidate
+    if visible_entry_proof_path.exists():
+        candidate = _read_json(visible_entry_proof_path)
+        validate_visible_entry_proof(candidate)
+        if candidate["status"] == "exact-visible-entry-confirmed":
+            visible_entry_proof = candidate
     if stream_resolution is None and not resolution_path.exists():
         if args.if_ready:
             print("Test patch not built: runtime consumer resolution is absent.")
@@ -1339,10 +1384,11 @@ def main() -> int:
             _absolute(root, args.patch).read_bytes(),
             resolution,
             _read_json(_absolute(root, args.trace_plan)),
-        stream_resolution=stream_resolution,
-        group_resolution=group_resolution,
-        register_trace=register_trace,
-    )
+            stream_resolution=stream_resolution,
+            group_resolution=group_resolution,
+            register_trace=register_trace,
+            visible_entry_proof=visible_entry_proof,
+        )
         _write_outputs(
             output_rom,
             output_ips,

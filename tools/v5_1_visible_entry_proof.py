@@ -174,10 +174,15 @@ def build_visible_entry_proof(
         != "s25u-local-korean-test-patch-build"
         or build_report.get("status")
         != "technical-poc-built-needs-runtime-display-proof"
-        or build_report.get("purpose") != "technical-poc-only"
-        or build_report.get("phrase") != "한다"
     ):
         raise ValueError("local test build report policy is invalid")
+    if (
+        build_report.get("purpose") != "technical-poc-only"
+        or build_report.get("phrase") != "한다"
+    ):
+        raise VisibleEntryProofNotReady(
+            "the current build is already beyond the first visible marker"
+        )
     baseline = build_report.get("baseline_target_sha256")
     test = build_report.get("test_target_sha256")
     if not _is_sha256(baseline) or not _is_sha256(test):

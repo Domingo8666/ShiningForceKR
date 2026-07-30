@@ -4,6 +4,7 @@ import copy
 import unittest
 
 from tools.v5_1_visible_entry_proof import (
+    VisibleEntryProofNotReady,
     build_visible_entry_proof,
     validate_visible_entry_proof,
 )
@@ -207,6 +208,20 @@ class VisibleEntryProofTests(unittest.TestCase):
         comparison["automatic_rejected_physical_starts"] = [0x20913]
         comparison["next_checkpoint"] = "try-next-runtime-observed-stream"
         with self.assertRaisesRegex(ValueError, "not ready"):
+            build_visible_entry_proof(
+                build,
+                capture,
+                comparison,
+                review,
+            )
+
+    def test_expanded_build_does_not_replace_the_first_visible_proof(
+        self,
+    ) -> None:
+        build, capture, comparison, review = sample_inputs()
+        build["purpose"] = "technical-poc-expanded-visible-entry"
+        build["phrase"] = "시험한다"
+        with self.assertRaises(VisibleEntryProofNotReady):
             build_visible_entry_proof(
                 build,
                 capture,
