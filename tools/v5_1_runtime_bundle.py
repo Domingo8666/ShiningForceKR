@@ -29,6 +29,10 @@ try:
         PUBLISH_RELATIVE_PATH as VISIBLE_SCRIPT_ROUNDTRIP_RELATIVE_PATH,
         validate_visible_script_roundtrip,
     )
+    from .v5_1_visible_unicode_mapping import (
+        PUBLISH_RELATIVE_PATH as VISIBLE_UNICODE_MAPPING_RELATIVE_PATH,
+        validate_visible_unicode_mapping,
+    )
     from .v5_1_progress_preview import (
         PUBLISH_IMAGE_RELATIVE_PATH,
         PUBLISH_RECEIPT_RELATIVE_PATH,
@@ -64,6 +68,10 @@ except ImportError:  # direct script execution
     from v5_1_visible_script_record import (
         PUBLISH_RELATIVE_PATH as VISIBLE_SCRIPT_ROUNDTRIP_RELATIVE_PATH,
         validate_visible_script_roundtrip,
+    )
+    from v5_1_visible_unicode_mapping import (
+        PUBLISH_RELATIVE_PATH as VISIBLE_UNICODE_MAPPING_RELATIVE_PATH,
+        validate_visible_unicode_mapping,
     )
     from v5_1_progress_preview import (
         PUBLISH_IMAGE_RELATIVE_PATH,
@@ -113,6 +121,8 @@ SAFE_ARTIFACTS = {
         validate_visible_script_roundtrip,
     RENDERER_OUTPUT_TRACE_RELATIVE_PATH:
         validate_renderer_output_trace,
+    VISIBLE_UNICODE_MAPPING_RELATIVE_PATH:
+        validate_visible_unicode_mapping,
     PUBLISH_RECEIPT_RELATIVE_PATH: validate_progress_preview,
 }
 SAFE_BINARY_ARTIFACTS = {
@@ -328,6 +338,26 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != visible_script_roundtrip["runtime_entry"]["mapped_bank"]
         ):
             artifacts.pop(RENDERER_OUTPUT_TRACE_RELATIVE_PATH)
+    renderer_output_trace = artifacts.get(
+        RENDERER_OUTPUT_TRACE_RELATIVE_PATH
+    )
+    visible_unicode_mapping = artifacts.get(
+        VISIBLE_UNICODE_MAPPING_RELATIVE_PATH
+    )
+    if visible_unicode_mapping is not None:
+        if (
+            renderer_output_trace is None
+            or visible_script_roundtrip is None
+            or visible_unicode_mapping["target_sha256"]
+            != renderer_output_trace["target_sha256"]
+            or visible_unicode_mapping["target_sha256"]
+            != visible_script_roundtrip["baseline_target_sha256"]
+            or visible_unicode_mapping["runtime_entry"]
+            != visible_script_roundtrip["runtime_entry"]
+            or visible_unicode_mapping["renderer_chain_confirmed"] is not True
+            or renderer_output_trace["consumer_chain_confirmed"] is not True
+        ):
+            artifacts.pop(VISIBLE_UNICODE_MAPPING_RELATIVE_PATH)
     return artifacts
 
 

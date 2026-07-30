@@ -115,6 +115,7 @@ RUNTIME_FAILURE_STAGES = {
     "renderer-output-trace-run",
     "renderer-output-trace-read",
     "renderer-output-artifact",
+    "visible-unicode-mapping",
     "test-patch",
     "test-patch-fixed-count-roundtrip",
     "test-patch-fixed-count-read-range",

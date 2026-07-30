@@ -287,6 +287,16 @@ else
       record_stage_failure renderer-output-trace
     fi
   fi
+
+  if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_visible_unicode_mapping.py --if-ready
+    visible_unicode_status=$?
+    if [ "$visible_unicode_status" -ne 0 ]; then
+      stage_status="$visible_unicode_status"
+      diagnostic_trigger=probe
+      record_stage_failure visible-unicode-mapping
+    fi
+  fi
 fi
 
 python tools/v5_1_runtime_diagnostic.py \

@@ -115,9 +115,15 @@ PNG에서 `시험한다` 네 글자의 연속 8×8 잉크 마스크를 찾습니
 비트와 남은 저장 비트만 게시합니다.
 
 `tools/v5_1_renderer_output_trace.py`는 같은 레코드의 선택자·엔트리
-번호와 디코더 전달 주소를 다시 확인한 뒤 바깥 소비자 호출이 끝나는
-지점까지의 제한된 trace에서 VDP 데이터·제어 포트 출력을 분류합니다.
+번호와 디코더 전달 주소를 다시 확인한 뒤 두 프레임으로 제한된
+trace에서 VDP 데이터·제어 포트 출력을 분류합니다.
 `v5_1_latest_renderer_output_trace.json`에는 대상 해시, 레코드 좌표,
 trace·출력·후보 진입 횟수와 소비 경로 판정만 기록합니다. 디코딩 심벌,
 명령 바이트, 포트 값과 원시 trace는 `reports/local/` 밖으로 게시하지
 않습니다.
+
+소비 경로가 확인되면 `tools/v5_1_visible_unicode_mapping.py`가 로컬
+심벌을 로컬 Galmuri7 글꼴 카탈로그와 대조합니다.
+`v5_1_latest_visible_unicode_mapping.json`에는 고유·모호·미일치
+글리프 수만 기록하며, 심벌·코드포인트·문자·복원 문자열은
+`reports/local/` 밖으로 게시하지 않습니다.
