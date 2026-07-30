@@ -1,103 +1,32 @@
 {
   "artifact_kind": "sanitized-s25u-test-display-capture",
   "schema_version": 5,
-  "status": "capture-ready-human-review-required",
+  "status": "runtime-target-read-not-observed",
   "purpose": "technical-poc-only",
   "phrase_codepoints": [
     "U+D55C",
     "U+B2E4"
   ],
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "test_target_sha256": "aca9f8fe150830501d0103844ba6b96350672e55cd16481868324a87f1d3124c",
+  "test_target_sha256": "718c46ae2d4a16dbfc4d31dd25004e5f7f4f5cf329279e37ae0f4b00dce445fb",
   "emulator_version": "3.9.14",
   "cold_boot": true,
   "target_read": {
     "slot": 1,
-    "logical_access": 17585,
+    "logical_access": 18913,
     "expected_bank": 8,
-    "mapped_bank": 8,
-    "confirmed": true
+    "mapped_bank": null,
+    "confirmed": false
   },
-  "entry_selector": {
-    "status": "resolved",
-    "lookup_table_base": 16360,
-    "baseline_selector_offset": 2,
-    "test_selector_offset": 2,
-    "selectors_match": true,
-    "baseline_entry_ordinal": 147,
-    "test_entry_ordinal": 147,
-    "ordinals_match": true,
-    "entry_index": 1,
-    "pointer_address": 17374,
-    "next_pointer_address": 18531,
-    "target_offset_within_entry": 211,
-    "pointer_bounds_target": true
-  },
-  "group_entry": {
-    "status": "target-outside-selected-entry",
-    "entry_ordinal": 147,
-    "decoded_prefix_entry_count": 148,
-    "group_pointer_address": 17374,
-    "entry_start_bit": 12311,
-    "entry_end_bit_exclusive": 12417,
-    "entry_encoded_bits": 106,
-    "entry_symbol_count": 26,
-    "entry_start_logical_byte": 18912,
-    "entry_end_logical_byte_inclusive": 18926,
-    "target_logical_byte": 17585,
-    "target_within_entry_bytes": false,
-    "prefix_roundtrip_exact": true,
-    "target_byte_candidates": [
-      {
-        "entry_ordinal": 22,
-        "entry_start_bit": 1550,
-        "entry_end_bit_exclusive": 1750,
-        "entry_encoded_bits": 200,
-        "entry_symbol_count": 57,
-        "entry_start_logical_byte": 17567,
-        "entry_end_logical_byte_inclusive": 17592
-      }
-    ],
-    "observed_b_matches_target_candidates": false
-  },
-  "captures": [
-    {
-      "frame_after_hit": 1,
-      "width": 160,
-      "height": 144,
-      "png_sha256": "93ccdb1d3fc723412d2acecd1e8ec1738e8755b4d248ba6f980c9a304a2ce4a5"
-    },
-    {
-      "frame_after_hit": 8,
-      "width": 160,
-      "height": 144,
-      "png_sha256": "e274e1596f3bced0b64e7c0169f3c24fbfed9be3974e0bbd38ab2fcc3a73a5d3"
-    },
-    {
-      "frame_after_hit": 30,
-      "width": 160,
-      "height": 144,
-      "png_sha256": "c69e5700c1596d9e5296276aee43a8f9d6f4737e0beec8e6cdfb42ee7344ec37"
-    },
-    {
-      "frame_after_hit": 90,
-      "width": 160,
-      "height": 144,
-      "png_sha256": "a9f962307bd7351b54842ebb5d5c316e16c418770d488af6c803ad2360417605"
-    }
-  ],
-  "post_advance_capture": {
-    "button": "1",
-    "frames_after_press": 60,
-    "width": 160,
-    "height": 144,
-    "png_sha256": "0d7294005257f149b8f19de061fb684cb99e93236c461c304225ef4eacd4d9ef"
-  },
+  "entry_selector": null,
+  "group_entry": null,
+  "captures": [],
+  "post_advance_capture": null,
   "visual_review": {
     "required": true,
     "result": null,
     "evidence_storage": "s25u-local-only"
   },
   "translation_build_eligible": false,
-  "next_checkpoint": "human-confirm-first-korean-glyphs-and-ui"
+  "next_checkpoint": "repair-test-display-target-reachability"
 }
