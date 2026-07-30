@@ -36,7 +36,7 @@
 | SFKR-028 | 무입력·버튼 경로 매트릭스가 안전 상한 1,000을 넘는 단일 12,000프레임 요청으로 즉시 종료 | fixed-static | 무입력 총예산은 유지하고 1,000프레임 12구간으로 나누며 renderer schema v3 실패 영수증을 유지 |
 | SFKR-029 | 디코더 진입 뒤 첫 64개 표본이 모두 bank 8 source-region read여서 한국어 Huffman bank 0x20 전환 전에 수집 종료 | fixed-emulator | source-region 표본을 8개로 제한한 후 mapper bank 0x20의 Huffman vector/tree 실제 읽기를 수집 |
 | SFKR-030 | 실제 stream·vector·tree read 좌표는 확보했지만 공개 증거에 피연산자 역할이 없어 정확한 압축 엔트리 경계를 확정할 수 없음 | fixed-static | opcode는 S25U 로컬에만 두고 고정 operand-kind와 BPS 제한 왕복으로 겹치지 않는 실제 인트로 스트림 4개를 확정 |
-| SFKR-031 | 런타임 확정 인트로 스트림의 첫 시험 문장 화면 증거가 아직 없음 | investigating | 54비트 첫 스트림에 39비트 `한다`를 Expected Write로 넣고 동일 attract 경로의 S25U PNG를 로컬 캡처 |
+| SFKR-031 | 런타임 확정 인트로 스트림의 첫 시험 문장 화면 증거가 아직 없음 | investigating | 정확한 Galmuri7 픽셀 매핑으로 교정한 31비트 `한다`를 확정 엔트리에 Expected Write로 넣고 동일 attract 경로의 S25U PNG를 로컬 캡처 |
 | SFKR-032 | 첫 시험 ROM 캡처가 목표 논리 주소의 mapper bank 7 선행 히트를 bank 8 목표로 오인하고 탐색을 종료 | fixed-emulator | 뱅크·디코더 PC가 모두 일치할 때만 승인하고 오탐은 breakpoint 해제·한 명령 진행·재설정 후 계속 탐색 |
 | SFKR-033 | 확정 디코더 stream이 있는데도 자동 비교 실행이 초기 탐색을 반복하고 실패 시 `runtime-command`만 기록 | fixed-static | 기준 ROM SHA-256과 검증된 stream resolution이 일치하면 초기 탐색을 건너뛰며 하위 실패 단계를 안전 영수증으로 남긴 뒤 S25U 재실행 |
 | SFKR-034 | Gearsystem PNG의 유효한 IEND 뒤 2바이트 NUL 패딩을 엄격 비교기가 구조 불완전으로 거부 | fixed-static | CRC와 IEND를 검증한 뒤 최대 16바이트의 0 패딩만 허용하고 비영·과도한 후행 데이터는 거부한 상태로 S25U 픽셀 비교 재실행 |

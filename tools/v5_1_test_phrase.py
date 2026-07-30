@@ -84,21 +84,23 @@ class GlyphSpec:
 TEST_GLYPHS = {
     "한": GlyphSpec(
         character="한",
-        page=27,
-        symbol=0x1F,
+        page=6,
+        symbol=0x11,
         tile_sha256=(
-            "a3a9c4fc99f94359f2df18de80bb7994"
-            "16b035f84637ec7579bd2e0fdbcc424d"
+            "9480834f5c532ab8706bcb35a6aac1a3"
+            "6138d5ab84e09f90c0c030678bbc03b4"
         ),
+        identification="exact-galmuri7-bdf-pixel-match",
     ),
     "다": GlyphSpec(
         character="다",
-        page=27,
+        page=6,
         symbol=0x04,
         tile_sha256=(
             "3a0eab5abafdc86a7d5d31e100af8bab"
             "4de9b030339d748c75dab031547663ee"
         ),
+        identification="exact-galmuri7-bdf-pixel-match",
     ),
 }
 

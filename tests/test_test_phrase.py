@@ -28,13 +28,13 @@ class TestPhraseTests(unittest.TestCase):
 
     def test_approved_phrase_has_deterministic_font_symbols(self) -> None:
         self.assertEqual(TEST_PHRASE, "한다")
-        self.assertEqual(page_select_symbols(27), [0x5F, 0x03, 0x0D])
+        self.assertEqual(page_select_symbols(6), [0x5F, 0x02, 0x08])
         self.assertEqual(
             symbols_for_text(TEST_PHRASE),
-            [0x5F, 0x03, 0x0D, 0x1F, 0x04],
+            [0x5F, 0x02, 0x08, 0x11, 0x04],
         )
-        self.assertEqual(font_tile_offset(27, 0x1F), 0x0A27E0)
-        self.assertEqual(font_tile_offset(27, 0x04), 0x0A2480)
+        self.assertEqual(font_tile_offset(6, 0x11), 0x08DA20)
+        self.assertEqual(font_tile_offset(6, 0x04), 0x08D880)
 
     def test_unknown_character_fails_closed(self) -> None:
         with self.assertRaisesRegex(PatchError, "no approved test glyph"):
@@ -71,10 +71,10 @@ class TestPhraseTests(unittest.TestCase):
         self.assertEqual(plan["purpose"], "technical-poc-only")
         self.assertEqual(
             plan["encoding"]["symbols"],
-            [0x5F, 0x03, 0x0D, 0x1F, 0x04, 0xC9],
+            [0x5F, 0x02, 0x08, 0x11, 0x04, 0xC9],
         )
-        self.assertEqual(plan["encoding"]["encoded_bits"], 39)
-        self.assertEqual(plan["encoding"]["encoded_hex"], "eab98fcf10")
+        self.assertEqual(plan["encoding"]["encoded_bits"], 31)
+        self.assertEqual(plan["encoding"]["encoded_hex"], "ea512d10")
         self.assertTrue(plan["encoding"]["roundtrip_exact"])
         self.assertFalse(plan["translation_build_eligible"])
         self.assertFalse(plan["checks"]["rom_read"])
