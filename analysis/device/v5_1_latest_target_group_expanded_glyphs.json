@@ -1,0 +1,34 @@
+{
+  "artifact_kind": "sanitized-v5-1-target-group-expanded-glyphs",
+  "schema_version": 1,
+  "status": "expanded-glyphs-require-non-hangul-classification",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_population_decode_sha256": "e9e12f45d92dc47fd161a2ca70a93f2be732981abb2a6a775253694cefb7bfb5",
+  "source_font_reference_sha256": "0ec6b8707e8c47d85995b5b2b507180aed7bcc724792fe5477e998d41f8b075f",
+  "captured_utc": "2026-07-30T17:05:29.363515Z",
+  "unmatched": {
+    "distance_one_distinct_count": 1,
+    "distance_two_distinct_count": 12,
+    "in_range_distinct_count": 280,
+    "tied_nearest_distinct_count": 14,
+    "unique_nearest_distinct_count": 266,
+    "high_confidence_distinct_count": 0,
+    "out_of_range_distinct_count": 5,
+    "out_of_range_occurrence_count": 6,
+    "distance_over_four_distinct_count": 266,
+    "distinct_glyph_count": 285,
+    "high_confidence_occurrence_count": 0,
+    "occurrence_count": 1104,
+    "distance_zero_distinct_count": 0,
+    "distance_three_or_four_distinct_count": 1
+  },
+  "high_confidence_policy": {
+    "maximum_pixel_distance": 2,
+    "minimum_distance_margin": 2,
+    "unique_nearest_required": true,
+    "quality_inference_only": true
+  },
+  "local_payload_policy": "glyph-coordinates-masks-codepoints-characters-and-overrides-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "assemble-expanded-target-script-corpus"
+}
