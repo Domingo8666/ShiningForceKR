@@ -22,7 +22,6 @@ try:
         _capture_state,
         _default_command,
         _runtime_failure_receipt,
-        _step_frames_and_wait,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
@@ -45,7 +44,6 @@ except ImportError:  # direct script execution
         _capture_state,
         _default_command,
         _runtime_failure_receipt,
-        _step_frames_and_wait,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
@@ -662,6 +660,7 @@ def _reach_exact_payload(
     entry_ordinal: int,
     logical_start: int,
     mapped_bank: int,
+    progress: dict[str, str] | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     entry_armed = False
     endpoint_armed = False
@@ -669,10 +668,14 @@ def _reach_exact_payload(
     selected_state: dict[str, object] | None = None
     ready_state: dict[str, object] | None = None
     try:
+        if progress is not None:
+            progress["stage"] = "renderer-output-route-watch"
         _set_execute_breakpoint(client, DECODER_ENTRY_LOGICAL)
         entry_armed = True
         _set_unlimited_fast_forward(client, True)
         fast_forward = True
+        if progress is not None:
+            progress["stage"] = "renderer-output-route-hunt"
         deadline = time.monotonic() + ROUTE_TIMEOUT_SECONDS
         while time.monotonic() < deadline:
             status = _continue_until_breakpoint(
@@ -698,15 +701,19 @@ def _reach_exact_payload(
         if selected_state is None:
             raise RuntimeError("exact visible decoder selection was not reached")
 
+        if progress is not None:
+            progress["stage"] = "renderer-output-route-entry"
         _set_unlimited_fast_forward(client, False)
         fast_forward = False
         _remove_breakpoint(client, DECODER_ENTRY_LOGICAL)
         entry_armed = False
         for _ in range(DECODER_ENTRY_TRACE_STEPS):
             _step_instruction_and_wait(client)
+        if progress is not None:
+            progress["stage"] = "renderer-output-route-endpoint"
         _set_execute_breakpoint(client, DECODER_SKIP_ENDPOINT_LOGICAL)
         endpoint_armed = True
-        status = _step_frames_and_wait(client, 1)
+        status = _continue_until_breakpoint(client, 5.0)
         if status.get("at_breakpoint") is not True:
             raise RuntimeError("decoder skip endpoint was not reached")
         endpoint_state, _ = _capture_state(client)
@@ -720,6 +727,8 @@ def _reach_exact_payload(
             raise RuntimeError("decoder skip endpoint registers disagree")
         _remove_breakpoint(client, DECODER_SKIP_ENDPOINT_LOGICAL)
         endpoint_armed = False
+        if progress is not None:
+            progress["stage"] = "renderer-output-route-ready"
         _step_instruction_and_wait(client)
         ready_state, _ = _capture_state(client)
         ready_registers = _registers(ready_state)
@@ -826,6 +835,7 @@ def main() -> int:
     trace_lines: list[str] = []
     local_trace_window: dict[str, object] = {}
     runtime_stage = "renderer-output-mcp-initialize"
+    route_progress = {"stage": runtime_stage}
     try:
         tools = client.initialize()
         missing = sorted(REQUIRED_TOOLS - tools)
@@ -850,6 +860,7 @@ def main() -> int:
             entry_ordinal=entry_ordinal,
             logical_start=int(runtime["logical_start"]),
             mapped_bank=int(runtime["mapped_bank"]),
+            progress=route_progress,
         )
         runtime_stage = "renderer-output-trace-run"
         trace_lines, local_trace_window = _trace_to_outer_return(
@@ -857,6 +868,8 @@ def main() -> int:
             ready_state=ready_state,
         )
     except Exception as error:
+        if runtime_stage == "renderer-output-route-selection":
+            runtime_stage = route_progress["stage"]
         receipt = _runtime_failure_receipt(runtime_stage, error, client)
         _write_runtime_failure_receipt(root, receipt)
         raise
