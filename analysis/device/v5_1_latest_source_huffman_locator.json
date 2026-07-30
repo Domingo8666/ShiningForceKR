@@ -4,14 +4,14 @@
   "status": "source-huffman-vector-not-found",
   "source_sha256": "4705256cc1a242aab7fea170369eb64723f796e27c6edfe0f93a674a8ba00f42",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "source_group_delta_sha256": "8ae5decea6ea121e5aa9f02ee5456b2f13f942fd2e6101aed65253c581597e0a",
-  "captured_utc": "2026-07-30T16:32:17.632504Z",
+  "source_group_delta_sha256": "c70a97074841bc021a28b6a6bae919dbb634e22632afc54205acde3e8ecc22e1",
+  "captured_utc": "2026-07-30T16:40:47.599610Z",
   "scan": {
+    "structural_window_count": 79,
     "parseable_vector_count": 0,
     "selected_empty_context_count": 0,
-    "unique_vector_selected": false,
     "selected_populated_context_count": 0,
-    "structural_window_count": 79
+    "unique_vector_selected": false
   },
   "local_payload_policy": "source-bytes-vector-offsets-pointers-trees-and-symbols-local-only",
   "translation_build_eligible": false,
