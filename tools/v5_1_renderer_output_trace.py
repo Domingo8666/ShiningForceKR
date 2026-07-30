@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trace one bounded frame after the exact visible v5.1 record is selected.
+"""Trace two bounded frames after the exact visible v5.1 record is selected.
 
 Decoded symbols, raw trace lines, opcodes, and VDP byte values stay in an
 ignored local report.  The publishable artifact contains only coordinates,
@@ -71,7 +71,7 @@ except ImportError:  # direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-renderer-output-trace"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 DEFAULT_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 VISIBLE_ROUNDTRIP_PATH = Path(
     "analysis/device/v5_1_latest_visible_script_roundtrip.json"
@@ -91,6 +91,7 @@ DECODER_REGISTER_TRACE_PATH = Path(
 TRACE_PAGE_SIZE = 1000
 TRACE_BUFFER_SIZE = 100000
 TRACE_RETURN_TIMEOUT_SECONDS = 15.0
+TRACE_FRAME_WINDOWS = 2
 PRIMARY_RENDERER_BANK = 0x21
 PRIMARY_RENDERER_RANGES = (
     (0x7000, 0x730B),
@@ -493,6 +494,7 @@ def build_renderer_output_trace(
     entry_ordinal: int,
     trace_summary: dict[str, int],
     captured_utc: str,
+    bounded_frame_windows: int = 1,
 ) -> dict[str, object]:
     validate_visible_script_roundtrip(visible_roundtrip)
     runtime = visible_roundtrip["runtime_entry"]
@@ -534,7 +536,7 @@ def build_renderer_output_trace(
             ],
         },
         "renderer_window": {
-            "bounded_frame_windows": 1,
+            "bounded_frame_windows": bounded_frame_windows,
             "trace_entries_observed": trace_summary[
                 "trace_entries_observed"
             ],
@@ -772,12 +774,12 @@ def _trace_to_outer_return(
                 pass
 
 
-def _trace_one_frame(
+def _trace_bounded_frames(
     client: McpStdioClient,
     *,
     ready_state: dict[str, object],
 ) -> tuple[list[str], dict[str, object]]:
-    """Capture the complete first frame after the selected payload is ready."""
+    """Capture two complete frames after the selected payload is ready."""
 
     call_stack = client.call("get_call_stack")
     trace_enabled = False
@@ -801,7 +803,8 @@ def _trace_one_frame(
         trace_start = int(started.get("total_entries", -1))
         if not 0 <= trace_start < TRACE_BUFFER_SIZE:
             raise RuntimeError("Gearsystem frame trace start count is invalid")
-        _step_frames_and_wait(client, 1)
+        for _ in range(TRACE_FRAME_WINDOWS):
+            _step_frames_and_wait(client, 1)
         stopped = client.call("set_trace_log", {"enabled": False})
         trace_enabled = False
         trace_end = int(stopped.get("total_entries", -1))
@@ -817,7 +820,7 @@ def _trace_one_frame(
         return lines, {
             "call_stack_at_payload_ready": call_stack,
             "ready_pc": int(ready_state["pc_after"]),
-            "bounded_frame_windows": 1,
+            "bounded_frame_windows": TRACE_FRAME_WINDOWS,
             "trace_start": trace_start,
             "trace_end": trace_end,
             "trace_pages": pages,
@@ -1011,7 +1014,7 @@ def main() -> int:
             progress=route_progress,
         )
         runtime_stage = "renderer-output-trace-run"
-        trace_lines, local_trace_window = _trace_one_frame(
+        trace_lines, local_trace_window = _trace_bounded_frames(
             client,
             ready_state=ready_state,
         )
@@ -1034,6 +1037,9 @@ def main() -> int:
         entry_ordinal=entry_ordinal,
         trace_summary=trace_summary,
         captured_utc=captured_utc,
+        bounded_frame_windows=int(
+            local_trace_window["bounded_frame_windows"]
+        ),
     )
     local = {
         "artifact_kind": "local-s25u-renderer-output-trace",

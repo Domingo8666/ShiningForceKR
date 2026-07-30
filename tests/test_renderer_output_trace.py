@@ -265,12 +265,13 @@ class RendererOutputTraceTests(unittest.TestCase):
             entry_ordinal=147,
             trace_summary=_trace_summary(),
             captured_utc="2026-07-30T06:00:00Z",
+            bounded_frame_windows=2,
         )
         validate_renderer_output_trace(artifact)
         self.assertTrue(artifact["consumer_chain_confirmed"])
         self.assertEqual(
             artifact["renderer_window"]["bounded_frame_windows"],
-            1,
+            2,
         )
         self.assertNotIn("symbols", artifact)
         self.assertNotIn("opcodes", artifact)
