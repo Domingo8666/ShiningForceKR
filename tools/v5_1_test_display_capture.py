@@ -1147,6 +1147,22 @@ def _target_hit_matches(
     )
 
 
+def _display_watch_target(
+    runtime_entry: dict[str, object],
+) -> tuple[int, int]:
+    """Choose a target byte whose runtime reachability is already proven."""
+
+    if str(runtime_entry.get("kind", "")).startswith("runtime-group-"):
+        return (
+            int(runtime_entry["intermediate_observed_target_logical_address"]),
+            int(runtime_entry["intermediate_observed_target_file_offset"]),
+        )
+    return (
+        int(runtime_entry["pointer_address"]),
+        int(runtime_entry["target_file_offset"]),
+    )
+
+
 def _continue_until_breakpoint(
     client: McpStdioClient,
     timeout_seconds: float,
@@ -1560,25 +1576,10 @@ def main() -> int:
                 "runtime-group-"
             )
         ):
-            selected_entry_probe = built_entry.get("kind") in {
-                "runtime-group-selected-entry-candidate",
-                "runtime-group-observed-entry",
-            }
-            logical_access = int(
-                built_entry["pointer_address"]
-                if selected_entry_probe
-                else built_entry[
-                    "intermediate_observed_target_logical_address"
-                ]
+            logical_access, physical_target_byte = _display_watch_target(
+                built_entry
             )
             expected_bank = int(built_entry["pointer_bank"])
-            physical_target_byte = int(
-                built_entry["target_file_offset"]
-                if selected_entry_probe
-                else built_entry[
-                    "intermediate_observed_target_file_offset"
-                ]
-            )
             instruction_bank = int(
                 built_entry["runtime_instruction_bank"]
             )

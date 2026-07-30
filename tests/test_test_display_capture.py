@@ -14,6 +14,7 @@ from tools.v5_1_test_display_capture import (
     CAPTURE_FRAMES_AFTER_HIT,
     _build_safe_capture,
     _continue_until_breakpoint,
+    _display_watch_target,
     _build_entry_selector_observation,
     _write_human_review_bundle,
     _next_step_text,
@@ -131,6 +132,20 @@ class TestDisplayCaptureTests(unittest.TestCase):
         state["slot1_bank"] = 8
         state["pc_after"] = 0x5000
         self.assertFalse(_target_hit_matches(state, target))
+
+    def test_group_capture_watches_the_confirmed_interior_read(self) -> None:
+        self.assertEqual(
+            _display_watch_target(
+                {
+                    "kind": "runtime-group-observed-entry",
+                    "pointer_address": 0x449F,
+                    "target_file_offset": 0x2049F,
+                    "intermediate_observed_target_logical_address": 0x44B1,
+                    "intermediate_observed_target_file_offset": 0x204B1,
+                }
+            ),
+            (0x44B1, 0x204B1),
+        )
 
     def test_png_payload_is_verified_before_hashing(self) -> None:
         png, metadata = _parse_screenshot(
