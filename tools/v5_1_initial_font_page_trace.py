@@ -138,6 +138,18 @@ def resolve_pages_from_font_bank(
     ]
 
 
+def runtime_entry_matches(
+    candidate: object,
+    expected: object,
+) -> bool:
+    if not isinstance(candidate, dict) or not isinstance(expected, dict):
+        return False
+    return all(
+        candidate.get(key) == expected.get(key)
+        for key in RUNTIME_ENTRY_KEYS
+    )
+
+
 def build_initial_font_page_trace(
     *,
     target_sha256: str,
@@ -328,7 +340,10 @@ def main() -> int:
     validate_renderer_output_trace(renderer_trace)
     if (
         renderer_trace["target_sha256"] != target_sha256
-        or renderer_trace["runtime_entry"] != mapping["runtime_entry"]
+        or not runtime_entry_matches(
+            renderer_trace["runtime_entry"],
+            mapping["runtime_entry"],
+        )
         or renderer_trace["consumer_chain_confirmed"] is not True
     ):
         raise ValueError("initial font-page renderer identity disagrees")

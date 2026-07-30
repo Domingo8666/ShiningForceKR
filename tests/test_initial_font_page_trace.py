@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
 from tools.v5_1_initial_font_page_trace import (  # noqa: E402
     build_initial_font_page_trace,
     resolve_pages_from_font_bank,
+    runtime_entry_matches,
     validate_initial_font_page_trace,
 )
 
@@ -24,6 +25,16 @@ def _runtime_entry() -> dict[str, object]:
 
 
 class InitialFontPageTraceTests(unittest.TestCase):
+    def test_renderer_runtime_entry_may_include_provenance_fields(self) -> None:
+        renderer_entry = {
+            **_runtime_entry(),
+            "selector_de": 2,
+            "entry_ordinal": 147,
+        }
+        self.assertTrue(
+            runtime_entry_matches(renderer_entry, _runtime_entry())
+        )
+
     def test_filters_pages_by_the_observed_font_bank(self) -> None:
         self.assertEqual(
             resolve_pages_from_font_bank(
