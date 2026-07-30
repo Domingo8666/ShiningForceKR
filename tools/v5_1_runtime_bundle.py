@@ -17,6 +17,12 @@ try:
     from .v5_1_test_display_capture import validate_display_capture
     from .v5_1_test_display_comparison import validate_display_comparison
     from .v5_1_test_display_review import validate_display_review
+    from .v5_1_progress_preview import (
+        PUBLISH_IMAGE_RELATIVE_PATH,
+        PUBLISH_RECEIPT_RELATIVE_PATH,
+        load_validated_progress_image,
+        validate_progress_preview,
+    )
     from .v5_1_runtime_diagnostic import validate_runtime_diagnostic
     from .v5_1_runtime_hit_resolver import validate_consumer_resolution
     from .v5_1_runtime_observation import validate_runtime_observation
@@ -31,6 +37,12 @@ except ImportError:  # direct script execution
     from v5_1_test_display_capture import validate_display_capture
     from v5_1_test_display_comparison import validate_display_comparison
     from v5_1_test_display_review import validate_display_review
+    from v5_1_progress_preview import (
+        PUBLISH_IMAGE_RELATIVE_PATH,
+        PUBLISH_RECEIPT_RELATIVE_PATH,
+        load_validated_progress_image,
+        validate_progress_preview,
+    )
     from v5_1_runtime_diagnostic import validate_runtime_diagnostic
     from v5_1_runtime_hit_resolver import validate_consumer_resolution
     from v5_1_runtime_observation import validate_runtime_observation
@@ -63,6 +75,10 @@ SAFE_ARTIFACTS = {
         validate_display_comparison,
     Path("analysis/device/v5_1_latest_display_review.json"):
         validate_display_review,
+    PUBLISH_RECEIPT_RELATIVE_PATH: validate_progress_preview,
+}
+SAFE_BINARY_ARTIFACTS = {
+    PUBLISH_IMAGE_RELATIVE_PATH: PUBLISH_RECEIPT_RELATIVE_PATH,
 }
 
 
@@ -167,7 +183,41 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             expected_hashes.append(post_advance["png_sha256"])
         if display_review["capture_png_sha256s"] != expected_hashes:
             raise ValueError("display capture and review PNG identities disagree")
+    progress_preview = artifacts.get(PUBLISH_RECEIPT_RELATIVE_PATH)
+    if progress_preview is not None:
+        if (
+            display_capture is None
+            or display_capture["status"]
+            != "capture-ready-human-review-required"
+            or progress_preview["baseline_target_sha256"]
+            != display_capture["baseline_target_sha256"]
+            or progress_preview["test_target_sha256"]
+            != display_capture["test_target_sha256"]
+            or progress_preview["capture_png_sha256"]
+            not in {
+                item["png_sha256"]
+                for item in display_capture["captures"]
+            }
+        ):
+            artifacts.pop(PUBLISH_RECEIPT_RELATIVE_PATH)
     return artifacts
+
+
+def _load_validated_binary_artifacts(
+    root: Path,
+    artifacts: dict[Path, dict[str, object]],
+) -> set[Path]:
+    binaries: set[Path] = set()
+    for relative, receipt_relative in SAFE_BINARY_ARTIFACTS.items():
+        receipt = artifacts.get(receipt_relative)
+        if receipt is None:
+            continue
+        try:
+            load_validated_progress_image(root, receipt)
+        except (OSError, ValueError):
+            continue
+        binaries.add(relative)
+    return binaries
 
 
 def _porcelain_path(line: str) -> str:
@@ -182,6 +232,7 @@ def _porcelain_path(line: str) -> str:
 def publish_runtime_bundle(root: Path) -> dict[str, object]:
     root = root.resolve()
     artifacts = _load_validated_artifacts(root)
+    binaries = _load_validated_binary_artifacts(root, artifacts)
     top = Path(
         _git(root, "rev-parse", "--show-toplevel").stdout.strip()
     ).resolve()
@@ -197,13 +248,15 @@ def publish_runtime_bundle(root: Path) -> dict[str, object]:
 
     allowed = {
         str(relative).replace("\\", "/") for relative in SAFE_ARTIFACTS
+    } | {
+        str(relative).replace("\\", "/") for relative in SAFE_BINARY_ARTIFACTS
     }
     porcelain = _git(root, "status", "--porcelain").stdout.splitlines()
     changed_paths = {_porcelain_path(line) for line in porcelain}
 
     selected = sorted(
         str(relative).replace("\\", "/")
-        for relative in artifacts
+        for relative in set(artifacts) | binaries
         if str(relative).replace("\\", "/") in changed_paths
     )
     if selected:
@@ -226,7 +279,8 @@ def publish_runtime_bundle(root: Path) -> dict[str, object]:
         "commit": _git(root, "rev-parse", "HEAD").stdout.strip(),
         "ignored_paths": sorted(changed_paths - allowed),
         "paths": sorted(
-            str(relative).replace("\\", "/") for relative in artifacts
+            str(relative).replace("\\", "/")
+            for relative in set(artifacts) | binaries
         ),
     }
 
@@ -237,7 +291,11 @@ def main() -> int:
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     artifacts = _load_validated_artifacts(root)
-    print(f"SFKR sanitized runtime bundle: {len(artifacts)} artifact(s)")
+    binaries = _load_validated_binary_artifacts(root, artifacts)
+    print(
+        "SFKR sanitized runtime bundle: "
+        f"{len(artifacts) + len(binaries)} artifact(s)"
+    )
     if args.publish:
         result = publish_runtime_bundle(root)
         print(

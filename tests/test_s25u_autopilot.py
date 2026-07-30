@@ -4,7 +4,7 @@ import re
 import unittest
 from pathlib import Path
 
-from tools.v5_1_runtime_bundle import SAFE_ARTIFACTS
+from tools.v5_1_runtime_bundle import SAFE_ARTIFACTS, SAFE_BINARY_ARTIFACTS
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,12 +21,13 @@ class S25UAutopilotTests(unittest.TestCase):
     def test_shell_safe_artifact_allowlist_matches_runtime_bundle(self) -> None:
         shell_paths = set(
             re.findall(
-                r"analysis/device/v5_1_latest_[a-z_]+\.json",
+                r"analysis/device/v5_1_latest_[a-z_]+\.(?:json|png)",
                 SCRIPT,
             )
         )
         bundle_paths = {
-            str(path).replace("\\", "/") for path in SAFE_ARTIFACTS
+            str(path).replace("\\", "/")
+            for path in set(SAFE_ARTIFACTS) | set(SAFE_BINARY_ARTIFACTS)
         }
         self.assertEqual(shell_paths, bundle_paths)
 

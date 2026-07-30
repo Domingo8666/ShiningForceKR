@@ -175,6 +175,27 @@ class TestDisplayCaptureTests(unittest.TestCase):
             (0x44B1, 0x204B1),
         )
 
+    def test_unknown_decoder_pc_accepts_bank_and_address_filtered_read(self) -> None:
+        target = {
+            "slot": 1,
+            "logical_access": 0x4913,
+            "logical_start": 0x4913,
+            "logical_end": 0x4920,
+            "expected_bank": 8,
+            "instruction_pc": -1,
+            "operand_kind": "hl-indirect",
+        }
+        state = {
+            "slot1_bank": 8,
+            "executing_bank": 8,
+            "pc_after": 0x400B,
+            "registers": {"hl": 0x4913},
+        }
+        self.assertTrue(_target_hit_matches(state, target))
+        self.assertEqual(_observed_target_address(state, target), 0x4913)
+        state["registers"]["hl"] = 0x4921
+        self.assertIsNone(_observed_target_address(state, target))
+
     def test_group_capture_watches_the_complete_rewritten_entry(self) -> None:
         entry = {
             "kind": "runtime-group-observed-entry",

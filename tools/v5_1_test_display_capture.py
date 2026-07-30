@@ -44,6 +44,7 @@ try:
         prior_automatic_rejections,
         write_display_comparison,
     )
+    from .v5_1_progress_preview import write_progress_preview
     from .v5_1_test_phrase import TEST_MARKER_INK_MASKS, TEST_PHRASE
 except ImportError:  # direct script execution
     from patch_io import PatchError, sha256_bytes, sha256_file
@@ -70,6 +71,7 @@ except ImportError:  # direct script execution
         prior_automatic_rejections,
         write_display_comparison,
     )
+    from v5_1_progress_preview import write_progress_preview
     from v5_1_test_phrase import TEST_MARKER_INK_MASKS, TEST_PHRASE
 
 
@@ -1147,7 +1149,6 @@ def _target_hit_matches(
         and (
             (
                 instruction_pc < 0
-                and int(state["executing_bank"]) == 0
             )
             or abs(int(state["pc_after"]) - expected_pc_after) <= 4
         )
@@ -1955,6 +1956,7 @@ def main() -> int:
     _CURRENT_FAILURE_STAGE = "display-capture-safe-publish"
     safe_path = root / PUBLISH_RELATIVE_PATH
     _write_json(safe_path, safe)
+    progress_preview = write_progress_preview(root, safe, test_local)
     print(
         "SFKR display capture: "
         f"{safe['status']} ({len(captures) + int(post_advance_capture is not None)} "
@@ -1965,6 +1967,12 @@ def main() -> int:
         f"{comparison['result']} ({comparison_path})"
     )
     if captures:
+        if progress_preview is not None:
+            print(
+                "SFKR progress preview: "
+                "analysis/device/v5_1_latest_progress_preview.png "
+                "(automatic work continues)"
+            )
         relative_evidence = evidence_dir.relative_to(root)
         print(
             "Open in My Files: Internal storage > ShiningForceKR > "

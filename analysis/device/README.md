@@ -16,6 +16,7 @@
 - S25U 로컬 테스트 화면의 PNG 해시·크기와 사람 시각 확인 대기 상태
 - 기준·시험 PNG의 정규화 픽셀 해시, 변경 픽셀 수와 변경 경계
 - 사람 시각 검토의 캡처 해시, 불리언 판정과 다음 후보 좌표
+- 사용자가 요청한 최신 시험 화면 1장과 빌드·PNG 해시 영수증
 
 금지 범위:
 
@@ -23,6 +24,7 @@
 - 압축 데이터, 디코딩 원문·번역문
 - S25U 로컬 파일 경로와 사용자 정보
 - 세이브 상태, 실행 메모리 덤프와 인증 정보
+- 기준 화면, 전체 프레임 묶음 또는 이전 진행 화면의 누적 보관
 
 `tools/v5_1_safe_observation.py`는 고정 스키마의 허용 필드만
 `v5_1_latest_observation.json`에 기록하고, 알 수 없는 필드가 있으면
@@ -30,8 +32,9 @@
 
 `tools/v5_1_runtime_observation.py`는 Gearsystem 실행 결과에서 고정된
 좌표와 집계값만 `v5_1_latest_runtime_observation.json`에 기록합니다.
-실제 trace 줄, opcode, 메모리 덤프, 화면과 파일 경로는 이 폴더에
-게시할 수 없습니다.
+실제 trace 줄, opcode, 메모리 덤프와 로컬 파일 경로는 이 폴더에
+게시할 수 없습니다. 아래의 해시 검증된 최신 진행 미리보기 1장만
+화면 게시 예외입니다.
 
 정적 조회표 후보가 실행 중 읽히지 않으면
 `tools/run_s25u_renderer_probe.py`가 검증된 v5.1 한글 렌더러 호출
@@ -59,10 +62,15 @@ trace에서 제한적으로 지원하는 Z80 읽기 주소를 복원합니다. �
 엔트리 바이트와 디코딩 심벌은 로컬 보고서 밖으로 내보내지 않습니다.
 
 테스트 ROM이 생성된 뒤 `tools/v5_1_test_display_capture.py`는 확정된
-압축 엔트리 read와 매퍼 뱅크를 다시 확인하고 화면 PNG를
-`evidence/local/`에만 저장합니다. `v5_1_latest_display_capture.json`에는
+압축 엔트리 read와 매퍼 뱅크를 다시 확인하고 전체 화면 PNG 묶음을
+`evidence/local/`에 저장합니다. `v5_1_latest_display_capture.json`에는
 기준·테스트 빌드 해시, 경로 없는 read 정보, PNG 해시·크기와 사람 검토
-대기 상태만 기록합니다. PNG 픽셀과 로컬 경로는 게시하지 않습니다.
+대기 상태만 기록합니다. `tools/v5_1_progress_preview.py`는 사용자의
+진행 사진 요청에 따라 시험 화면 중 가장 늦은 사전 진행 프레임 1장만
+`v5_1_latest_progress_preview.png`로 교체 게시합니다. 함께 게시되는
+JSON 영수증의 빌드·PNG 해시가 정확히 맞아야 하며, 이 사진이 생겨도
+자동작업은 계속됩니다. 기준 화면, 나머지 PNG와 로컬 경로는 게시하지
+않습니다.
 
 사람이 로컬 캡처를 확인하면
 `tools/v5_1_test_display_review.py`가 캡처와 기준·테스트 빌드 해시에
