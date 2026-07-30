@@ -4,7 +4,7 @@
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
   "exit_code": 1,
-  "attempt_utc": "2026-07-30T04:51:07Z",
+  "attempt_utc": "2026-07-30T04:59:00Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -20,9 +20,9 @@
   "runtime_observation_present": true,
   "runtime_failure": {
     "schema_version": 1,
-    "failure_stage": "test-patch-fixed-count-read-range",
+    "failure_stage": "decoder-register-trace",
     "failure_kind": "runtime-error",
-    "mcp_method": null
+    "mcp_method": "remove_breakpoint"
   },
   "next_checkpoint": "repair-runtime-command"
 }
