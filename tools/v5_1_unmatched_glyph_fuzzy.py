@@ -29,7 +29,11 @@ try:
         validate_group_text_candidate_resolution,
     )
     from .v5_1_renderer_output_trace import _load_json_object
-    from .v5_1_test_phrase import FONT_TILE_BYTES, font_tile_offset
+    from .v5_1_test_phrase import (
+        FONT_PAGE_COUNT,
+        FONT_TILE_BYTES,
+        font_tile_offset,
+    )
 except ImportError:  # direct script execution
     from fetch_galmuri7_bdf import BDF_SHA256, BDF_SIZE, digest
     from patch_io import PatchError, extract_bps_target_literals, sha256_file
@@ -41,7 +45,11 @@ except ImportError:  # direct script execution
         validate_group_text_candidate_resolution,
     )
     from v5_1_renderer_output_trace import _load_json_object
-    from v5_1_test_phrase import FONT_TILE_BYTES, font_tile_offset
+    from v5_1_test_phrase import (
+        FONT_PAGE_COUNT,
+        FONT_TILE_BYTES,
+        font_tile_offset,
+    )
 
 
 ARTIFACT_KIND = "sanitized-v5-1-unmatched-glyph-fuzzy"
@@ -69,6 +77,9 @@ TOP_LEVEL_KEYS = {
 UNMATCHED_KEYS = {
     "occurrence_count",
     "distinct_glyph_count",
+    "in_range_distinct_count",
+    "out_of_range_distinct_count",
+    "out_of_range_occurrence_count",
     "unique_nearest_distinct_count",
     "tied_nearest_distinct_count",
     "distance_zero_distinct_count",
@@ -185,8 +196,22 @@ def analyze_unmatched_glyphs(
     tied_nearest = 0
     high_distinct = 0
     high_occurrences = 0
+    out_of_range_distinct = 0
+    out_of_range_occurrences = 0
     overrides: list[dict[str, object]] = []
     for (page, symbol), occurrence_count in sorted(occurrences.items()):
+        if not 0 <= page < FONT_PAGE_COUNT:
+            out_of_range_distinct += 1
+            out_of_range_occurrences += occurrence_count
+            local_glyphs.append(
+                {
+                    "page": page,
+                    "symbol": symbol,
+                    "occurrence_count": occurrence_count,
+                    "status": "outside-font-page-range",
+                }
+            )
+            continue
         offset = font_tile_offset(page, symbol)
         end = offset + FONT_TILE_BYTES
         if any(value == 0 for value in sparse.known[offset:end]):
@@ -235,6 +260,11 @@ def analyze_unmatched_glyphs(
     safe_counts = {
         "occurrence_count": sum(occurrences.values()),
         "distinct_glyph_count": len(occurrences),
+        "in_range_distinct_count": (
+            len(occurrences) - out_of_range_distinct
+        ),
+        "out_of_range_distinct_count": out_of_range_distinct,
+        "out_of_range_occurrence_count": out_of_range_occurrences,
         "unique_nearest_distinct_count": unique_nearest,
         "tied_nearest_distinct_count": tied_nearest,
         **buckets,
@@ -326,9 +356,13 @@ def validate_unmatched_glyph_fuzzy(value: dict[str, object]) -> None:
         if not _bounded_int(unmatched[key], 0, 0x1000000):
             raise ValueError(f"unmatched glyph fuzzy {key} is invalid")
     distinct = int(unmatched["distinct_glyph_count"])
+    in_range = int(unmatched["in_range_distinct_count"])
     if (
         unmatched["unique_nearest_distinct_count"]
-        + unmatched["tied_nearest_distinct_count"] != distinct
+        + unmatched["tied_nearest_distinct_count"] != in_range
+        or in_range + unmatched["out_of_range_distinct_count"] != distinct
+        or unmatched["out_of_range_occurrence_count"]
+        > unmatched["occurrence_count"]
         or sum(
             unmatched[key]
             for key in (
@@ -338,8 +372,8 @@ def validate_unmatched_glyph_fuzzy(value: dict[str, object]) -> None:
                 "distance_three_or_four_distinct_count",
                 "distance_over_four_distinct_count",
             )
-        ) != distinct
-        or unmatched["high_confidence_distinct_count"] > distinct
+        ) != in_range
+        or unmatched["high_confidence_distinct_count"] > in_range
         or unmatched["high_confidence_occurrence_count"]
         > unmatched["occurrence_count"]
     ):

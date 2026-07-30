@@ -46,6 +46,9 @@ class UnmatchedGlyphFuzzyTests(unittest.TestCase):
             unmatched={
                 "occurrence_count": 10,
                 "distinct_glyph_count": 5,
+                "in_range_distinct_count": 5,
+                "out_of_range_distinct_count": 0,
+                "out_of_range_occurrence_count": 0,
                 "unique_nearest_distinct_count": 4,
                 "tied_nearest_distinct_count": 1,
                 "distance_zero_distinct_count": 0,
