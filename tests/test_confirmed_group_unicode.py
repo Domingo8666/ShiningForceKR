@@ -65,6 +65,7 @@ class ConfirmedGroupUnicodeTests(unittest.TestCase):
         artifact = build_confirmed_group_unicode(
             target_sha256="1" * 64,
             source_group_extract_sha256="2" * 64,
+            source_group_context_resolution_sha256="5" * 64,
             source_visible_mapping_sha256="3" * 64,
             source_font_catalog_sha256="4" * 64,
             selector=2,
@@ -95,6 +96,7 @@ class ConfirmedGroupUnicodeTests(unittest.TestCase):
         artifact = build_confirmed_group_unicode(
             target_sha256="1" * 64,
             source_group_extract_sha256="2" * 64,
+            source_group_context_resolution_sha256="5" * 64,
             source_visible_mapping_sha256="3" * 64,
             source_font_catalog_sha256="4" * 64,
             selector=2,

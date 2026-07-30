@@ -172,6 +172,7 @@ class S25UAutopilotTests(unittest.TestCase):
             "initial-font-page-trace",
             "font-transfer-source",
             "confirmed-group-extract",
+            "group-context-resolution",
             "confirmed-group-unicode",
         ):
             self.assertIn(f"record_stage_failure {stage}", RUNTIME_STAGE)
@@ -215,12 +216,24 @@ class S25UAutopilotTests(unittest.TestCase):
             RUNTIME_STAGE,
         )
         self.assertIn(
+            "python tools/v5_1_group_context_resolution.py --if-ready",
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
             "python tools/v5_1_confirmed_group_unicode.py --if-ready",
             RUNTIME_STAGE,
         )
         self.assertLess(
             RUNTIME_STAGE.index(
                 "python tools/v5_1_confirmed_group_extract.py --if-ready"
+            ),
+            RUNTIME_STAGE.index(
+                "python tools/v5_1_group_context_resolution.py --if-ready"
+            ),
+        )
+        self.assertLess(
+            RUNTIME_STAGE.index(
+                "python tools/v5_1_group_context_resolution.py --if-ready"
             ),
             RUNTIME_STAGE.index(
                 "python tools/v5_1_confirmed_group_unicode.py --if-ready"
