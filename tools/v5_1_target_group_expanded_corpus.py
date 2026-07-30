@@ -24,6 +24,11 @@ try:
         PUBLISH_RELATIVE_PATH as DECODE_PATH,
         validate_target_group_population_decode,
     )
+    from .v5_1_target_group_expanded_glyphs import (
+        LOCAL_REPORT_PATH as LOCAL_EXPANDED_GLYPHS_PATH,
+        PUBLISH_RELATIVE_PATH as EXPANDED_GLYPHS_PATH,
+        validate_target_group_expanded_glyphs,
+    )
 except ImportError:  # direct script execution
     from patch_io import sha256_file
     from v5_1_group_script_corpus import assemble_script_corpus
@@ -32,6 +37,11 @@ except ImportError:  # direct script execution
         LOCAL_REPORT_PATH as LOCAL_DECODE_PATH,
         PUBLISH_RELATIVE_PATH as DECODE_PATH,
         validate_target_group_population_decode,
+    )
+    from v5_1_target_group_expanded_glyphs import (
+        LOCAL_REPORT_PATH as LOCAL_EXPANDED_GLYPHS_PATH,
+        PUBLISH_RELATIVE_PATH as EXPANDED_GLYPHS_PATH,
+        validate_target_group_expanded_glyphs,
     )
 
 
@@ -52,6 +62,7 @@ TOP_LEVEL_KEYS = {
     "status",
     "target_sha256",
     "source_population_decode_sha256",
+    "source_expanded_glyphs_sha256",
     "local_corpus_sha256",
     "captured_utc",
     "corpus",
@@ -95,6 +106,7 @@ def build_target_group_expanded_corpus(
     *,
     target_sha256: str,
     source_population_decode_sha256: str,
+    source_expanded_glyphs_sha256: str,
     local_corpus_sha256: str,
     corpus: dict[str, object],
     captured_utc: str,
@@ -111,6 +123,8 @@ def build_target_group_expanded_corpus(
         "target_sha256": target_sha256,
         "source_population_decode_sha256":
             source_population_decode_sha256,
+        "source_expanded_glyphs_sha256":
+            source_expanded_glyphs_sha256,
         "local_corpus_sha256": local_corpus_sha256,
         "captured_utc": captured_utc,
         "corpus": {
@@ -151,6 +165,7 @@ def validate_target_group_expanded_corpus(
         }
         or not _is_sha256(value["target_sha256"])
         or not _is_sha256(value["source_population_decode_sha256"])
+        or not _is_sha256(value["source_expanded_glyphs_sha256"])
         or not _is_sha256(value["local_corpus_sha256"])
     ):
         raise ValueError("expanded target corpus policy is invalid")
@@ -213,15 +228,35 @@ def main() -> int:
     args = parser.parse_args()
     safe_decode_path = root / DECODE_PATH
     local_decode_path = root / LOCAL_DECODE_PATH
-    if not safe_decode_path.is_file() or not local_decode_path.is_file():
+    expanded_glyphs_path = root / EXPANDED_GLYPHS_PATH
+    local_expanded_glyphs_path = root / LOCAL_EXPANDED_GLYPHS_PATH
+    if not all(
+        path.is_file()
+        for path in (
+            safe_decode_path,
+            local_decode_path,
+            expanded_glyphs_path,
+            local_expanded_glyphs_path,
+        )
+    ):
         if args.if_ready:
             print("Expanded target group corpus is not ready")
             return 0
         raise SystemExit("expanded target corpus input is missing")
     safe_decode = _load_json_object(safe_decode_path)
     local_decode = _load_json_object(local_decode_path)
+    expanded_glyphs = _load_json_object(expanded_glyphs_path)
+    local_expanded_glyphs = _load_json_object(local_expanded_glyphs_path)
     validate_target_group_population_decode(safe_decode)
-    if local_decode.get("target_sha256") != safe_decode["target_sha256"]:
+    validate_target_group_expanded_glyphs(expanded_glyphs)
+    if (
+        local_decode.get("target_sha256") != safe_decode["target_sha256"]
+        or expanded_glyphs["target_sha256"] != safe_decode["target_sha256"]
+        or expanded_glyphs["source_population_decode_sha256"]
+        != sha256_file(safe_decode_path)
+        or local_expanded_glyphs.get("target_sha256")
+        != safe_decode["target_sha256"]
+    ):
         raise ValueError("expanded target corpus identity disagrees")
     quality = local_decode.get("quality_analysis")
     source_records = local_decode.get("records")
@@ -238,9 +273,14 @@ def main() -> int:
         for record in source_records
         if isinstance(record, dict)
     }
+    overrides = local_expanded_glyphs.get("analysis", {}).get(
+        "high_confidence_overrides"
+    )
+    if not isinstance(overrides, list):
+        raise ValueError("expanded target corpus glyph overrides are missing")
     counts, corpus = assemble_script_corpus(
         records=resolved,
-        fuzzy_overrides=[],
+        fuzzy_overrides=overrides,
     )
     for record in corpus:
         record["aliases"] = aliases_by_id.get(
@@ -268,6 +308,7 @@ def main() -> int:
     safe = build_target_group_expanded_corpus(
         target_sha256=str(safe_decode["target_sha256"]),
         source_population_decode_sha256=sha256_file(safe_decode_path),
+        source_expanded_glyphs_sha256=sha256_file(expanded_glyphs_path),
         local_corpus_sha256=local_corpus_sha256,
         corpus=counts,
         captured_utc=captured_utc,

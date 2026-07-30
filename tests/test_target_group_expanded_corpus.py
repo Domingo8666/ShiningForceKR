@@ -18,7 +18,8 @@ class TargetGroupExpandedCorpusTests(unittest.TestCase):
         artifact = build_target_group_expanded_corpus(
             target_sha256="1" * 64,
             source_population_decode_sha256="2" * 64,
-            local_corpus_sha256="3" * 64,
+            source_expanded_glyphs_sha256="3" * 64,
+            local_corpus_sha256="4" * 64,
             corpus={
                 "record_count": 625,
                 "complete_unicode_record_count": 300,
@@ -46,7 +47,8 @@ class TargetGroupExpandedCorpusTests(unittest.TestCase):
         artifact = build_target_group_expanded_corpus(
             target_sha256="1" * 64,
             source_population_decode_sha256="2" * 64,
-            local_corpus_sha256="3" * 64,
+            source_expanded_glyphs_sha256="3" * 64,
+            local_corpus_sha256="4" * 64,
             corpus={
                 "record_count": 1,
                 "complete_unicode_record_count": 1,
