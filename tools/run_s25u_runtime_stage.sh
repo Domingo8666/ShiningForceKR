@@ -139,7 +139,7 @@ else
       fi
 
       if command -v timeout >/dev/null 2>&1; then
-        timeout -k 15s 720s \
+        timeout -k 15s 180s \
           python tools/v5_1_test_display_capture.py --if-ready
       else
         python tools/v5_1_test_display_capture.py --if-ready

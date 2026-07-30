@@ -15,6 +15,7 @@ from tools.v5_1_test_display_capture import (
     _build_safe_capture,
     _continue_until_breakpoint,
     _display_watch_target,
+    _set_unlimited_fast_forward,
     _build_entry_selector_observation,
     _write_human_review_bundle,
     _next_step_text,
@@ -56,7 +57,32 @@ class TestDisplayCaptureTests(unittest.TestCase):
             sum(frames for frames, _ in ATTRACT_CAPTURE_SCHEDULE),
             12_000,
         )
-        self.assertEqual(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 270.0)
+        self.assertEqual(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 30.0)
+
+    def test_attract_capture_uses_unlimited_fast_forward(self) -> None:
+        class Client:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, dict[str, object]]] = []
+
+            def call(
+                self,
+                name: str,
+                arguments: dict[str, object] | None = None,
+            ) -> dict[str, object]:
+                self.calls.append((name, arguments or {}))
+                return {}
+
+        client = Client()
+        _set_unlimited_fast_forward(client, True)
+        _set_unlimited_fast_forward(client, False)
+        self.assertEqual(
+            client.calls,
+            [
+                ("set_fast_forward_speed", {"speed": 4}),
+                ("toggle_fast_forward", {"enabled": True}),
+                ("toggle_fast_forward", {"enabled": False}),
+            ],
+        )
 
     def test_continuous_capture_stops_at_the_runtime_breakpoint(self) -> None:
         class Client:

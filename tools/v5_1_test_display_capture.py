@@ -97,9 +97,7 @@ CAPTURE_FRAMES_AFTER_HIT = (1, 8, 30, 90)
 ATTRACT_CAPTURE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
     *((1_000, None),) * 12,
 )
-ATTRACT_CAPTURE_TIMEOUT_SECONDS = (
-    sum(frames for frames, _ in ATTRACT_CAPTURE_SCHEDULE) / 50.0
-) + 30.0
+ATTRACT_CAPTURE_TIMEOUT_SECONDS = 30.0
 MAX_REJECTED_TARGET_HITS = 64
 DECODER_ENTRY_LOGICAL = 0x33FA
 LOOKUP_TABLE_BASE = 0x3FE8
@@ -120,6 +118,8 @@ REQUIRED_TOOLS = {
     "read_memory",
     "remove_breakpoint",
     "set_breakpoint_range",
+    "set_fast_forward_speed",
+    "toggle_fast_forward",
 }
 TOP_LEVEL_KEYS = {
     "artifact_kind",
@@ -1185,6 +1185,17 @@ def _continue_until_breakpoint(
     return client.call("debug_get_status")
 
 
+def _set_unlimited_fast_forward(
+    client: McpStdioClient,
+    enabled: bool,
+) -> None:
+    """Enable bounded breakpoint hunting without throttling guest frames."""
+
+    if enabled:
+        client.call("set_fast_forward_speed", {"speed": 4})
+    client.call("toggle_fast_forward", {"enabled": enabled})
+
+
 def _capture_display(
     *,
     rom_path: Path,
@@ -1214,6 +1225,7 @@ def _capture_display(
     start = f"{int(target_read['logical_access']):04X}"
     breakpoint_armed = False
     entry_breakpoint_armed = False
+    fast_forward_enabled = False
 
     def arm_breakpoint() -> None:
         nonlocal breakpoint_armed
@@ -1308,8 +1320,10 @@ def _capture_display(
         )
         capture_steps = ((0, None),) if continuous_attract else schedule
         if continuous_attract:
+            _set_unlimited_fast_forward(client, True)
+            fast_forward_enabled = True
             print(
-                f"SFKR display capture: {failure_stage} continuous "
+                f"SFKR display capture: {failure_stage} unlimited-speed "
                 f"breakpoint watch (up to "
                 f"{int(ATTRACT_CAPTURE_TIMEOUT_SECONDS)} seconds).",
                 flush=True,
@@ -1385,6 +1399,9 @@ def _capture_display(
                 arm_breakpoint()
             if target_found:
                 break
+        if fast_forward_enabled:
+            _set_unlimited_fast_forward(client, False)
+            fast_forward_enabled = False
         local["rejected_target_hits"] = rejected_hits
         disarm_breakpoint()
         if entry_breakpoint_armed:
@@ -1432,6 +1449,11 @@ def _capture_display(
         )
         raise
     finally:
+        if fast_forward_enabled:
+            try:
+                _set_unlimited_fast_forward(client, False)
+            except RuntimeError:
+                pass
         if breakpoint_armed:
             try:
                 client.call(

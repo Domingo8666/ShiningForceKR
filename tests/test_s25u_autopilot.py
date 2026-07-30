@@ -124,7 +124,7 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertLess(missing_output_guard, capture)
 
     def test_runtime_stage_bounds_display_capture_wall_time(self) -> None:
-        self.assertIn("timeout -k 15s 720s", RUNTIME_STAGE)
+        self.assertIn("timeout -k 15s 180s", RUNTIME_STAGE)
 
     def test_runtime_stage_records_precise_substage_failures(self) -> None:
         self.assertIn("v5_1_runtime_stage_failure.py", RUNTIME_STAGE)
