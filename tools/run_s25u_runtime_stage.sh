@@ -375,6 +375,20 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    if [ -n "$source_rom" ]; then
+      python tools/v5_1_group_source_delta.py \
+        --source-rom "$source_rom" \
+        --if-ready
+      group_source_delta_status=$?
+      if [ "$group_source_delta_status" -ne 0 ]; then
+        stage_status="$group_source_delta_status"
+        diagnostic_trigger=probe
+        record_stage_failure group-source-delta
+      fi
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_confirmed_group_unicode.py --if-ready
     confirmed_group_unicode_status=$?
     if [ "$confirmed_group_unicode_status" -ne 0 ]; then

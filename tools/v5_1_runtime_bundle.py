@@ -54,6 +54,10 @@ try:
         PUBLISH_RELATIVE_PATH as GROUP_RUNTIME_CONTEXT_RELATIVE_PATH,
         validate_group_runtime_context,
     )
+    from .v5_1_group_source_delta import (
+        PUBLISH_RELATIVE_PATH as GROUP_SOURCE_DELTA_RELATIVE_PATH,
+        validate_group_source_delta,
+    )
     from .v5_1_confirmed_group_unicode import (
         PUBLISH_RELATIVE_PATH as CONFIRMED_GROUP_UNICODE_RELATIVE_PATH,
         validate_confirmed_group_unicode,
@@ -119,6 +123,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as GROUP_RUNTIME_CONTEXT_RELATIVE_PATH,
         validate_group_runtime_context,
     )
+    from v5_1_group_source_delta import (
+        PUBLISH_RELATIVE_PATH as GROUP_SOURCE_DELTA_RELATIVE_PATH,
+        validate_group_source_delta,
+    )
     from v5_1_confirmed_group_unicode import (
         PUBLISH_RELATIVE_PATH as CONFIRMED_GROUP_UNICODE_RELATIVE_PATH,
         validate_confirmed_group_unicode,
@@ -183,6 +191,8 @@ SAFE_ARTIFACTS = {
         validate_group_context_resolution,
     GROUP_RUNTIME_CONTEXT_RELATIVE_PATH:
         validate_group_runtime_context,
+    GROUP_SOURCE_DELTA_RELATIVE_PATH:
+        validate_group_source_delta,
     CONFIRMED_GROUP_UNICODE_RELATIVE_PATH:
         validate_confirmed_group_unicode,
     PUBLISH_RECEIPT_RELATIVE_PATH: validate_progress_preview,
@@ -543,6 +553,23 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
     group_runtime_context = artifacts.get(
         GROUP_RUNTIME_CONTEXT_RELATIVE_PATH
     )
+    group_source_delta = artifacts.get(GROUP_SOURCE_DELTA_RELATIVE_PATH)
+    if group_source_delta is not None:
+        if (
+            confirmed_group_extract is None
+            or group_runtime_context is None
+            or group_source_delta["target_sha256"]
+            != confirmed_group_extract["target_sha256"]
+            or group_source_delta["source_group_extract_sha256"]
+            != sha256_file(root / CONFIRMED_GROUP_EXTRACT_RELATIVE_PATH)
+            or group_source_delta["source_runtime_context_sha256"]
+            != sha256_file(root / GROUP_RUNTIME_CONTEXT_RELATIVE_PATH)
+            or group_source_delta["group"]["selector"]
+            != confirmed_group_extract["group"]["selector"]
+            or group_source_delta["group"]["record_count"]
+            != confirmed_group_extract["group"]["declared_entry_count"]
+        ):
+            artifacts.pop(GROUP_SOURCE_DELTA_RELATIVE_PATH)
     confirmed_group_unicode = artifacts.get(
         CONFIRMED_GROUP_UNICODE_RELATIVE_PATH
     )

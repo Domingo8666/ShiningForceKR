@@ -174,6 +174,7 @@ class S25UAutopilotTests(unittest.TestCase):
             "confirmed-group-extract",
             "group-context-resolution",
             "group-runtime-context",
+            "group-source-delta",
             "confirmed-group-unicode",
         ):
             self.assertIn(f"record_stage_failure {stage}", RUNTIME_STAGE)
@@ -225,6 +226,10 @@ class S25UAutopilotTests(unittest.TestCase):
             RUNTIME_STAGE,
         )
         self.assertIn(
+            "python tools/v5_1_group_source_delta.py",
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
             "python tools/v5_1_confirmed_group_unicode.py --if-ready",
             RUNTIME_STAGE,
         )
@@ -247,6 +252,14 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertLess(
             RUNTIME_STAGE.index(
                 "python tools/v5_1_group_runtime_context.py --if-ready"
+            ),
+            RUNTIME_STAGE.index(
+                "python tools/v5_1_group_source_delta.py"
+            ),
+        )
+        self.assertLess(
+            RUNTIME_STAGE.index(
+                "python tools/v5_1_group_source_delta.py"
             ),
             RUNTIME_STAGE.index(
                 "python tools/v5_1_confirmed_group_unicode.py --if-ready"
