@@ -1,0 +1,31 @@
+{
+  "artifact_kind": "sanitized-v5-1-group-source-delta",
+  "schema_version": 1,
+  "status": "runtime-unresolved-records-all-target-modified",
+  "source_sha256": "4705256cc1a242aab7fea170369eb64723f796e27c6edfe0f93a674a8ba00f42",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_group_extract_sha256": "b0e784252388f2950f46bf54dd8eb7505833eee4d333214f369fb367a2a33c8f",
+  "source_runtime_context_sha256": "8a76bd0b7bd2bc258b40859c7b1ed9d8c36bdd62bf09cc415346eceec39a531d",
+  "captured_utc": "2026-07-30T14:32:39.973599Z",
+  "group": {
+    "selector": 2,
+    "record_count": 148
+  },
+  "delta": {
+    "runtime_resolved_changed_count": 88,
+    "unchanged_entry_count": 0,
+    "runtime_unresolved_changed_count": 60,
+    "target_total_record_bytes": 1201,
+    "runtime_resolved_unchanged_count": 0,
+    "source_total_record_bytes": 1747,
+    "target_parsed_entry_count": 148,
+    "changed_entry_count": 148,
+    "runtime_unresolved_unchanged_count": 0,
+    "same_length_entry_count": 18,
+    "source_parsed_entry_count": 148,
+    "different_length_entry_count": 130
+  },
+  "local_payload_policy": "source-target-record-bytes-and-deltas-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "classify-target-modified-record-format"
+}
