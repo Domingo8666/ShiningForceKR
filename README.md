@@ -283,9 +283,10 @@ S25U 실기 결과 `시험한다`의 네 글자 연속 자형이 진행 후 화�
 왕복 판정만 게시합니다.
 
 다음 자동 단계는 이 레코드가 선택된 정확한 디코더 전달 지점에서
-바깥 텍스트 소비자 호출의 복귀 지점까지 Gearsystem trace를 제한적으로
-켜고 Game Gear VDP 데이터·제어 포트 출력을 수집합니다. 전체 프레임
-CPU trace를 만들지 않으며, 심벌, 명령어, 포트 값과 원시 trace는
+첫 프레임 경계까지만 Gearsystem trace를 제한적으로 켜고 Game Gear
+VDP 데이터·제어 포트 출력을 수집합니다. 최초 바깥 호출 복귀까지의
+7개 명령에서는 출력이 없었으므로 한 프레임을 상한으로 확장했으며,
+심벌, 명령어, 포트 값과 원시 trace는
 `reports/local/`에만 남기고, GitHub에는
 `analysis/device/v5_1_latest_renderer_output_trace.json`의 출력 횟수와
 소비 경로 판정만 게시합니다. 이 결과로 원문 심벌과 실제 화면 글리프를

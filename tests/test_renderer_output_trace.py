@@ -192,6 +192,10 @@ class RendererOutputTraceTests(unittest.TestCase):
         )
         validate_renderer_output_trace(artifact)
         self.assertTrue(artifact["consumer_chain_confirmed"])
+        self.assertEqual(
+            artifact["renderer_window"]["bounded_frame_windows"],
+            1,
+        )
         self.assertNotIn("symbols", artifact)
         self.assertNotIn("opcodes", artifact)
 

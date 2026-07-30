@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Trace the bounded renderer output window for the exact visible v5.1 record.
+"""Trace one bounded frame after the exact visible v5.1 record is selected.
 
 Decoded symbols, raw trace lines, opcodes, and VDP byte values stay in an
 ignored local report.  The publishable artifact contains only coordinates,
@@ -21,6 +21,7 @@ try:
         _capture_state,
         _default_command,
         _runtime_failure_receipt,
+        _step_frames_and_wait,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
@@ -48,6 +49,7 @@ except ImportError:  # direct script execution
         _capture_state,
         _default_command,
         _runtime_failure_receipt,
+        _step_frames_and_wait,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
@@ -69,7 +71,7 @@ except ImportError:  # direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-renderer-output-trace"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 VISIBLE_ROUNDTRIP_PATH = Path(
     "analysis/device/v5_1_latest_visible_script_roundtrip.json"
@@ -146,7 +148,7 @@ DECODER_WINDOW_KEYS = {
     "unique_candidate_entry_count",
 }
 RENDERER_WINDOW_KEYS = {
-    "bounded_return_windows",
+    "bounded_frame_windows",
     "trace_entries_observed",
     "parsed_instruction_count",
     "vdp_data_write_count",
@@ -242,7 +244,7 @@ def validate_renderer_output_trace(value: dict[str, object]) -> None:
     if not isinstance(renderer, dict) or set(renderer) != RENDERER_WINDOW_KEYS:
         raise ValueError("renderer output renderer fields do not match")
     for key, minimum, maximum in (
-        ("bounded_return_windows", 1, 16),
+        ("bounded_frame_windows", 1, 4),
         ("trace_entries_observed", 0, 0x100000),
         ("parsed_instruction_count", 0, 0x100000),
         ("vdp_data_write_count", 0, 0x100000),
@@ -435,7 +437,7 @@ def build_renderer_output_trace(
             ],
         },
         "renderer_window": {
-            "bounded_return_windows": 1,
+            "bounded_frame_windows": 1,
             "trace_entries_observed": trace_summary[
                 "trace_entries_observed"
             ],
@@ -661,6 +663,64 @@ def _trace_to_outer_return(
                 pass
 
 
+def _trace_one_frame(
+    client: McpStdioClient,
+    *,
+    ready_state: dict[str, object],
+) -> tuple[list[str], dict[str, object]]:
+    """Capture the complete first frame after the selected payload is ready."""
+
+    call_stack = client.call("get_call_stack")
+    trace_enabled = False
+    trace_start = 0
+    trace_end = 0
+    try:
+        started = client.call(
+            "set_trace_log",
+            {
+                "enabled": True,
+                "cpu_irq": False,
+                "vdp_write": True,
+                "vdp_status": False,
+                "psg": False,
+                "ym2413": False,
+                "io_port": True,
+                "bank_switch": True,
+            },
+        )
+        trace_enabled = True
+        trace_start = int(started.get("total_entries", -1))
+        if not 0 <= trace_start < TRACE_BUFFER_SIZE:
+            raise RuntimeError("Gearsystem frame trace start count is invalid")
+        _step_frames_and_wait(client, 1)
+        stopped = client.call("set_trace_log", {"enabled": False})
+        trace_enabled = False
+        trace_end = int(stopped.get("total_entries", -1))
+        if trace_end < trace_start:
+            raise RuntimeError("Gearsystem frame trace buffer wrapped")
+        if trace_end == TRACE_BUFFER_SIZE:
+            raise RuntimeError("Gearsystem frame trace buffer saturated")
+        lines, pages = _read_trace_window(
+            client,
+            start=trace_start,
+            end=trace_end,
+        )
+        return lines, {
+            "call_stack_at_payload_ready": call_stack,
+            "ready_pc": int(ready_state["pc_after"]),
+            "bounded_frame_windows": 1,
+            "trace_start": trace_start,
+            "trace_end": trace_end,
+            "trace_pages": pages,
+        }
+    finally:
+        if trace_enabled:
+            try:
+                client.call("set_trace_log", {"enabled": False})
+            except Exception:
+                pass
+
+
 def _reach_exact_payload(
     client: McpStdioClient,
     *,
@@ -842,7 +902,7 @@ def main() -> int:
             progress=route_progress,
         )
         runtime_stage = "renderer-output-trace-run"
-        trace_lines, local_trace_window = _trace_to_outer_return(
+        trace_lines, local_trace_window = _trace_one_frame(
             client,
             ready_state=ready_state,
         )
