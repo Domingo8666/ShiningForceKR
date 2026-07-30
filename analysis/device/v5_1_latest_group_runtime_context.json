@@ -1,0 +1,28 @@
+{
+  "artifact_kind": "sanitized-v5-1-group-runtime-context",
+  "schema_version": 1,
+  "status": "runtime-group-context-partial-coverage",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_group_extract_sha256": "2223f377de2f7b8876a8136532826c27fd07cd710f5303c8743dbf90473926fa",
+  "source_context_resolution_sha256": "a0b68798a0f56fade1d896a907b25f200f1bf48bbecc677920381798eb484041",
+  "source_renderer_observation_sha256": "b86e487b138d44cd9ea89fb8c1a18fee55b688769ec5d90809e814578e1ee6d8",
+  "captured_utc": "2026-07-30T14:23:17.337660Z",
+  "group": {
+    "selector": 2,
+    "declared_record_count": 148,
+    "selected_entry_ordinal": 147
+  },
+  "runtime_evidence": {
+    "first_vector_access_resolved": true,
+    "runtime_context_is_available_tree": true,
+    "runtime_context_matches_unique_best": false,
+    "selected_record_compatible": true
+  },
+  "coverage": {
+    "runtime_context_exact_entry_count": 88,
+    "runtime_context_unresolved_entry_count": 60
+  },
+  "local_payload_policy": "context-vector-access-symbols-and-text-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "map-runtime-context-records-to-unicode"
+}
