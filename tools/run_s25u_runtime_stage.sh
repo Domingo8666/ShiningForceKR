@@ -365,6 +365,16 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_decoder_caller_resolution.py --if-ready
+    decoder_caller_resolution_status=$?
+    if [ "$decoder_caller_resolution_status" -ne 0 ]; then
+      stage_status="$decoder_caller_resolution_status"
+      diagnostic_trigger=probe
+      record_stage_failure decoder-caller-resolution
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_group_context_resolution.py --if-ready
     group_context_resolution_status=$?
     if [ "$group_context_resolution_status" -ne 0 ]; then
