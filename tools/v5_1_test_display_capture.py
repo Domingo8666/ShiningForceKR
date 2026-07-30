@@ -1954,6 +1954,104 @@ def main() -> int:
         else None
     )
     if expected_entry_ordinal is not None:
+        prior_safe: dict[str, object] | None = None
+        prior_test_local: dict[str, object] | None = None
+        safe_path = root / PUBLISH_RELATIVE_PATH
+        if safe_path.is_file() and local_report_path.is_file():
+            try:
+                candidate_safe = _read_json(safe_path)
+                validate_display_capture(candidate_safe)
+                candidate_local = _read_json(local_report_path)
+                candidate_test = candidate_local.get("test")
+                if (
+                    candidate_safe["status"]
+                    == "capture-ready-human-review-required"
+                    and candidate_safe["test_target_sha256"]
+                    == build_report["test_target_sha256"]
+                    and candidate_local.get("test_target_sha256")
+                    == build_report["test_target_sha256"]
+                    and isinstance(candidate_test, dict)
+                ):
+                    prior_safe = candidate_safe
+                    prior_test_local = candidate_test
+            except (OSError, ValueError, json.JSONDecodeError):
+                prior_safe = None
+                prior_test_local = None
+        if prior_safe is not None and prior_test_local is not None:
+            _CURRENT_FAILURE_STAGE = "baseline-progress-display-capture"
+            (
+                baseline_emulator_version,
+                baseline_mapped_bank,
+                _,
+                _,
+                baseline_local,
+            ) = _capture_display(
+                rom_path=baseline_rom_path,
+                rom_size=baseline_rom_path.stat().st_size,
+                target_read=resolution["target_read"],
+                expected_selector_offset=expected_selector_offset,
+                expected_entry_ordinal=expected_entry_ordinal,
+                evidence_dir=evidence_dir / "baseline",
+                failure_stage="baseline-progress-display-capture",
+                schedule=capture_schedule,
+            )
+            if baseline_emulator_version != prior_safe["emulator_version"]:
+                raise PatchError(
+                    "baseline and test captures used different emulator versions"
+                )
+            frame_comparisons, post_comparison = _paired_pixel_comparisons(
+                baseline_local,
+                prior_test_local,
+            )
+            comparison = build_display_comparison(
+                build_report=build_report,
+                frame_comparisons=frame_comparisons,
+                post_advance_comparison=post_comparison,
+                prior_rejected_physical_starts=prior_automatic_rejections(
+                    root,
+                    str(build_report["baseline_target_sha256"]),
+                ),
+            )
+            comparison_path = write_display_comparison(root, comparison)
+            _write_human_review_bundle(
+                comparison,
+                baseline_local=baseline_local,
+                test_local=prior_test_local,
+                review_dir=review_dir,
+            )
+            local = {
+                "artifact_kind": "s25u-local-test-display-capture",
+                "schema_version": 1,
+                "baseline": baseline_local,
+                "test": prior_test_local,
+                "comparison": comparison,
+                "baseline_target_reached": (
+                    baseline_mapped_bank
+                    == int(resolution["target_read"]["expected_bank"])
+                ),
+                "test_target_sha256": build_report["test_target_sha256"],
+                "baseline_target_sha256": build_report[
+                    "baseline_target_sha256"
+                ],
+                "cold_boot": True,
+            }
+            try:
+                _write_json(local_report_path, local)
+            except (OSError, TypeError, ValueError):
+                pass
+            _write_bytes_atomic(
+                root / "reports" / "NEXT_STEP.txt",
+                _next_step_text(
+                    comparison,
+                    evidence_dir=evidence_dir,
+                    root=root,
+                ).encode("utf-8"),
+            )
+            print(
+                "SFKR deferred baseline comparison: "
+                f"{comparison['result']} ({comparison_path})"
+            )
+            return 0
         _CURRENT_FAILURE_STAGE = "test-progress-display-capture"
         (
             emulator_version,
