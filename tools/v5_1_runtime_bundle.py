@@ -62,6 +62,10 @@ try:
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
     )
+    from .v5_1_unmatched_glyph_fuzzy import (
+        PUBLISH_RELATIVE_PATH as UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH,
+        validate_unmatched_glyph_fuzzy,
+    )
     from .v5_1_confirmed_group_unicode import (
         PUBLISH_RELATIVE_PATH as CONFIRMED_GROUP_UNICODE_RELATIVE_PATH,
         validate_confirmed_group_unicode,
@@ -135,6 +139,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
     )
+    from v5_1_unmatched_glyph_fuzzy import (
+        PUBLISH_RELATIVE_PATH as UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH,
+        validate_unmatched_glyph_fuzzy,
+    )
     from v5_1_confirmed_group_unicode import (
         PUBLISH_RELATIVE_PATH as CONFIRMED_GROUP_UNICODE_RELATIVE_PATH,
         validate_confirmed_group_unicode,
@@ -203,6 +211,8 @@ SAFE_ARTIFACTS = {
         validate_group_source_delta,
     GROUP_TEXT_CANDIDATE_RELATIVE_PATH:
         validate_group_text_candidate_resolution,
+    UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH:
+        validate_unmatched_glyph_fuzzy,
     CONFIRMED_GROUP_UNICODE_RELATIVE_PATH:
         validate_confirmed_group_unicode,
     PUBLISH_RECEIPT_RELATIVE_PATH: validate_progress_preview,
@@ -603,6 +613,21 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != group_context_resolution["group"]["record_count"]
         ):
             artifacts.pop(GROUP_TEXT_CANDIDATE_RELATIVE_PATH)
+    group_text_candidates = artifacts.get(
+        GROUP_TEXT_CANDIDATE_RELATIVE_PATH
+    )
+    unmatched_glyph_fuzzy = artifacts.get(
+        UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH
+    )
+    if unmatched_glyph_fuzzy is not None:
+        if (
+            group_text_candidates is None
+            or unmatched_glyph_fuzzy["target_sha256"]
+            != group_text_candidates["target_sha256"]
+            or unmatched_glyph_fuzzy["source_text_candidate_sha256"]
+            != sha256_file(root / GROUP_TEXT_CANDIDATE_RELATIVE_PATH)
+        ):
+            artifacts.pop(UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH)
     confirmed_group_unicode = artifacts.get(
         CONFIRMED_GROUP_UNICODE_RELATIVE_PATH
     )

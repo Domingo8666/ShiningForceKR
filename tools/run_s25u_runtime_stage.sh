@@ -399,6 +399,16 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_unmatched_glyph_fuzzy.py --if-ready
+    unmatched_glyph_fuzzy_status=$?
+    if [ "$unmatched_glyph_fuzzy_status" -ne 0 ]; then
+      stage_status="$unmatched_glyph_fuzzy_status"
+      diagnostic_trigger=probe
+      record_stage_failure unmatched-glyph-fuzzy
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_confirmed_group_unicode.py --if-ready
     confirmed_group_unicode_status=$?
     if [ "$confirmed_group_unicode_status" -ne 0 ]; then
