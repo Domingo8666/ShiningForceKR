@@ -102,6 +102,7 @@ ATTRACT_CAPTURE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
 ATTRACT_CAPTURE_TIMEOUT_SECONDS = 30.0
 MAX_REJECTED_TARGET_HITS = 64
 DECODER_ENTRY_LOGICAL = 0x33FA
+DECODER_ENTRY_TRACE_STEPS = 13
 DECODER_SKIP_ENDPOINT_LOGICAL = 0x340B
 DECODER_PAYLOAD_READY_LOGICAL = 0x340C
 LOOKUP_TABLE_BASE = 0x3FE8
@@ -1548,33 +1549,52 @@ def _capture_display(
                         entry_selector_confirmed = True
                         disarm_entry_breakpoint()
                         if expected_entry_ordinal is not None:
+                            disarm_breakpoint()
+                            for _ in range(DECODER_ENTRY_TRACE_STEPS):
+                                _step_instruction_and_wait(client)
                             arm_endpoint_breakpoint()
+                            status = _step_frames_and_wait(client, 1)
+                            if status.get("at_breakpoint") is True:
+                                endpoint_state, endpoint_evidence = (
+                                    _capture_state(client)
+                                )
+                                if _decoder_skip_endpoint_matches(
+                                    endpoint_state,
+                                    target_read,
+                                ):
+                                    local["skip_endpoint_hit"] = endpoint_state
+                                    disarm_endpoint_breakpoint()
+                                    _step_instruction_and_wait(client)
+                                    ready_state, ready_evidence = _capture_state(
+                                        client
+                                    )
+                                    if _decoder_payload_ready_matches(
+                                        ready_state,
+                                        target_read,
+                                    ):
+                                        mapped_bank = int(
+                                            ready_state[f"slot{slot}_bank"]
+                                        )
+                                        local["observed_logical_access"] = (
+                                            logical_access
+                                        )
+                                        local["target_hit"] = ready_state
+                                        local["target_hit_evidence"] = (
+                                            ready_evidence
+                                        )
+                                        local["skip_endpoint_hit_evidence"] = (
+                                            endpoint_evidence
+                                        )
+                                        local["confirmation_basis"] = (
+                                            "decoder-selection-endpoint"
+                                        )
+                                        target_found = True
+                                        break
                     else:
                         disarm_entry_breakpoint()
                         _step_instruction_and_wait(client)
                         arm_entry_breakpoint()
                     continue
-                if (
-                    endpoint_breakpoint_armed
-                    and _decoder_skip_endpoint_matches(state, target_read)
-                ):
-                    local["skip_endpoint_hit"] = state
-                    disarm_endpoint_breakpoint()
-                    _step_instruction_and_wait(client)
-                    ready_state, ready_evidence = _capture_state(client)
-                    if _decoder_payload_ready_matches(
-                        ready_state,
-                        target_read,
-                    ):
-                        mapped_bank = candidate_bank
-                        local["observed_logical_access"] = logical_access
-                        local["target_hit"] = ready_state
-                        local["target_hit_evidence"] = ready_evidence
-                        local["confirmation_basis"] = (
-                            "decoder-selection-endpoint"
-                        )
-                        target_found = True
-                        break
                 observed_target = _observed_target_address(state, target_read)
                 if entry_selector_confirmed and observed_target is not None:
                     mapped_bank = candidate_bank
@@ -1600,7 +1620,8 @@ def _capture_display(
             _set_unlimited_fast_forward(client, False)
             fast_forward_enabled = False
         local["rejected_target_hits"] = rejected_hits
-        disarm_breakpoint()
+        if breakpoint_armed:
+            disarm_breakpoint()
         if entry_breakpoint_armed:
             disarm_entry_breakpoint()
         if endpoint_breakpoint_armed:
