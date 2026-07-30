@@ -355,6 +355,16 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_target_group_usage.py --if-ready
+    target_group_usage_status=$?
+    if [ "$target_group_usage_status" -ne 0 ]; then
+      stage_status="$target_group_usage_status"
+      diagnostic_trigger=probe
+      record_stage_failure target-group-usage
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_group_context_resolution.py --if-ready
     group_context_resolution_status=$?
     if [ "$group_context_resolution_status" -ne 0 ]; then

@@ -70,6 +70,10 @@ try:
         PUBLISH_RELATIVE_PATH as SOURCE_RECORD_PAIRING_RELATIVE_PATH,
         validate_source_record_pairing,
     )
+    from .v5_1_target_group_usage import (
+        PUBLISH_RELATIVE_PATH as TARGET_GROUP_USAGE_RELATIVE_PATH,
+        validate_target_group_usage,
+    )
     from .v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -163,6 +167,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as SOURCE_RECORD_PAIRING_RELATIVE_PATH,
         validate_source_record_pairing,
     )
+    from v5_1_target_group_usage import (
+        PUBLISH_RELATIVE_PATH as TARGET_GROUP_USAGE_RELATIVE_PATH,
+        validate_target_group_usage,
+    )
     from v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -247,6 +255,8 @@ SAFE_ARTIFACTS = {
         validate_source_huffman_locator,
     SOURCE_RECORD_PAIRING_RELATIVE_PATH:
         validate_source_record_pairing,
+    TARGET_GROUP_USAGE_RELATIVE_PATH:
+        validate_target_group_usage,
     GROUP_TEXT_CANDIDATE_RELATIVE_PATH:
         validate_group_text_candidate_resolution,
     UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH:
@@ -566,6 +576,16 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
     confirmed_group_extract = artifacts.get(
         CONFIRMED_GROUP_EXTRACT_RELATIVE_PATH
     )
+    target_group_usage = artifacts.get(TARGET_GROUP_USAGE_RELATIVE_PATH)
+    if target_group_usage is not None:
+        if (
+            confirmed_group_extract is None
+            or target_group_usage["target_sha256"]
+            != confirmed_group_extract["target_sha256"]
+            or target_group_usage["source_group_extract_sha256"]
+            != sha256_file(root / CONFIRMED_GROUP_EXTRACT_RELATIVE_PATH)
+        ):
+            artifacts.pop(TARGET_GROUP_USAGE_RELATIVE_PATH)
     group_context_resolution = artifacts.get(
         GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH
     )
