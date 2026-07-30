@@ -1281,6 +1281,7 @@ def _capture_display(
     rom_size: int,
     target_read: dict[str, object],
     expected_selector_offset: int | None,
+    expected_entry_ordinal: int | None,
     evidence_dir: Path,
     failure_stage: str,
     schedule: tuple[tuple[int, str | None], ...] = INPUT_SCHEDULE,
@@ -1443,13 +1444,31 @@ def _capture_display(
                         if isinstance(registers, dict)
                         else None
                     )
+                    bc = (
+                        registers.get("bc")
+                        if isinstance(registers, dict)
+                        else None
+                    )
+                    entry_ordinal = (
+                        int(bc) >> 8
+                        if isinstance(bc, int)
+                        and not isinstance(bc, bool)
+                        else None
+                    )
                     local["entry_selector_hits"].append(
                         {
                             "selector_offset": selector_offset,
+                            "entry_ordinal": entry_ordinal,
                             "pc_after": pc_after,
                         }
                     )
-                    if selector_offset == expected_selector_offset:
+                    if (
+                        selector_offset == expected_selector_offset
+                        and (
+                            expected_entry_ordinal is None
+                            or entry_ordinal == expected_entry_ordinal
+                        )
+                    ):
                         local["entry_selector_hit"] = state
                         local["entry_selector_hit_evidence"] = hit_evidence
                         entry_selector_confirmed = True
@@ -1777,6 +1796,15 @@ def main() -> int:
             baseline_rom,
             int(resolution["target_read"]["logical_access"]),
         )
+    expected_entry_ordinal = (
+        int(built_entry["skipped_record_count"])
+        if (
+            isinstance(built_entry, dict)
+            and built_entry.get("kind")
+            == "runtime-length-prefixed-entry"
+        )
+        else None
+    )
     _CURRENT_FAILURE_STAGE = "baseline-display-capture"
     (
         baseline_emulator_version,
@@ -1789,6 +1817,7 @@ def main() -> int:
         rom_size=baseline_rom_path.stat().st_size,
         target_read=resolution["target_read"],
         expected_selector_offset=expected_selector_offset,
+        expected_entry_ordinal=expected_entry_ordinal,
         evidence_dir=evidence_dir / "baseline",
         failure_stage="baseline-display-capture",
         schedule=capture_schedule,
@@ -1805,6 +1834,7 @@ def main() -> int:
         rom_size=rom_path.stat().st_size,
         target_read=resolution["target_read"],
         expected_selector_offset=expected_selector_offset,
+        expected_entry_ordinal=expected_entry_ordinal,
         evidence_dir=evidence_dir / "test",
         failure_stage="test-display-capture",
         schedule=capture_schedule,
