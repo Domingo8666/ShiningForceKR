@@ -81,6 +81,7 @@ def _trace_summary(*, data_writes: int = 1) -> dict[str, int]:
         "primary_renderer_entry_hit_count": 1,
         "primary_renderer_data_write_count": data_writes,
         "primary_renderer_control_write_count": 1,
+        "decoder_to_renderer_data_write_count": data_writes,
         "post_renderer_data_write_count": data_writes,
     }
 
@@ -212,7 +213,29 @@ class RendererOutputTraceTests(unittest.TestCase):
         )
         self.assertEqual(summary["primary_renderer_entry_hit_count"], 1)
         self.assertEqual(summary["primary_renderer_control_write_count"], 1)
+        self.assertEqual(summary["decoder_to_renderer_data_write_count"], 0)
         self.assertEqual(summary["post_renderer_data_write_count"], 1)
+
+    def test_counts_decoder_data_before_primary_renderer_control(self) -> None:
+        summary, _ = analyze_trace_lines(
+            [
+                (
+                    "00:3411 A:42 BC:0000 DE:0000 HL:0000 SP:D000  "
+                    "D3 BE"
+                ),
+                (
+                    "21:7000 A:00 BC:0000 DE:0000 HL:0000 SP:D000  "
+                    "C3 00 7A"
+                ),
+                (
+                    "21:706A A:38 BC:0000 DE:0000 HL:0000 SP:D000  "
+                    "D3 BF"
+                ),
+            ]
+        )
+        self.assertEqual(summary["candidate_entry_hit_count"], 1)
+        self.assertEqual(summary["decoder_to_renderer_data_write_count"], 1)
+        self.assertEqual(summary["post_renderer_data_write_count"], 0)
 
     def test_requires_primary_control_after_the_renderer_entry(self) -> None:
         summary, _ = analyze_trace_lines(
@@ -296,6 +319,7 @@ class RendererOutputTraceTests(unittest.TestCase):
         summary = _trace_summary()
         summary["primary_renderer_entry_hit_count"] = 0
         summary["primary_renderer_data_write_count"] = 0
+        summary["decoder_to_renderer_data_write_count"] = 0
         summary["post_renderer_data_write_count"] = 0
         artifact = build_renderer_output_trace(
             target_sha256="1" * 64,

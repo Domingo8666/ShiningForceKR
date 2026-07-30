@@ -71,7 +71,7 @@ except ImportError:  # direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-renderer-output-trace"
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 DEFAULT_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 VISIBLE_ROUNDTRIP_PATH = Path(
     "analysis/device/v5_1_latest_visible_script_roundtrip.json"
@@ -164,6 +164,7 @@ RENDERER_WINDOW_KEYS = {
     "primary_renderer_entry_hit_count",
     "primary_renderer_data_write_count",
     "primary_renderer_control_write_count",
+    "decoder_to_renderer_data_write_count",
     "post_renderer_data_write_count",
 }
 _VDP_EVENT_LINE = re.compile(
@@ -264,6 +265,7 @@ def validate_renderer_output_trace(value: dict[str, object]) -> None:
         ("primary_renderer_entry_hit_count", 0, 0x100000),
         ("primary_renderer_data_write_count", 0, 0x100000),
         ("primary_renderer_control_write_count", 0, 0x100000),
+        ("decoder_to_renderer_data_write_count", 0, 0x100000),
         ("post_renderer_data_write_count", 0, 0x100000),
     ):
         if not _bounded_int(renderer[key], minimum, maximum):
@@ -273,6 +275,8 @@ def validate_renderer_output_trace(value: dict[str, object]) -> None:
         > renderer["vdp_data_write_count"]
         or renderer["primary_renderer_control_write_count"]
         > renderer["vdp_control_write_count"]
+        or renderer["decoder_to_renderer_data_write_count"]
+        > renderer["vdp_data_write_count"]
         or renderer["post_renderer_data_write_count"]
         > renderer["vdp_data_write_count"]
     ):
@@ -280,7 +284,7 @@ def validate_renderer_output_trace(value: dict[str, object]) -> None:
     observed = (
         renderer["primary_renderer_entry_hit_count"] > 0
         and renderer["primary_renderer_control_write_count"] > 0
-        and renderer["post_renderer_data_write_count"] > 0
+        and renderer["decoder_to_renderer_data_write_count"] > 0
     )
     if (
         value["consumer_chain_confirmed"] is not observed
@@ -372,6 +376,7 @@ def analyze_trace_lines(
 ) -> tuple[dict[str, int], dict[str, object]]:
     parsed_count = 0
     candidate_hits: list[int] = []
+    candidate_hit_indices: list[int] = []
     primary_renderer_entry_hits: list[dict[str, int]] = []
     outputs: list[dict[str, int]] = []
     io_events: list[dict[str, int]] = []
@@ -392,6 +397,7 @@ def analyze_trace_lines(
         bank = int(parsed["bank"])
         if pc in DECODER_OUTPUT_CANDIDATES:
             candidate_hits.append(pc)
+            candidate_hit_indices.append(trace_index)
         if bank == PRIMARY_RENDERER_BANK and pc == PRIMARY_RENDERER_RANGES[0][0]:
             primary_renderer_entry_hits.append(
                 {"pc": pc, "trace_index": trace_index}
@@ -449,6 +455,18 @@ def analyze_trace_lines(
             default=None,
         )
     )
+    first_candidate_index = min(candidate_hit_indices, default=None)
+    decoder_to_renderer_data = (
+        []
+        if first_candidate_index is None or first_primary_output_index is None
+        else [
+            item
+            for item in instruction_data
+            if first_candidate_index
+            <= item["trace_index"]
+            < first_primary_output_index
+        ]
+    )
     post_renderer_data = (
         []
         if first_primary_output_index is None
@@ -473,6 +491,9 @@ def analyze_trace_lines(
         ),
         "primary_renderer_control_write_count": sum(
             item["port"] == 0xBF for item in primary_outputs
+        ),
+        "decoder_to_renderer_data_write_count": len(
+            decoder_to_renderer_data
         ),
         "post_renderer_data_write_count": len(post_renderer_data),
     }
@@ -504,7 +525,7 @@ def build_renderer_output_trace(
     observed = (
         trace_summary["primary_renderer_entry_hit_count"] > 0
         and trace_summary["primary_renderer_control_write_count"] > 0
-        and trace_summary["post_renderer_data_write_count"] > 0
+        and trace_summary["decoder_to_renderer_data_write_count"] > 0
     )
     safe: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
@@ -563,6 +584,9 @@ def build_renderer_output_trace(
             ],
             "primary_renderer_control_write_count": trace_summary[
                 "primary_renderer_control_write_count"
+            ],
+            "decoder_to_renderer_data_write_count": trace_summary[
+                "decoder_to_renderer_data_write_count"
             ],
             "post_renderer_data_write_count": trace_summary[
                 "post_renderer_data_write_count"
