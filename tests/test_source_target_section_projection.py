@@ -12,7 +12,9 @@ if str(ROOT) not in sys.path:
 from tools.v5_1_source_target_anchor import normalize_source_line  # noqa: E402
 from tools.v5_1_source_target_section_projection import (  # noqa: E402
     build_source_target_section_projection,
+    build_human_review_rows,
     project_anchored_section,
+    render_human_review_text,
     validate_local_quality_identity,
     validate_source_target_section_projection,
 )
@@ -129,6 +131,44 @@ class SourceTargetSectionProjectionTests(unittest.TestCase):
                     local_quality={"jsonl_sha256": "1" * 64},
                     local_quality_jsonl_path=jsonl_path,
                 )
+
+    def test_builds_a_local_only_human_review_packet(self) -> None:
+        rows = build_human_review_rows(
+            [
+                {
+                    "pair_index": 0,
+                    "target_selector": 2,
+                    "target_ordinal": 147,
+                    "source_text": "Synthetic source.",
+                    "speaker": "speaker-a",
+                    "target_record": {
+                        "translation_text": "가상 문장",
+                        "quality_tier": "translation-ready",
+                    },
+                },
+                {
+                    "pair_index": 1,
+                    "target_selector": 2,
+                    "target_ordinal": 148,
+                    "source_text": "Synthetic narration.",
+                    "speaker": None,
+                    "target_record": {
+                        "translation_text": "가상 나레이션",
+                        "quality_tier": "glyph-recovery",
+                    },
+                },
+            ]
+        )
+        text = render_human_review_text(
+            packet_id="0123456789ab",
+            rows=rows,
+        )
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["pairing_decision"], "unreviewed")
+        self.assertEqual(rows[0]["approved_korean_text"], "")
+        self.assertIn("연결 판정: [ ] 승인  [ ] 거부  [ ] 보류", text)
+        self.assertIn("화자: (나레이션)", text)
+        self.assertIn("승인된 번역이 아닙니다", text)
 
 
 if __name__ == "__main__":

@@ -78,6 +78,10 @@ LOCAL_REPORT_PATH = Path(
 LOCAL_JSONL_PATH = Path(
     "reports/local/v5_1_source_target_section_projection.jsonl"
 )
+LOCAL_REVIEW_DIR = Path("reports/HUMAN_REVIEW")
+LOCAL_REVIEW_LATEST_PATH = LOCAL_REVIEW_DIR / (
+    "SOURCE_TARGET_SECTION_REVIEW_LATEST.txt"
+)
 TOP_LEVEL_KEYS = {
     "artifact_kind",
     "schema_version",
@@ -256,6 +260,88 @@ def _bounded_int(value: object, minimum: int, maximum: int) -> bool:
         and not isinstance(value, bool)
         and minimum <= value <= maximum
     )
+
+
+def build_human_review_rows(
+    pairs: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for pair in pairs:
+        if not isinstance(pair, dict):
+            raise ValueError("section projection review pair is invalid")
+        target_record = pair.get("target_record")
+        source_text = pair.get("source_text")
+        speaker = pair.get("speaker")
+        if (
+            not isinstance(target_record, dict)
+            or not isinstance(source_text, str)
+            or speaker is not None
+            and not isinstance(speaker, str)
+        ):
+            raise ValueError("section projection review fields are invalid")
+        target_text = target_record.get("translation_text")
+        quality_tier = target_record.get("quality_tier")
+        if not isinstance(target_text, str) or quality_tier not in TIERS:
+            raise ValueError("section projection review target is invalid")
+        row = {
+            "pair_index": pair.get("pair_index"),
+            "target_selector": pair.get("target_selector"),
+            "target_ordinal": pair.get("target_ordinal"),
+            "quality_tier": quality_tier,
+            "speaker": speaker,
+            "source_text": source_text,
+            "current_target_text": target_text,
+            "pairing_decision": "unreviewed",
+            "approved_korean_text": "",
+            "review_note": "",
+        }
+        if (
+            not isinstance(row["pair_index"], int)
+            or not isinstance(row["target_selector"], int)
+            or not isinstance(row["target_ordinal"], int)
+        ):
+            raise ValueError("section projection review identity is invalid")
+        rows.append(row)
+    return rows
+
+
+def render_human_review_text(
+    *,
+    packet_id: str,
+    rows: list[dict[str, object]],
+) -> str:
+    if re.fullmatch(r"[0-9a-f]{12}", packet_id) is None:
+        raise ValueError("section projection review packet id is invalid")
+    lines = [
+        "Shining Force KR 원문-대상 구간 사람 검토표",
+        f"검토표 ID: {packet_id}",
+        "",
+        "주의: 이것은 자동 생성된 연결 후보이며 승인된 번역이 아닙니다.",
+        "각 항목에서 연결 판정 하나만 [x]로 바꿔주세요.",
+        "번역문을 승인할 때만 '승인 한글문:' 뒤에 직접 적어주세요.",
+        "원문·현재 한글·화자·번호는 수정하지 마세요.",
+        "",
+    ]
+    for row in rows:
+        speaker = row["speaker"]
+        lines.extend(
+            [
+                "=" * 72,
+                (
+                    f"[{int(row['pair_index']):03d}] "
+                    f"대상 {row['target_selector']}:{row['target_ordinal']} "
+                    f"/ 등급 {row['quality_tier']}"
+                ),
+                f"화자: {speaker if speaker is not None else '(나레이션)'}",
+                f"영문 참고: {row['source_text']}",
+                f"현재 한글: {row['current_target_text']}",
+                "연결 판정: [ ] 승인  [ ] 거부  [ ] 보류",
+                "승인 한글문:",
+                "메모:",
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def validate_local_quality_identity(
@@ -479,6 +565,63 @@ def main() -> int:
         target_records=target_records,
         source_sections=source_sections,
     )
+    review_rows = build_human_review_rows(projection["pairs"])
+    review_rows_bytes = json.dumps(
+        review_rows,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    review_rows_sha256 = hashlib.sha256(review_rows_bytes).hexdigest()
+    review_packet_id = review_rows_sha256[:12]
+    review_dir = root / LOCAL_REVIEW_DIR
+    review_dir.mkdir(parents=True, exist_ok=True)
+    review_json_path = review_dir / (
+        f"SOURCE_TARGET_SECTION_REVIEW_{review_packet_id}.json"
+    )
+    review_text_path = review_dir / (
+        f"SOURCE_TARGET_SECTION_REVIEW_{review_packet_id}.txt"
+    )
+    review_json = {
+        "artifact_kind": "local-v5-1-source-target-section-review",
+        "schema_version": 1,
+        "packet_id": review_packet_id,
+        "target_sha256": quality["target_sha256"],
+        "candidate_pairing_only": True,
+        "human_review_required": True,
+        "hancharacter_contract_mode": "translator_declared",
+        "rows": review_rows,
+        "publication_policy": (
+            "never-publish-source-target-text-speakers-identities-decisions-or-translations"
+        ),
+    }
+    review_json_path.write_text(
+        json.dumps(review_json, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    if not review_text_path.exists():
+        review_text_path.write_text(
+            render_human_review_text(
+                packet_id=review_packet_id,
+                rows=review_rows,
+            ),
+            encoding="utf-8",
+        )
+    latest_path = root / LOCAL_REVIEW_LATEST_PATH
+    latest_path.write_text(
+        "\n".join(
+            [
+                "Shining Force KR 최신 사람 검토표",
+                f"검토표 ID: {review_packet_id}",
+                f"열 파일: {review_text_path.name}",
+                "",
+                "파일을 열고 각 항목의 연결 판정 하나만 [x]로 바꿔주세요.",
+                "작성 중인 검토 파일은 자동실행기가 덮어쓰지 않습니다.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     captured_utc = datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"
     )
@@ -499,8 +642,16 @@ def main() -> int:
         "projection": projection,
         "jsonl_path": str(local_jsonl_path),
         "jsonl_sha256": sha256_file(local_jsonl_path),
+        "review_packet_id": review_packet_id,
+        "review_row_count": len(review_rows),
+        "review_rows_sha256": review_rows_sha256,
+        "review_json_path": str(review_json_path),
+        "review_json_sha256": sha256_file(review_json_path),
+        "review_text_path": str(review_text_path),
+        "review_text_sha256": sha256_file(review_text_path),
+        "review_latest_path": str(latest_path),
         "publication_policy": (
-            "never-publish-source-target-text-speakers-aliases-selectors-ordinals-indices-or-pairs"
+            "never-publish-source-target-text-speakers-aliases-selectors-ordinals-indices-pairs-decisions-or-translations"
         ),
     }
     local_path = root / LOCAL_REPORT_PATH
