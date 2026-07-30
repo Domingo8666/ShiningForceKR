@@ -170,6 +170,7 @@ class S25UAutopilotTests(unittest.TestCase):
             "test-display-capture",
             "display-comparison",
             "initial-font-page-trace",
+            "font-transfer-source",
         ):
             self.assertIn(f"record_stage_failure {stage}", RUNTIME_STAGE)
 
@@ -193,6 +194,18 @@ class S25UAutopilotTests(unittest.TestCase):
             ),
             RUNTIME_STAGE.index(
                 "python tools/v5_1_initial_font_page_trace.py --if-ready"
+            ),
+        )
+        self.assertIn(
+            "python tools/v5_1_font_transfer_source.py --if-ready",
+            RUNTIME_STAGE,
+        )
+        self.assertLess(
+            RUNTIME_STAGE.index(
+                "python tools/v5_1_initial_font_page_trace.py --if-ready"
+            ),
+            RUNTIME_STAGE.index(
+                "python tools/v5_1_font_transfer_source.py --if-ready"
             ),
         )
 

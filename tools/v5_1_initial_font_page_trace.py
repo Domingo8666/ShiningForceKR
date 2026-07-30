@@ -296,6 +296,59 @@ def _output_anchor(local_renderer: dict[str, object]) -> tuple[int, int]:
     raise ValueError("local renderer trace has no VDP data output")
 
 
+def reuse_initial_font_page_trace(
+    *,
+    existing_safe: object,
+    existing_local: object,
+    target_sha256: str,
+    source_mapping_sha256: str,
+    runtime_entry: dict[str, object],
+    candidate_pages: list[int],
+) -> dict[str, object] | None:
+    if not isinstance(existing_safe, dict) or not isinstance(existing_local, dict):
+        return None
+    try:
+        validate_initial_font_page_trace(existing_safe)
+    except ValueError:
+        return None
+    if (
+        existing_safe["target_sha256"] != target_sha256
+        or not runtime_entry_matches(
+            existing_safe["runtime_entry"], runtime_entry
+        )
+        or existing_local.get("target_sha256") != target_sha256
+        or existing_local.get("candidate_pages_before") != candidate_pages
+    ):
+        return None
+    hit_state = existing_local.get("hit_state")
+    if not isinstance(hit_state, dict):
+        return None
+    mapped_font_bank = hit_state.get("slot2_bank")
+    if (
+        not isinstance(mapped_font_bank, int)
+        or isinstance(mapped_font_bank, bool)
+        or not 0 <= mapped_font_bank <= 0xFF
+    ):
+        return None
+    rebuilt = build_initial_font_page_trace(
+        target_sha256=target_sha256,
+        source_mapping_sha256=source_mapping_sha256,
+        runtime_entry=runtime_entry,
+        candidate_pages=candidate_pages,
+        mapped_font_bank=mapped_font_bank,
+        captured_utc=str(existing_safe["captured_utc"]),
+    )
+    for key in (
+        "status",
+        "candidate_page_count_before",
+        "candidate_page_count_after",
+        "runtime_initial_page_confirmed",
+    ):
+        if rebuilt[key] != existing_safe[key]:
+            return None
+    return rebuilt
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
@@ -308,6 +361,8 @@ def main() -> int:
     local_renderer_path = root / LOCAL_RENDERER_TRACE_PATH
     renderer_trace_path = root / RENDERER_TRACE_PATH
     register_trace_path = root / DECODER_REGISTER_TRACE_PATH
+    publish_path = root / PUBLISH_RELATIVE_PATH
+    local_initial_path = root / LOCAL_REPORT_RELATIVE_PATH
     prerequisites = (
         rom_path,
         mapping_path,
@@ -360,6 +415,30 @@ def main() -> int:
     )
     if len(candidate_pages) != mapping_counts["initial_page_candidate_count"]:
         raise ValueError("local and safe initial page counts disagree")
+    runtime = mapping["runtime_entry"]
+    assert isinstance(runtime, dict)
+    if publish_path.is_file() and local_initial_path.is_file():
+        try:
+            existing_safe = _load_json_object(publish_path)
+            existing_local = _load_json_object(local_initial_path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            reused = None
+        else:
+            reused = reuse_initial_font_page_trace(
+                existing_safe=existing_safe,
+                existing_local=existing_local,
+                target_sha256=target_sha256,
+                source_mapping_sha256=sha256_file(mapping_path),
+                runtime_entry=runtime,
+                candidate_pages=candidate_pages,
+            )
+        if reused is not None:
+            publish_path.write_text(
+                json.dumps(reused, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            print("Initial font-page trace reused without emulator replay")
+            return 0
     local_renderer = _load_json_object(local_renderer_path)
     output_pc, output_bank = _output_anchor(local_renderer)
     register_trace = _load_json_object(register_trace_path)
@@ -368,9 +447,6 @@ def main() -> int:
     if not isinstance(states, list) or not states or not isinstance(states[0], dict):
         raise ValueError("decoder register trace has no entry state")
     entry_ordinal = int(states[0]["bc"]) >> 8
-    runtime = mapping["runtime_entry"]
-    assert isinstance(runtime, dict)
-
     client = McpStdioClient(_default_command())
     breakpoint_armed = False
     fast_forward = False
@@ -469,7 +545,6 @@ def main() -> int:
             "never-publish-page-candidates-output-addresses-or-registers"
         ),
     }
-    publish_path = root / PUBLISH_RELATIVE_PATH
     local_path = root / LOCAL_REPORT_RELATIVE_PATH
     publish_path.parent.mkdir(parents=True, exist_ok=True)
     local_path.parent.mkdir(parents=True, exist_ok=True)

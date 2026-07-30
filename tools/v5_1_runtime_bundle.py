@@ -38,6 +38,10 @@ try:
         PUBLISH_RELATIVE_PATH as INITIAL_FONT_PAGE_TRACE_RELATIVE_PATH,
         validate_initial_font_page_trace,
     )
+    from .v5_1_font_transfer_source import (
+        PUBLISH_RELATIVE_PATH as FONT_TRANSFER_SOURCE_RELATIVE_PATH,
+        validate_font_transfer_source,
+    )
     from .v5_1_progress_preview import (
         PUBLISH_IMAGE_RELATIVE_PATH,
         PUBLISH_RECEIPT_RELATIVE_PATH,
@@ -82,6 +86,10 @@ except ImportError:  # direct script execution
     from v5_1_initial_font_page_trace import (
         PUBLISH_RELATIVE_PATH as INITIAL_FONT_PAGE_TRACE_RELATIVE_PATH,
         validate_initial_font_page_trace,
+    )
+    from v5_1_font_transfer_source import (
+        PUBLISH_RELATIVE_PATH as FONT_TRANSFER_SOURCE_RELATIVE_PATH,
+        validate_font_transfer_source,
     )
     from v5_1_progress_preview import (
         PUBLISH_IMAGE_RELATIVE_PATH,
@@ -135,6 +143,8 @@ SAFE_ARTIFACTS = {
         validate_visible_unicode_mapping,
     INITIAL_FONT_PAGE_TRACE_RELATIVE_PATH:
         validate_initial_font_page_trace,
+    FONT_TRANSFER_SOURCE_RELATIVE_PATH:
+        validate_font_transfer_source,
     PUBLISH_RECEIPT_RELATIVE_PATH: validate_progress_preview,
 }
 SAFE_BINARY_ARTIFACTS = {
@@ -393,6 +403,33 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != sha256_file(root / VISIBLE_UNICODE_MAPPING_RELATIVE_PATH)
         ):
             artifacts.pop(INITIAL_FONT_PAGE_TRACE_RELATIVE_PATH)
+    initial_font_page_trace = artifacts.get(
+        INITIAL_FONT_PAGE_TRACE_RELATIVE_PATH
+    )
+    font_transfer_source = artifacts.get(
+        FONT_TRANSFER_SOURCE_RELATIVE_PATH
+    )
+    if font_transfer_source is not None:
+        if (
+            visible_unicode_mapping is None
+            or renderer_output_trace is None
+            or initial_font_page_trace is None
+            or initial_font_page_trace["next_checkpoint"]
+            != "trace-font-transfer-source"
+            or font_transfer_source["target_sha256"]
+            != visible_unicode_mapping["target_sha256"]
+            or font_transfer_source["runtime_entry"]
+            != visible_unicode_mapping["runtime_entry"]
+            or font_transfer_source["source_mapping_sha256"]
+            != sha256_file(root / VISIBLE_UNICODE_MAPPING_RELATIVE_PATH)
+            or font_transfer_source["source_renderer_trace_sha256"]
+            != sha256_file(root / RENDERER_OUTPUT_TRACE_RELATIVE_PATH)
+            or font_transfer_source["source_initial_trace_sha256"]
+            != sha256_file(root / INITIAL_FONT_PAGE_TRACE_RELATIVE_PATH)
+            or font_transfer_source["candidate_page_count_before"]
+            != initial_font_page_trace["candidate_page_count_before"]
+        ):
+            artifacts.pop(FONT_TRANSFER_SOURCE_RELATIVE_PATH)
     return artifacts
 
 

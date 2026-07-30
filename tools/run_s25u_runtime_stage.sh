@@ -333,6 +333,16 @@ else
       record_stage_failure initial-font-page-trace
     fi
   fi
+
+  if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_font_transfer_source.py --if-ready
+    font_transfer_source_status=$?
+    if [ "$font_transfer_source_status" -ne 0 ]; then
+      stage_status="$font_transfer_source_status"
+      diagnostic_trigger=probe
+      record_stage_failure font-transfer-source
+    fi
+  fi
 fi
 
 python tools/v5_1_runtime_diagnostic.py \

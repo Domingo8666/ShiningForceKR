@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
 from tools.v5_1_initial_font_page_trace import (  # noqa: E402
     build_initial_font_page_trace,
     resolve_pages_from_font_bank,
+    reuse_initial_font_page_trace,
     runtime_entry_matches,
     validate_initial_font_page_trace,
 )
@@ -88,6 +89,58 @@ class InitialFontPageTraceTests(unittest.TestCase):
         unsafe["candidate_pages"] = [21]
         with self.assertRaisesRegex(ValueError, "fields do not match"):
             validate_initial_font_page_trace(unsafe)
+
+    def test_rebinds_a_compatible_local_capture_to_new_mapping_hash(
+        self,
+    ) -> None:
+        existing = build_initial_font_page_trace(
+            target_sha256="1" * 64,
+            source_mapping_sha256="2" * 64,
+            runtime_entry=_runtime_entry(),
+            candidate_pages=[21, 40],
+            mapped_font_bank=0x22 + 21 // 4,
+            captured_utc="2026-07-30T12:00:00Z",
+        )
+        reused = reuse_initial_font_page_trace(
+            existing_safe=existing,
+            existing_local={
+                "target_sha256": "1" * 64,
+                "candidate_pages_before": [21, 40],
+                "hit_state": {"slot2_bank": 0x22 + 21 // 4},
+            },
+            target_sha256="1" * 64,
+            source_mapping_sha256="3" * 64,
+            runtime_entry=_runtime_entry(),
+            candidate_pages=[21, 40],
+        )
+        self.assertIsNotNone(reused)
+        assert reused is not None
+        self.assertEqual(reused["source_mapping_sha256"], "3" * 64)
+        self.assertEqual(reused["captured_utc"], existing["captured_utc"])
+
+    def test_refuses_reuse_when_candidate_pages_changed(self) -> None:
+        existing = build_initial_font_page_trace(
+            target_sha256="1" * 64,
+            source_mapping_sha256="2" * 64,
+            runtime_entry=_runtime_entry(),
+            candidate_pages=[21, 40],
+            mapped_font_bank=0x22 + 21 // 4,
+            captured_utc="2026-07-30T12:00:00Z",
+        )
+        self.assertIsNone(
+            reuse_initial_font_page_trace(
+                existing_safe=existing,
+                existing_local={
+                    "target_sha256": "1" * 64,
+                    "candidate_pages_before": [21, 40],
+                    "hit_state": {"slot2_bank": 0x22 + 21 // 4},
+                },
+                target_sha256="1" * 64,
+                source_mapping_sha256="3" * 64,
+                runtime_entry=_runtime_entry(),
+                candidate_pages=[21, 41],
+            )
+        )
 
 
 if __name__ == "__main__":
