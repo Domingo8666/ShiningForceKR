@@ -1,9 +1,9 @@
 {
   "artifact_kind": "sanitized-s25u-renderer-output-trace",
-  "schema_version": 5,
-  "status": "renderer-output-events-not-observed",
+  "schema_version": 6,
+  "status": "renderer-output-events-captured",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "captured_utc": "2026-07-30T11:47:32.127152Z",
+  "captured_utc": "2026-07-30T11:54:24.244760Z",
   "runtime_entry": {
     "physical_start": 133395,
     "logical_start": 18707,
@@ -30,9 +30,10 @@
     "primary_renderer_entry_hit_count": 1,
     "primary_renderer_data_write_count": 0,
     "primary_renderer_control_write_count": 1636,
+    "decoder_to_renderer_data_write_count": 192,
     "post_renderer_data_write_count": 0
   },
-  "consumer_chain_confirmed": false,
+  "consumer_chain_confirmed": true,
   "local_payload_policy": "symbols-opcodes-values-and-raw-trace-local-only",
   "translation_build_eligible": false,
   "next_checkpoint": "align-decoded-symbols-with-renderer-output-events"
