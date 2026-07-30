@@ -102,6 +102,10 @@ try:
         PUBLISH_RELATIVE_PATH as TARGET_GROUP_RECORD_QUALITY_RELATIVE_PATH,
         validate_target_group_record_quality,
     )
+    from .v5_1_source_script_reference import (
+        PUBLISH_RELATIVE_PATH as SOURCE_SCRIPT_REFERENCE_RELATIVE_PATH,
+        validate_source_script_reference,
+    )
     from .v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -227,6 +231,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as TARGET_GROUP_RECORD_QUALITY_RELATIVE_PATH,
         validate_target_group_record_quality,
     )
+    from v5_1_source_script_reference import (
+        PUBLISH_RELATIVE_PATH as SOURCE_SCRIPT_REFERENCE_RELATIVE_PATH,
+        validate_source_script_reference,
+    )
     from v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -327,6 +335,8 @@ SAFE_ARTIFACTS = {
         validate_target_group_expanded_glyphs,
     TARGET_GROUP_RECORD_QUALITY_RELATIVE_PATH:
         validate_target_group_record_quality,
+    SOURCE_SCRIPT_REFERENCE_RELATIVE_PATH:
+        validate_source_script_reference,
     GROUP_TEXT_CANDIDATE_RELATIVE_PATH:
         validate_group_text_candidate_resolution,
     UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH:

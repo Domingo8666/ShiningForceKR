@@ -425,6 +425,16 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_source_script_reference.py --if-ready
+    source_script_reference_status=$?
+    if [ "$source_script_reference_status" -ne 0 ]; then
+      stage_status="$source_script_reference_status"
+      diagnostic_trigger=probe
+      record_stage_failure source-script-reference
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then
