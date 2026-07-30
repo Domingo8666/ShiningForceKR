@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
+from collections import deque
 import json
 from pathlib import Path
 
@@ -263,6 +264,177 @@ def build_test_phrase_plan(
             "cold-boot-emulator-display-proof",
         ],
     }
+
+
+def _code_lengths(trees: dict[int, object]) -> dict[int, dict[int, int]]:
+    """Return symbol-code lengths without exposing encoded ROM data."""
+
+    result: dict[int, dict[int, int]] = {}
+    for previous, parsed in trees.items():
+        lengths: dict[int, int] = {}
+        stack = [(parsed.root, 0)]
+        while stack:
+            node, depth = stack.pop()
+            if node.is_leaf:
+                assert node.symbol is not None
+                if node.symbol in lengths:
+                    raise PatchError("duplicate Huffman leaf symbol")
+                lengths[node.symbol] = depth
+                continue
+            if node.left is None or node.right is None:
+                raise PatchError("malformed Huffman branch")
+            stack.append((node.right, depth + 1))
+            stack.append((node.left, depth + 1))
+        result[int(previous)] = lengths
+    return result
+
+
+def length_preserving_symbols(
+    trees: dict[int, object],
+    target_bits: int,
+    text: str = TEST_PHRASE,
+) -> list[int]:
+    """Find a deterministic, display-equivalent exact-length test sequence.
+
+    Only the verified page-select control and the two approved glyphs may be
+    emitted. Repeated page selections do not draw pixels. The sequence must be
+    on page 6 before every visible glyph and again before the terminator so the
+    renderer state is restored.
+    """
+
+    if text != TEST_PHRASE:
+        raise PatchError("only the approved technical test phrase is supported")
+    if not isinstance(target_bits, int) or isinstance(target_bits, bool):
+        raise PatchError("target bit length must be an integer")
+    if not 1 <= target_bits <= 2048:
+        raise PatchError("target bit length is outside the safe search range")
+
+    lengths = _code_lengths(trees)
+
+    def transition(
+        previous: int, symbols: tuple[int, ...]
+    ) -> tuple[int, int] | None:
+        bits = 0
+        for symbol in symbols:
+            code_length = lengths.get(previous, {}).get(symbol)
+            if code_length is None:
+                return None
+            bits += code_length
+            previous = symbol
+        return bits, previous
+
+    page_tokens = [
+        (page, tuple(page_select_symbols(page)))
+        for page in range(FONT_PAGE_COUNT)
+    ]
+    glyph_symbols = (
+        TEST_GLYPHS["한"].symbol,
+        TEST_GLYPHS["다"].symbol,
+    )
+    start = (0, CANDIDATE_END_SYMBOL, None, 0)
+    queue = deque([start])
+    paths: dict[
+        tuple[int, int, int | None, int],
+        tuple[int, ...],
+    ] = {start: ()}
+
+    while queue:
+        state = queue.popleft()
+        bits, previous, page, glyph_index = state
+        if glyph_index == len(glyph_symbols) and page == 6:
+            ending = transition(previous, (CANDIDATE_END_SYMBOL,))
+            if ending is not None and bits + ending[0] == target_bits:
+                return list(paths[state] + (CANDIDATE_END_SYMBOL,))
+
+        for selected_page, token in page_tokens:
+            encoded = transition(previous, token)
+            if encoded is None or bits + encoded[0] >= target_bits:
+                continue
+            candidate = (
+                bits + encoded[0],
+                encoded[1],
+                selected_page,
+                glyph_index,
+            )
+            if candidate not in paths:
+                paths[candidate] = paths[state] + token
+                queue.append(candidate)
+
+        if page == 6 and glyph_index < len(glyph_symbols):
+            glyph = glyph_symbols[glyph_index]
+            encoded = transition(previous, (glyph,))
+            if encoded is not None and bits + encoded[0] < target_bits:
+                candidate = (
+                    bits + encoded[0],
+                    encoded[1],
+                    page,
+                    glyph_index + 1,
+                )
+                if candidate not in paths:
+                    paths[candidate] = paths[state] + (glyph,)
+                    queue.append(candidate)
+
+    raise PatchError(
+        "no display-equivalent exact-length technical phrase encoding exists"
+    )
+
+
+def build_length_preserving_test_phrase_plan(
+    patch: bytes,
+    target_bits: int,
+    text: str = TEST_PHRASE,
+) -> dict[str, object]:
+    """Build the approved test phrase at an exact compressed bit length."""
+
+    plan = build_test_phrase_plan(patch, text)
+    sparse = extract_bps_target_literals(patch)
+    trees = load_trees_at(
+        sparse.data,
+        sparse.known,
+        KO_VECTOR_OFFSET,
+        KO_TREE_BANK_BASE,
+        KO_VECTOR_ENTRIES,
+    )
+    symbols = length_preserving_symbols(trees, target_bits, text)
+    encoded, encoded_bits = encode_symbols(
+        trees,
+        symbols,
+        max_bits=target_bits,
+    )
+    decoded, decoded_bits = decode_symbols(
+        encoded,
+        bytes((1,)) * len(encoded),
+        trees,
+        0,
+        max_symbols=len(symbols),
+        max_bytes=len(encoded),
+    )
+    if (
+        encoded_bits != target_bits
+        or decoded != symbols
+        or decoded_bits != encoded_bits
+    ):
+        raise PatchError("length-preserving phrase roundtrip mismatch")
+
+    encoding = plan["encoding"]
+    assert isinstance(encoding, dict)
+    encoding.update(
+        {
+            "symbols": symbols,
+            "symbols_hex": [f"0x{symbol:02X}" for symbol in symbols],
+            "encoded_bits": encoded_bits,
+            "encoded_bytes": len(encoded),
+            "encoded_hex": encoded.hex(),
+            "roundtrip_exact": True,
+            "length_preserving": True,
+            "page_select_only_padding": True,
+            "final_selected_page": 6,
+        }
+    )
+    plan["status"] = (
+        "verified-static-exact-length-non-build-eligible"
+    )
+    return plan
 
 
 def main() -> int:

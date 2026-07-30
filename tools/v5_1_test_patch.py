@@ -46,7 +46,10 @@ try:
         _alignment_pointer,
         validate_consumer_resolution,
     )
-    from .v5_1_test_phrase import build_test_phrase_plan
+    from .v5_1_test_phrase import (
+        build_length_preserving_test_phrase_plan,
+        build_test_phrase_plan,
+    )
 except ImportError:  # direct script execution
     from analyze_v5_1 import EXPECTED_SOURCE_SHA256, EXPECTED_SOURCE_SIZE
     from expected_writes import (
@@ -75,7 +78,10 @@ except ImportError:  # direct script execution
         _alignment_pointer,
         validate_consumer_resolution,
     )
-    from v5_1_test_phrase import build_test_phrase_plan
+    from v5_1_test_phrase import (
+        build_length_preserving_test_phrase_plan,
+        build_test_phrase_plan,
+    )
 
 
 DEFAULT_PATCH = Path("patch/Final_Conflict_Japan_to_Korean_v5.1.bps")
@@ -500,7 +506,6 @@ def build_test_patch(
     ):
         raise PatchError("clean Japanese source ROM identity mismatch")
 
-    phrase_plan = build_test_phrase_plan(patch)
     baseline = apply_bps(source, patch)
     verify_target_identity(baseline)
     runtime_entry = (
@@ -533,7 +538,12 @@ def build_test_patch(
     if runtime_entry["kind"] == "runtime-group-entry":
         original_symbols = [None] * int(runtime_entry["runtime_symbol_count"])
         original_bits = int(runtime_entry["runtime_encoded_bits"])
+        phrase_plan = build_length_preserving_test_phrase_plan(
+            patch,
+            original_bits,
+        )
     else:
+        phrase_plan = build_test_phrase_plan(patch)
         original_symbols, original_bits = decode_symbols(
             baseline,
             known,
@@ -628,7 +638,7 @@ def build_test_patch(
                 else 0
             ),
             "technical_tail_policy": (
-                "preserve-original-tail-after-early-terminator"
+                "exact-entry-length"
                 if runtime_entry["kind"] == "runtime-group-entry"
                 else "byte-aligned-entry"
             ),

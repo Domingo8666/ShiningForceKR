@@ -8,9 +8,11 @@ from tools.patch_io import BPSSparseTarget, PatchError, extract_bps_target_liter
 from tools.v5_1_test_phrase import (
     TEST_GLYPHS,
     TEST_PHRASE,
+    build_length_preserving_test_phrase_plan,
     build_test_phrase_plan,
     font_tile_offset,
     page_select_symbols,
+    length_preserving_symbols,
     symbols_for_text,
     validate_glyphs,
 )
@@ -83,6 +85,41 @@ class TestPhraseTests(unittest.TestCase):
     def test_unapproved_free_text_is_rejected(self) -> None:
         with self.assertRaisesRegex(PatchError, "only the approved"):
             build_test_phrase_plan(self.patch, "다한")
+
+    def test_exact_106_bit_phrase_uses_only_safe_page_padding(self) -> None:
+        plan = build_length_preserving_test_phrase_plan(self.patch, 106)
+        self.assertEqual(
+            plan["status"],
+            "verified-static-exact-length-non-build-eligible",
+        )
+        self.assertEqual(plan["encoding"]["encoded_bits"], 106)
+        self.assertEqual(
+            plan["encoding"]["symbols"],
+            [
+                0x5F, 0x02, 0x02,
+                0x5F, 0x02, 0x02,
+                0x5F, 0x02, 0x02,
+                0x5F, 0x02, 0x08,
+                0x11, 0x04,
+                0x5F, 0x02, 0x08,
+                0xC9,
+            ],
+        )
+        self.assertEqual(
+            plan["encoding"]["encoded_hex"],
+            "ea4a95d4a95d4a95d512d32d4400",
+        )
+        self.assertTrue(plan["encoding"]["length_preserving"])
+        self.assertTrue(plan["encoding"]["page_select_only_padding"])
+        self.assertEqual(plan["encoding"]["final_selected_page"], 6)
+
+    def test_impossible_exact_length_fails_closed(self) -> None:
+        with self.assertRaisesRegex(PatchError, "no display-equivalent"):
+            build_length_preserving_test_phrase_plan(self.patch, 32)
+
+    def test_exact_length_rejects_invalid_budget(self) -> None:
+        with self.assertRaisesRegex(PatchError, "safe search range"):
+            build_length_preserving_test_phrase_plan(self.patch, 0)
 
 
 if __name__ == "__main__":
