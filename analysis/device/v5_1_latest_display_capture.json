@@ -8,7 +8,7 @@
     "U+B2E4"
   ],
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "test_target_sha256": "fc063d908ab52b17af2f07a6c904a1cce71270ea28126a1780de3d7c28c03711",
+  "test_target_sha256": "ce572f5f1688796a0b70b02d9695613325947fcf56c2588ee6841f7b84596ac1",
   "emulator_version": "3.9.14",
   "cold_boot": true,
   "target_read": {
@@ -52,7 +52,7 @@
     "frames_after_press": 60,
     "width": 160,
     "height": 144,
-    "png_sha256": "c1fff0a4b56c39c5a952da5c12640744c083a6182198cb0af1f01238b9785627"
+    "png_sha256": "13dba0b785866d37252a0a25bd66eaa180c6086c78d6c758844220541dba2e79"
   },
   "visual_review": {
     "required": true,
