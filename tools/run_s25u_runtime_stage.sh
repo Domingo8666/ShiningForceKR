@@ -217,6 +217,16 @@ else
       comparison_attempt=$((comparison_attempt + 1))
     done
   fi
+
+  if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_visible_entry_proof.py --if-ready
+    visible_entry_status=$?
+    if [ "$visible_entry_status" -ne 0 ]; then
+      stage_status="$visible_entry_status"
+      diagnostic_trigger=probe
+      record_stage_failure visible-entry-proof
+    fi
+  fi
 fi
 
 python tools/v5_1_runtime_diagnostic.py \
