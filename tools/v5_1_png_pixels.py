@@ -29,6 +29,7 @@ CHANNELS_BY_COLOR_TYPE = {
     6: 4,  # RGBA
 }
 MAX_TRAILING_ZERO_PADDING = 16
+DEFAULT_TEXT_INK_RGBA = bytes((0xEE, 0xEE, 0xEE, 0xFF))
 
 
 @dataclass(frozen=True)
@@ -266,3 +267,61 @@ def compare_png_pixels(baseline_png: bytes, test_png: bytes) -> dict[str, object
         "baseline_pixel_sha256": baseline.pixel_sha256,
         "test_pixel_sha256": test.pixel_sha256,
     }
+
+
+def find_ink_mask_sequence(
+    png: bytes,
+    masks: tuple[tuple[int, ...], ...],
+    *,
+    ink_rgba: bytes = DEFAULT_TEXT_INK_RGBA,
+) -> list[tuple[int, int]]:
+    """Find exact adjacent 8x8 one-bit glyph masks in a screenshot."""
+
+    if (
+        not masks
+        or any(
+            len(mask) != 8
+            or any(
+                not isinstance(row, int)
+                or isinstance(row, bool)
+                or not 0 <= row <= 0xFF
+                for row in mask
+            )
+            for mask in masks
+        )
+        or not isinstance(ink_rgba, bytes)
+        or len(ink_rgba) != 4
+    ):
+        raise PatchError("ink-mask search arguments are invalid")
+    image = decode_png_rgba(png)
+    sequence_width = len(masks) * 8
+    if image.width < sequence_width or image.height < 8:
+        return []
+    matches: list[tuple[int, int]] = []
+    for top in range(image.height - 7):
+        for left in range(image.width - sequence_width + 1):
+            matched = True
+            for glyph_index, mask in enumerate(masks):
+                glyph_left = left + glyph_index * 8
+                for row_index, row in enumerate(mask):
+                    for column in range(8):
+                        pixel = (
+                            (top + row_index) * image.width
+                            + glyph_left
+                            + column
+                        )
+                        offset = pixel * 4
+                        is_ink = (
+                            image.rgba[offset : offset + 4] == ink_rgba
+                        )
+                        expected_ink = bool(row & (1 << (7 - column)))
+                        if is_ink != expected_ink:
+                            matched = False
+                            break
+                    if not matched:
+                        break
+                if not matched:
+                    break
+            if matched:
+                matches.append((left, top))
+    return matches

@@ -79,6 +79,7 @@ class GlyphSpec:
     page: int
     symbol: int
     tile_sha256: str
+    ink_mask: tuple[int, ...]
     identification: str = "manual-visual-identification-pending-runtime-proof"
 
 
@@ -91,6 +92,7 @@ TEST_GLYPHS = {
             "9480834f5c532ab8706bcb35a6aac1a3"
             "6138d5ab84e09f90c0c030678bbc03b4"
         ),
+        ink_mask=(0x00, 0x44, 0xFC, 0x96, 0x64, 0x04, 0x40, 0x7C),
         identification="exact-galmuri7-bdf-pixel-match",
     ),
     "다": GlyphSpec(
@@ -101,9 +103,11 @@ TEST_GLYPHS = {
             "3a0eab5abafdc86a7d5d31e100af8bab"
             "4de9b030339d748c75dab031547663ee"
         ),
+        ink_mask=(0x00, 0xF4, 0x84, 0x84, 0x86, 0x84, 0xF4, 0x04),
         identification="exact-galmuri7-bdf-pixel-match",
     ),
 }
+TEST_MARKER_INK_MASKS = tuple(TEST_GLYPHS[character].ink_mask for character in TEST_PHRASE)
 
 
 def font_tile_offset(page: int, symbol: int) -> int:
@@ -178,6 +182,15 @@ def validate_glyphs(
             raise PatchError(
                 f"glyph U+{ord(character):04X} tile identity mismatch"
             )
+        actual_ink_mask = tuple(
+            ~(tile[index] & tile[index + 1] & tile[index + 2] & tile[index + 3])
+            & 0xFF
+            for index in range(0, FONT_TILE_BYTES, 4)
+        )
+        if actual_ink_mask != glyph.ink_mask:
+            raise PatchError(
+                f"glyph U+{ord(character):04X} ink mask mismatch"
+            )
         validated.append(
             {
                 "character": character,
@@ -186,6 +199,7 @@ def validate_glyphs(
                 "symbol": glyph.symbol,
                 "file_offset": offset,
                 "tile_sha256": actual_sha256,
+                "ink_mask_hex": [f"{row:02x}" for row in actual_ink_mask],
                 "identification": glyph.identification,
             }
         )

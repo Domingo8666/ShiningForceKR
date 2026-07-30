@@ -54,6 +54,15 @@ class TestPhraseTests(unittest.TestCase):
         with self.assertRaisesRegex(PatchError, "tile identity mismatch"):
             validate_glyphs(self.sparse, glyphs=glyphs)
 
+    def test_glyph_ink_mask_mismatch_fails_closed(self) -> None:
+        glyphs = dict(TEST_GLYPHS)
+        glyphs["한"] = replace(
+            glyphs["한"],
+            ink_mask=(0,) * 8,
+        )
+        with self.assertRaisesRegex(PatchError, "ink mask mismatch"):
+            validate_glyphs(self.sparse, glyphs=glyphs)
+
     def test_unknown_font_byte_fails_closed(self) -> None:
         glyph = TEST_GLYPHS["한"]
         offset = font_tile_offset(glyph.page, glyph.symbol)

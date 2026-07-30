@@ -157,7 +157,8 @@ else
         record_stage_failure display-comparison
         break
       fi
-      if [ "$comparison_result" != "no-visible-pixel-change" ]; then
+      if [ "$comparison_result" != "no-visible-pixel-change" ] && \
+        [ "$comparison_result" != "technical-marker-absent-auto-rejected" ]; then
         break
       fi
 

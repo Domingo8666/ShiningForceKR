@@ -25,7 +25,13 @@ def build_report() -> dict[str, object]:
     }
 
 
-def pixel_comparison(changed_pixels: int) -> dict[str, object]:
+def pixel_comparison(
+    changed_pixels: int,
+    *,
+    baseline_markers: int = 0,
+    test_markers: int = 0,
+    new_markers: int = 0,
+) -> dict[str, object]:
     return {
         "width": 160,
         "height": 144,
@@ -47,6 +53,9 @@ def pixel_comparison(changed_pixels: int) -> dict[str, object]:
         "test_pixel_sha256": (
             "5" * 64 if changed_pixels == 0 else "6" * 64
         ),
+        "baseline_technical_marker_matches": baseline_markers,
+        "test_technical_marker_matches": test_markers,
+        "new_technical_marker_matches": new_markers,
     }
 
 
@@ -60,13 +69,16 @@ class TestDisplayComparisonTests(unittest.TestCase):
             prior_rejected_physical_starts={0x203DE},
         )
         validate_display_comparison(comparison)
-        self.assertEqual(comparison["result"], "no-visible-pixel-change")
+        self.assertEqual(
+            comparison["result"],
+            "technical-marker-absent-auto-rejected",
+        )
         self.assertEqual(
             comparison["automatic_rejected_physical_starts"],
             [0x203DE, 0x20473],
         )
 
-    def test_any_visible_change_requires_human_review(self) -> None:
+    def test_visible_change_without_exact_marker_is_auto_rejected(self) -> None:
         comparison = build_display_comparison(
             build_report=build_report(),
             frame_comparisons=[
@@ -77,7 +89,32 @@ class TestDisplayComparisonTests(unittest.TestCase):
         )
         self.assertEqual(
             comparison["result"],
-            "visible-pixel-change-human-review-required",
+            "technical-marker-absent-auto-rejected",
+        )
+        self.assertEqual(
+            comparison["automatic_rejected_physical_starts"],
+            [0x203DE, 0x20473],
+        )
+
+    def test_new_exact_marker_requires_human_review(self) -> None:
+        comparison = build_display_comparison(
+            build_report=build_report(),
+            frame_comparisons=[
+                {
+                    "frame_after_hit": 30,
+                    **pixel_comparison(
+                        20,
+                        test_markers=1,
+                        new_markers=1,
+                    ),
+                }
+            ],
+            post_advance_comparison=pixel_comparison(0),
+            prior_rejected_physical_starts={0x203DE},
+        )
+        self.assertEqual(
+            comparison["result"],
+            "technical-marker-detected-human-review-required",
         )
         self.assertEqual(
             comparison["automatic_rejected_physical_starts"],

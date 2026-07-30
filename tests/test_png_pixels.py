@@ -5,7 +5,12 @@ import unittest
 import zlib
 
 from tools.patch_io import PatchError
-from tools.v5_1_png_pixels import compare_png_pixels, decode_png_rgba
+from tools.v5_1_png_pixels import (
+    DEFAULT_TEXT_INK_RGBA,
+    compare_png_pixels,
+    decode_png_rgba,
+    find_ink_mask_sequence,
+)
 
 
 def chunk(kind: bytes, data: bytes) -> bytes:
@@ -100,6 +105,39 @@ class PngPixelTests(unittest.TestCase):
             with self.subTest(trailing=trailing):
                 with self.assertRaisesRegex(PatchError, "trailing data"):
                     decode_png_rgba(png + trailing)
+
+    def test_finds_exact_adjacent_ink_masks(self) -> None:
+        masks = (
+            (0x00, 0x44, 0xFC, 0x96, 0x64, 0x04, 0x40, 0x7C),
+            (0x00, 0xF4, 0x84, 0x84, 0x86, 0x84, 0xF4, 0x04),
+        )
+        width = 24
+        height = 12
+        pixels = bytearray(bytes((0, 0, 170, 255)) * width * height)
+        left = 3
+        top = 2
+        for glyph_index, mask in enumerate(masks):
+            for row_index, row in enumerate(mask):
+                for column in range(8):
+                    if not row & (1 << (7 - column)):
+                        continue
+                    pixel = (
+                        (top + row_index) * width
+                        + left
+                        + glyph_index * 8
+                        + column
+                    )
+                    pixels[pixel * 4 : pixel * 4 + 4] = DEFAULT_TEXT_INK_RGBA
+        png = rgba_png(width, height, bytes(pixels))
+        self.assertEqual(
+            find_ink_mask_sequence(png, masks),
+            [(left, top)],
+        )
+
+    def test_ink_mask_search_rejects_malformed_masks(self) -> None:
+        png = rgba_png(8, 8, bytes((0, 0, 0, 255)) * 64)
+        with self.assertRaisesRegex(PatchError, "arguments"):
+            find_ink_mask_sequence(png, ((0,),))
 
 
 if __name__ == "__main__":

@@ -10,16 +10,19 @@ import re
 
 
 ARTIFACT_KIND = "sanitized-s25u-test-display-comparison"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+LEGACY_SCHEMA_VERSION = 1
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_display_comparison.json"
 )
 RESULTS = {
     "no-visible-pixel-change",
     "visible-pixel-change-human-review-required",
+    "technical-marker-absent-auto-rejected",
+    "technical-marker-detected-human-review-required",
     "comparison-unavailable",
 }
-FRAME_KEYS = {
+FRAME_KEYS_V1 = {
     "frame_after_hit",
     "width",
     "height",
@@ -31,6 +34,12 @@ FRAME_KEYS = {
     "baseline_pixel_sha256",
     "test_pixel_sha256",
 }
+MARKER_KEYS = {
+    "baseline_technical_marker_matches",
+    "test_technical_marker_matches",
+    "new_technical_marker_matches",
+}
+FRAME_KEYS_V2 = FRAME_KEYS_V1 | MARKER_KEYS
 BOUNDS_KEYS = {
     "left",
     "top",
@@ -77,8 +86,19 @@ def _validate_stream(value: object) -> None:
             raise ValueError(f"compared stream {key} is invalid")
 
 
-def _validate_comparison(value: object, label: str, *, post_advance: bool) -> None:
-    required = FRAME_KEYS - {"frame_after_hit"} if post_advance else FRAME_KEYS
+def _validate_comparison(
+    value: object,
+    label: str,
+    *,
+    post_advance: bool,
+    schema_version: int,
+) -> None:
+    frame_keys = (
+        FRAME_KEYS_V1
+        if schema_version == LEGACY_SCHEMA_VERSION
+        else FRAME_KEYS_V2
+    )
+    required = frame_keys - {"frame_after_hit"} if post_advance else frame_keys
     if not isinstance(value, dict) or set(value) != required:
         raise ValueError(f"{label} fields do not match")
     if not post_advance:
@@ -130,6 +150,20 @@ def _validate_comparison(value: object, label: str, *, post_advance: bool) -> No
             or value["baseline_pixel_sha256"] == value["test_pixel_sha256"]
         ):
             raise ValueError(f"{label} difference bounds are invalid")
+    if schema_version == SCHEMA_VERSION:
+        baseline_markers = value["baseline_technical_marker_matches"]
+        test_markers = value["test_technical_marker_matches"]
+        new_markers = value["new_technical_marker_matches"]
+        if (
+            not all(
+                isinstance(item, int)
+                and not isinstance(item, bool)
+                and 0 <= item <= 128
+                for item in (baseline_markers, test_markers, new_markers)
+            )
+            or new_markers > test_markers
+        ):
+            raise ValueError(f"{label} technical marker counts are invalid")
 
 
 def validate_display_comparison(comparison: dict[str, object]) -> None:
@@ -137,7 +171,8 @@ def validate_display_comparison(comparison: dict[str, object]) -> None:
         raise ValueError("display comparison top-level fields do not match")
     if comparison["artifact_kind"] != ARTIFACT_KIND:
         raise ValueError("unexpected display comparison artifact kind")
-    if comparison["schema_version"] != SCHEMA_VERSION:
+    schema_version = comparison["schema_version"]
+    if schema_version not in {LEGACY_SCHEMA_VERSION, SCHEMA_VERSION}:
         raise ValueError("unexpected display comparison schema")
     for key in ("baseline_target_sha256", "test_target_sha256"):
         if not _is_sha256(comparison[key]):
@@ -150,7 +185,12 @@ def validate_display_comparison(comparison: dict[str, object]) -> None:
         raise ValueError("frame comparisons must contain at most 16 items")
     previous_frame = 0
     for index, item in enumerate(frames):
-        _validate_comparison(item, f"frame_comparisons[{index}]", post_advance=False)
+        _validate_comparison(
+            item,
+            f"frame_comparisons[{index}]",
+            post_advance=False,
+            schema_version=int(schema_version),
+        )
         assert isinstance(item, dict)
         frame = int(item["frame_after_hit"])
         if frame <= previous_frame:
@@ -158,7 +198,12 @@ def validate_display_comparison(comparison: dict[str, object]) -> None:
         previous_frame = frame
     post_advance = comparison["post_advance_comparison"]
     if post_advance is not None:
-        _validate_comparison(post_advance, "post_advance_comparison", post_advance=True)
+        _validate_comparison(
+            post_advance,
+            "post_advance_comparison",
+            post_advance=True,
+            schema_version=int(schema_version),
+        )
     result = comparison["result"]
     if result not in RESULTS:
         raise ValueError("unexpected display comparison result")
@@ -186,20 +231,58 @@ def validate_display_comparison(comparison: dict[str, object]) -> None:
     stream = comparison["compared_stream"]
     assert isinstance(stream, dict)
     current_rejected = int(stream["physical_start"]) in rejected
-    if result == "no-visible-pixel-change":
-        if not complete or changed or not current_rejected:
-            raise ValueError("automatic no-change rejection evidence is incomplete")
-    elif result == "visible-pixel-change-human-review-required":
-        if not complete or not changed or current_rejected:
-            raise ValueError("visible-change comparison evidence is inconsistent")
-    elif frames or post_advance is not None or current_rejected:
-        raise ValueError("unavailable comparison cannot reject the current stream")
+    if schema_version == LEGACY_SCHEMA_VERSION:
+        if result == "no-visible-pixel-change":
+            if not complete or changed or not current_rejected:
+                raise ValueError(
+                    "automatic no-change rejection evidence is incomplete"
+                )
+        elif result == "visible-pixel-change-human-review-required":
+            if not complete or not changed or current_rejected:
+                raise ValueError(
+                    "visible-change comparison evidence is inconsistent"
+                )
+        elif frames or post_advance is not None or current_rejected:
+            raise ValueError(
+                "unavailable comparison cannot reject the current stream"
+            )
+    else:
+        marker_detected = any(
+            isinstance(item, dict)
+            and int(item["new_technical_marker_matches"]) > 0
+            for item in frames
+        )
+        if result == "technical-marker-absent-auto-rejected":
+            if not complete or marker_detected or not current_rejected:
+                raise ValueError(
+                    "automatic marker-absence rejection evidence is incomplete"
+                )
+        elif result == "technical-marker-detected-human-review-required":
+            if (
+                not complete
+                or not marker_detected
+                or not changed
+                or current_rejected
+            ):
+                raise ValueError(
+                    "technical marker review evidence is inconsistent"
+                )
+        elif frames or post_advance is not None or current_rejected:
+            raise ValueError(
+                "unavailable comparison cannot reject the current stream"
+            )
     if comparison["translation_build_eligible"] is not False:
         raise ValueError("display comparison cannot enable translation builds")
     expected_checkpoint = {
         "no-visible-pixel-change": "try-next-runtime-observed-stream",
         "visible-pixel-change-human-review-required": (
             "human-review-visible-pixel-change"
+        ),
+        "technical-marker-absent-auto-rejected": (
+            "try-next-runtime-observed-stream"
+        ),
+        "technical-marker-detected-human-review-required": (
+            "human-review-technical-marker"
         ),
         "comparison-unavailable": "human-review-unpaired-capture",
     }[str(result)]
@@ -223,15 +306,16 @@ def build_display_comparison(
         "mapped_bank": int(runtime_entry["pointer_bank"]),
     }
     complete = bool(frame_comparisons) and post_advance_comparison is not None
-    changed = any(int(item["changed_pixels"]) > 0 for item in frame_comparisons)
-    if post_advance_comparison is not None:
-        changed = changed or int(post_advance_comparison["changed_pixels"]) > 0
+    marker_detected = any(
+        int(item["new_technical_marker_matches"]) > 0
+        for item in frame_comparisons
+    )
     rejected = set(prior_rejected_physical_starts or set())
-    if complete and not changed:
-        result = "no-visible-pixel-change"
-        rejected.add(stream["physical_start"])
+    if complete and marker_detected:
+        result = "technical-marker-detected-human-review-required"
     elif complete:
-        result = "visible-pixel-change-human-review-required"
+        result = "technical-marker-absent-auto-rejected"
+        rejected.add(stream["physical_start"])
     else:
         result = "comparison-unavailable"
     comparison = {
@@ -246,9 +330,11 @@ def build_display_comparison(
         "automatic_rejected_physical_starts": sorted(rejected),
         "translation_build_eligible": False,
         "next_checkpoint": {
-            "no-visible-pixel-change": "try-next-runtime-observed-stream",
-            "visible-pixel-change-human-review-required": (
-                "human-review-visible-pixel-change"
+            "technical-marker-absent-auto-rejected": (
+                "try-next-runtime-observed-stream"
+            ),
+            "technical-marker-detected-human-review-required": (
+                "human-review-technical-marker"
             ),
             "comparison-unavailable": "human-review-unpaired-capture",
         }[result],

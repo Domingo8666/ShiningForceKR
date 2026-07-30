@@ -37,13 +37,13 @@ try:
     )
     from .v5_1_runtime_hit_resolver import validate_consumer_resolution
     from .v5_1_script_group import resolve_group_entry
-    from .v5_1_png_pixels import compare_png_pixels
+    from .v5_1_png_pixels import compare_png_pixels, find_ink_mask_sequence
     from .v5_1_test_display_comparison import (
         build_display_comparison,
         prior_automatic_rejections,
         write_display_comparison,
     )
-    from .v5_1_test_phrase import TEST_PHRASE
+    from .v5_1_test_phrase import TEST_MARKER_INK_MASKS, TEST_PHRASE
 except ImportError:  # direct script execution
     from patch_io import PatchError, sha256_bytes, sha256_file
     from run_s25u_runtime_probe import (
@@ -63,13 +63,13 @@ except ImportError:  # direct script execution
     )
     from v5_1_runtime_hit_resolver import validate_consumer_resolution
     from v5_1_script_group import resolve_group_entry
-    from v5_1_png_pixels import compare_png_pixels
+    from v5_1_png_pixels import compare_png_pixels, find_ink_mask_sequence
     from v5_1_test_display_comparison import (
         build_display_comparison,
         prior_automatic_rejections,
         write_display_comparison,
     )
-    from v5_1_test_phrase import TEST_PHRASE
+    from v5_1_test_phrase import TEST_MARKER_INK_MASKS, TEST_PHRASE
 
 
 ARTIFACT_KIND = "sanitized-s25u-test-display-capture"
@@ -790,14 +790,27 @@ def _paired_pixel_comparisons(
     for frame in sorted(baseline_by_frame):
         baseline_item = baseline_by_frame[frame]
         test_item = test_by_frame[frame]
+        baseline_png = Path(str(baseline_item["file"])).read_bytes()
+        test_png = Path(str(test_item["file"])).read_bytes()
         comparison = compare_png_pixels(
-            Path(str(baseline_item["file"])).read_bytes(),
-            Path(str(test_item["file"])).read_bytes(),
+            baseline_png,
+            test_png,
+        )
+        baseline_markers = set(
+            find_ink_mask_sequence(baseline_png, TEST_MARKER_INK_MASKS)
+        )
+        test_markers = set(
+            find_ink_mask_sequence(test_png, TEST_MARKER_INK_MASKS)
         )
         comparisons.append(
             {
                 "frame_after_hit": frame,
                 **comparison,
+                "baseline_technical_marker_matches": len(baseline_markers),
+                "test_technical_marker_matches": len(test_markers),
+                "new_technical_marker_matches": len(
+                    test_markers - baseline_markers
+                ),
                 "baseline_png_sha256": str(baseline_item["png_sha256"]),
                 "test_png_sha256": str(test_item["png_sha256"]),
             }
@@ -811,12 +824,22 @@ def _paired_pixel_comparisons(
         or not isinstance(test_post.get("file"), str)
     ):
         return comparisons, None
-    post_comparison = compare_png_pixels(
-        Path(str(baseline_post["file"])).read_bytes(),
-        Path(str(test_post["file"])).read_bytes(),
+    baseline_post_png = Path(str(baseline_post["file"])).read_bytes()
+    test_post_png = Path(str(test_post["file"])).read_bytes()
+    post_comparison = compare_png_pixels(baseline_post_png, test_post_png)
+    baseline_post_markers = set(
+        find_ink_mask_sequence(baseline_post_png, TEST_MARKER_INK_MASKS)
+    )
+    test_post_markers = set(
+        find_ink_mask_sequence(test_post_png, TEST_MARKER_INK_MASKS)
     )
     return comparisons, {
         **post_comparison,
+        "baseline_technical_marker_matches": len(baseline_post_markers),
+        "test_technical_marker_matches": len(test_post_markers),
+        "new_technical_marker_matches": len(
+            test_post_markers - baseline_post_markers
+        ),
         "baseline_png_sha256": str(baseline_post["png_sha256"]),
         "test_png_sha256": str(test_post["png_sha256"]),
     }
@@ -829,14 +852,20 @@ def _next_step_text(
     root: Path,
 ) -> str:
     result = comparison["result"]
-    if result == "no-visible-pixel-change":
+    if result in {
+        "no-visible-pixel-change",
+        "technical-marker-absent-auto-rejected",
+    }:
         return (
             "Shining Force KR 다음 할 일\n\n"
-            "현재 후보는 기준 화면과 한 픽셀도 다르지 않아 자동 탈락했습니다.\n"
+            "현재 후보에서는 정확한 시험 문구 픽셀을 찾지 못해 자동 탈락했습니다.\n"
             "자동실행기가 가능한 다음 후보를 계속 확인합니다.\n"
             "지금 사용자가 할 일은 없습니다.\n"
         )
-    if result == "visible-pixel-change-human-review-required":
+    if result in {
+        "visible-pixel-change-human-review-required",
+        "technical-marker-detected-human-review-required",
+    }:
         return (
             "Shining Force KR 다음 할 일\n\n"
             "기준 화면과 시험 화면의 픽셀 차이가 발견됐습니다.\n"
@@ -892,7 +921,10 @@ def _write_human_review_bundle(
     test_local: dict[str, object],
     review_dir: Path,
 ) -> tuple[Path, ...]:
-    if comparison.get("result") != "visible-pixel-change-human-review-required":
+    if comparison.get("result") not in {
+        "visible-pixel-change-human-review-required",
+        "technical-marker-detected-human-review-required",
+    }:
         return ()
     frames = comparison.get("frame_comparisons")
     if not isinstance(frames, list) or not frames:
