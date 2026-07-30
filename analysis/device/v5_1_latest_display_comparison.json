@@ -2,7 +2,7 @@
   "artifact_kind": "sanitized-s25u-test-display-comparison",
   "schema_version": 1,
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "test_target_sha256": "13396a020b51cd5160d5ffde8fc67aa936c6d1be043d1419f35857d785284afa",
+  "test_target_sha256": "718c46ae2d4a16dbfc4d31dd25004e5f7f4f5cf329279e37ae0f4b00dce445fb",
   "compared_stream": {
     "physical_start": 133600,
     "logical_start": 18912,
