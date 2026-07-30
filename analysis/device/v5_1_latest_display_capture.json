@@ -1,6 +1,6 @@
 {
   "artifact_kind": "sanitized-s25u-test-display-capture",
-  "schema_version": 4,
+  "schema_version": 5,
   "status": "capture-ready-human-review-required",
   "purpose": "technical-poc-only",
   "phrase_codepoints": [
@@ -8,7 +8,7 @@
     "U+B2E4"
   ],
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "test_target_sha256": "e9ba620261c2819e46398bd81134cefd7ec028059a067328a21182930d2d466d",
+  "test_target_sha256": "aca9f8fe150830501d0103844ba6b96350672e55cd16481868324a87f1d3124c",
   "emulator_version": "3.9.14",
   "cold_boot": true,
   "target_read": {
@@ -46,7 +46,19 @@
     "entry_end_logical_byte_inclusive": 18926,
     "target_logical_byte": 17585,
     "target_within_entry_bytes": false,
-    "prefix_roundtrip_exact": true
+    "prefix_roundtrip_exact": true,
+    "target_byte_candidates": [
+      {
+        "entry_ordinal": 22,
+        "entry_start_bit": 1550,
+        "entry_end_bit_exclusive": 1750,
+        "entry_encoded_bits": 200,
+        "entry_symbol_count": 57,
+        "entry_start_logical_byte": 17567,
+        "entry_end_logical_byte_inclusive": 17592
+      }
+    ],
+    "observed_b_matches_target_candidates": false
   },
   "captures": [
     {
