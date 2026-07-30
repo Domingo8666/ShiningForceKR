@@ -1,7 +1,7 @@
 {
   "artifact_kind": "sanitized-s25u-test-display-capture",
   "schema_version": 6,
-  "status": "runtime-target-read-not-observed",
+  "status": "capture-ready-human-review-required",
   "purpose": "technical-poc-only",
   "phrase_codepoints": [
     "U+D55C",
@@ -15,19 +15,50 @@
     "slot": 1,
     "logical_access": 18707,
     "expected_bank": 8,
-    "mapped_bank": null,
-    "confirmed": false,
-    "confirmation_basis": "runtime-read-breakpoint"
+    "mapped_bank": 8,
+    "confirmed": true,
+    "confirmation_basis": "decoder-selection-endpoint"
   },
   "entry_selector": null,
   "group_entry": null,
-  "captures": [],
-  "post_advance_capture": null,
+  "captures": [
+    {
+      "frame_after_hit": 1,
+      "width": 160,
+      "height": 144,
+      "png_sha256": "93ccdb1d3fc723412d2acecd1e8ec1738e8755b4d248ba6f980c9a304a2ce4a5"
+    },
+    {
+      "frame_after_hit": 8,
+      "width": 160,
+      "height": 144,
+      "png_sha256": "e3b45ef0bb299f1221ec1f036bc8a213eebe66bcbee3aa22522e1c4324a1bd58"
+    },
+    {
+      "frame_after_hit": 30,
+      "width": 160,
+      "height": 144,
+      "png_sha256": "e3b45ef0bb299f1221ec1f036bc8a213eebe66bcbee3aa22522e1c4324a1bd58"
+    },
+    {
+      "frame_after_hit": 90,
+      "width": 160,
+      "height": 144,
+      "png_sha256": "e3b45ef0bb299f1221ec1f036bc8a213eebe66bcbee3aa22522e1c4324a1bd58"
+    }
+  ],
+  "post_advance_capture": {
+    "button": "1",
+    "frames_after_press": 60,
+    "width": 160,
+    "height": 144,
+    "png_sha256": "c1fff0a4b56c39c5a952da5c12640744c083a6182198cb0af1f01238b9785627"
+  },
   "visual_review": {
     "required": true,
     "result": null,
     "evidence_storage": "s25u-local-only"
   },
   "translation_build_eligible": false,
-  "next_checkpoint": "repair-test-display-target-reachability"
+  "next_checkpoint": "human-confirm-first-korean-glyphs-and-ui"
 }

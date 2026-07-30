@@ -1,0 +1,16 @@
+{
+  "artifact_kind": "sanitized-s25u-progress-preview",
+  "schema_version": 1,
+  "status": "progress-preview-ready",
+  "purpose": "technical-poc-progress-report",
+  "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "test_target_sha256": "fc063d908ab52b17af2f07a6c904a1cce71270ea28126a1780de3d7c28c03711",
+  "capture_png_sha256": "e3b45ef0bb299f1221ec1f036bc8a213eebe66bcbee3aa22522e1c4324a1bd58",
+  "preview_png_sha256": "e3b45ef0bb299f1221ec1f036bc8a213eebe66bcbee3aa22522e1c4324a1bd58",
+  "width": 160,
+  "height": 144,
+  "frame_after_hit": 90,
+  "auto_continue": true,
+  "human_review_required": true,
+  "next_checkpoint": "human-confirm-first-korean-glyphs-and-ui"
+}
