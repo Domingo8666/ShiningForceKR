@@ -131,8 +131,11 @@ TOP_LEVEL_KEYS = {
 }
 TOP_LEVEL_KEYS_V2 = TOP_LEVEL_KEYS | {"entry_selector"}
 ENTRY_SELECTOR_KEYS = {
+    "status",
     "lookup_table_base",
-    "selector_offset",
+    "baseline_selector_offset",
+    "test_selector_offset",
+    "selectors_match",
     "entry_index",
     "pointer_address",
     "next_pointer_address",
@@ -226,31 +229,60 @@ def validate_display_capture(capture: dict[str, object]) -> None:
         if selector is not None:
             if not isinstance(selector, dict) or set(selector) != ENTRY_SELECTOR_KEYS:
                 raise ValueError("entry_selector fields do not match")
-            for key in (
-                "lookup_table_base",
-                "selector_offset",
+            if selector["status"] not in {"resolved", "unresolved"}:
+                raise ValueError("entry_selector status is invalid")
+            if selector["lookup_table_base"] != 0x3FE8:
+                raise ValueError("entry_selector lookup table base is invalid")
+            for key in ("baseline_selector_offset", "test_selector_offset"):
+                value = selector[key]
+                if value is not None and (
+                    not isinstance(value, int)
+                    or isinstance(value, bool)
+                    or not 0 <= value <= 0xFFFF
+                ):
+                    raise ValueError(f"entry_selector {key} is invalid")
+            selectors_match = selector["selectors_match"]
+            expected_match = (
+                selector["baseline_selector_offset"] is not None
+                and selector["baseline_selector_offset"]
+                == selector["test_selector_offset"]
+            )
+            if selectors_match is not expected_match:
+                raise ValueError("entry_selector match evidence is inconsistent")
+            derived_keys = (
                 "entry_index",
                 "pointer_address",
                 "next_pointer_address",
                 "target_offset_within_entry",
+            )
+            if selector["status"] == "resolved":
+                if any(
+                    not isinstance(selector[key], int)
+                    or isinstance(selector[key], bool)
+                    for key in derived_keys
+                ):
+                    raise ValueError("resolved entry_selector values are invalid")
+                selector_offset = selector["baseline_selector_offset"]
+                assert isinstance(selector_offset, int)
+                if (
+                    not selectors_match
+                    or not 0 <= selector_offset <= 0x16
+                    or selector_offset % 2
+                    or selector["entry_index"] * 2 != selector_offset
+                    or selector["pointer_address"]
+                    + selector["target_offset_within_entry"]
+                    != target_read["logical_access"]
+                    or selector["pointer_address"] > target_read["logical_access"]
+                    or selector["next_pointer_address"]
+                    <= target_read["logical_access"]
+                    or selector["pointer_bounds_target"] is not True
+                ):
+                    raise ValueError("entry_selector evidence is inconsistent")
+            elif (
+                any(selector[key] is not None for key in derived_keys)
+                or selector["pointer_bounds_target"] is not False
             ):
-                value = selector[key]
-                if not isinstance(value, int) or isinstance(value, bool):
-                    raise ValueError(f"entry_selector {key} must be an integer")
-            if (
-                selector["lookup_table_base"] != 0x3FE8
-                or not 0 <= selector["selector_offset"] <= 0x16
-                or selector["selector_offset"] % 2
-                or selector["entry_index"] * 2 != selector["selector_offset"]
-                or selector["pointer_address"]
-                + selector["target_offset_within_entry"]
-                != target_read["logical_access"]
-                or selector["pointer_address"] > target_read["logical_access"]
-                or selector["next_pointer_address"]
-                <= target_read["logical_access"]
-                or selector["pointer_bounds_target"] is not True
-            ):
-                raise ValueError("entry_selector evidence is inconsistent")
+                raise ValueError("unresolved entry_selector cannot claim a block")
             if not confirmed:
                 raise ValueError("entry_selector requires a confirmed target read")
 
@@ -695,18 +727,7 @@ def _write_human_review_bundle(
     return baseline_path, test_path, post_path, readme_path
 
 
-def _resolve_entry_selector(
-    *,
-    local_capture: dict[str, object],
-    baseline_rom: bytes,
-    target_read: dict[str, object],
-) -> dict[str, object] | None:
-    if (
-        int(target_read.get("instruction_bank", -1)) != 0
-        or int(target_read.get("instruction_pc", -1)) != 0x3406
-        or int(target_read.get("slot", -1)) != 1
-    ):
-        return None
+def _entry_selector_offset(local_capture: dict[str, object]) -> int | None:
     state = local_capture.get("target_hit")
     if not isinstance(state, dict):
         return None
@@ -717,22 +738,60 @@ def _resolve_entry_selector(
     if (
         not isinstance(selector_offset, int)
         or isinstance(selector_offset, bool)
-        or not 0 <= selector_offset <= 0x16
-        or selector_offset % 2
+        or not 0 <= selector_offset <= 0xFFFF
     ):
-        raise PatchError("decoder entry selector offset is invalid")
+        return None
+    return selector_offset
+
+
+def _build_entry_selector_observation(
+    *,
+    baseline_local: dict[str, object],
+    test_local: dict[str, object],
+    baseline_rom: bytes,
+    target_read: dict[str, object],
+) -> dict[str, object] | None:
+    if (
+        int(target_read.get("instruction_bank", -1)) != 0
+        or int(target_read.get("instruction_pc", -1)) != 0x3406
+        or int(target_read.get("slot", -1)) != 1
+    ):
+        return None
+    baseline_offset = _entry_selector_offset(baseline_local)
+    test_offset = _entry_selector_offset(test_local)
+    selectors_match = (
+        baseline_offset is not None and baseline_offset == test_offset
+    )
+    unresolved: dict[str, object] = {
+        "status": "unresolved",
+        "lookup_table_base": 0x3FE8,
+        "baseline_selector_offset": baseline_offset,
+        "test_selector_offset": test_offset,
+        "selectors_match": selectors_match,
+        "entry_index": None,
+        "pointer_address": None,
+        "next_pointer_address": None,
+        "target_offset_within_entry": None,
+        "pointer_bounds_target": False,
+    }
+    if (
+        not selectors_match
+        or not isinstance(baseline_offset, int)
+        or not 0 <= baseline_offset <= 0x16
+        or baseline_offset % 2
+    ):
+        return unresolved
+    selector_offset = baseline_offset
     lookup_table_base = 0x3FE8
     pointer_offset = lookup_table_base + selector_offset
-    if pointer_offset + 2 > len(baseline_rom):
-        raise PatchError("decoder entry selector is outside the baseline ROM")
+    if pointer_offset + 4 > min(len(baseline_rom), 0x4000):
+        return unresolved
     pointer_address = int.from_bytes(
         baseline_rom[pointer_offset : pointer_offset + 2],
         "little",
     )
     expected_address = int(target_read["logical_access"])
     next_pointer_offset = pointer_offset + 2
-    if next_pointer_offset + 2 > 0x4000:
-        raise PatchError("decoder entry selector has no bounded next entry")
     next_pointer_address = int.from_bytes(
         baseline_rom[next_pointer_offset : next_pointer_offset + 2],
         "little",
@@ -740,10 +799,13 @@ def _resolve_entry_selector(
     if not (
         0x4000 <= pointer_address <= expected_address < next_pointer_address <= 0x7FFF
     ):
-        raise PatchError("decoder entry selector does not bound the target stream")
+        return unresolved
     return {
+        "status": "resolved",
         "lookup_table_base": lookup_table_base,
-        "selector_offset": selector_offset,
+        "baseline_selector_offset": selector_offset,
+        "test_selector_offset": selector_offset,
+        "selectors_match": True,
         "entry_index": selector_offset // 2,
         "pointer_address": pointer_address,
         "next_pointer_address": next_pointer_address,
@@ -1124,18 +1186,12 @@ def main() -> int:
     )
     comparison_path = write_display_comparison(root, comparison)
     baseline_rom = baseline_rom_path.read_bytes()
-    baseline_entry_selector = _resolve_entry_selector(
-        local_capture=baseline_local,
+    entry_selector = _build_entry_selector_observation(
+        baseline_local=baseline_local,
+        test_local=test_local,
         baseline_rom=baseline_rom,
         target_read=resolution["target_read"],
     )
-    test_entry_selector = _resolve_entry_selector(
-        local_capture=test_local,
-        baseline_rom=baseline_rom,
-        target_read=resolution["target_read"],
-    )
-    if baseline_entry_selector != test_entry_selector:
-        raise PatchError("baseline and test decoder entry selectors disagree")
     _write_human_review_bundle(
         comparison,
         baseline_local=baseline_local,
@@ -1177,7 +1233,7 @@ def main() -> int:
         mapped_bank=mapped_bank,
         captures=captures,
         post_advance_capture=post_advance_capture,
-        entry_selector=test_entry_selector,
+        entry_selector=entry_selector,
     )
     safe_path = root / PUBLISH_RELATIVE_PATH
     _write_json(safe_path, safe)

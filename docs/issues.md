@@ -41,7 +41,7 @@
 | SFKR-033 | 확정 디코더 stream이 있는데도 자동 비교 실행이 초기 탐색을 반복하고 실패 시 `runtime-command`만 기록 | fixed-static | 기준 ROM SHA-256과 검증된 stream resolution이 일치하면 초기 탐색을 건너뛰며 하위 실패 단계를 안전 영수증으로 남긴 뒤 S25U 재실행 |
 | SFKR-034 | Gearsystem PNG의 유효한 IEND 뒤 2바이트 NUL 패딩을 엄격 비교기가 구조 불완전으로 거부 | fixed-static | CRC와 IEND를 검증한 뒤 최대 16바이트의 0 패딩만 허용하고 비영·과도한 후행 데이터는 거부한 상태로 S25U 픽셀 비교 재실행 |
 | SFKR-035 | 픽셀 변화가 검출돼도 사람이 복잡한 해시별 evidence 경로에서 기준·시험·진행 후 PNG를 직접 찾아야 함 | fixed-static | 변경 픽셀이 가장 많은 짝과 진행 후 PNG를 해시 검증한 뒤 `reports/HUMAN_REVIEW/`에 쉬운 이름으로 복사하고 안내 파일 생성 |
-| SFKR-036 | 픽셀 변화가 난 0x0204B1 stream을 상위 디코더 블록 엔트리와 연결하지 못함 | fixed-static | 목표 read 순간 DE와 0x3FE8 포인터 테이블의 현재·다음 포인터를 대조해 블록 엔트리 번호와 블록 내 오프셋을 기록하고 S25U 재확인 |
+| SFKR-036 | 픽셀 변화가 난 0x0204B1 stream을 상위 디코더 블록 엔트리와 연결하지 못함 | investigating | 기준·시험 target hit의 DE를 각각 보존하고, 두 값이 일치하며 0x3FE8 포인터 테이블이 목표를 둘러쌀 때만 블록 엔트리를 확정 |
 
 ## 테스트 원칙
 

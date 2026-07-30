@@ -11,11 +11,11 @@ from tools.v5_1_test_display_capture import (
     ATTRACT_CAPTURE_SCHEDULE,
     CAPTURE_FRAMES_AFTER_HIT,
     _build_safe_capture,
+    _build_entry_selector_observation,
     _write_human_review_bundle,
     _next_step_text,
     _paired_pixel_comparisons,
     _parse_screenshot,
-    _resolve_entry_selector,
     _target_hit_matches,
     validate_display_capture,
 )
@@ -151,8 +151,15 @@ class TestDisplayCaptureTests(unittest.TestCase):
         baseline = bytearray(0x5000)
         baseline[0x3FEA:0x3FEC] = (0x43DE).to_bytes(2, "little")
         baseline[0x3FEC:0x3FEE] = (0x4863).to_bytes(2, "little")
-        selector = _resolve_entry_selector(
-            local_capture={
+        selector = _build_entry_selector_observation(
+            baseline_local={
+                "target_hit": {
+                    "registers": {
+                        "de": 2,
+                    }
+                }
+            },
+            test_local={
                 "target_hit": {
                     "registers": {
                         "de": 2,
@@ -170,8 +177,11 @@ class TestDisplayCaptureTests(unittest.TestCase):
         self.assertEqual(
             selector,
             {
+                "status": "resolved",
                 "lookup_table_base": 0x3FE8,
-                "selector_offset": 2,
+                "baseline_selector_offset": 2,
+                "test_selector_offset": 2,
+                "selectors_match": True,
                 "entry_index": 1,
                 "pointer_address": 0x43DE,
                 "next_pointer_address": 0x4863,
@@ -180,16 +190,22 @@ class TestDisplayCaptureTests(unittest.TestCase):
             },
         )
 
-    def test_decoder_entry_selector_rejects_a_wrong_pointer(self) -> None:
+    def test_decoder_entry_selector_preserves_unresolved_observation(self) -> None:
         baseline = bytearray(0x5000)
         baseline[0x3FEA:0x3FEC] = (0x4500).to_bytes(2, "little")
         baseline[0x3FEC:0x3FEE] = (0x4863).to_bytes(2, "little")
-        with self.assertRaisesRegex(PatchError, "does not bound"):
-            _resolve_entry_selector(
-                local_capture={
+        selector = _build_entry_selector_observation(
+                baseline_local={
                     "target_hit": {
                         "registers": {
                             "de": 2,
+                        }
+                    }
+                },
+                test_local={
+                    "target_hit": {
+                        "registers": {
+                            "de": 4,
                         }
                     }
                 },
@@ -201,6 +217,11 @@ class TestDisplayCaptureTests(unittest.TestCase):
                     "instruction_pc": 0x3406,
                 },
             )
+        self.assertEqual(selector["status"], "unresolved")
+        self.assertEqual(selector["baseline_selector_offset"], 2)
+        self.assertEqual(selector["test_selector_offset"], 4)
+        self.assertFalse(selector["selectors_match"])
+        self.assertIsNone(selector["entry_index"])
 
     def test_schema_one_display_capture_remains_valid_during_upgrade(self) -> None:
         capture = _build_safe_capture(
