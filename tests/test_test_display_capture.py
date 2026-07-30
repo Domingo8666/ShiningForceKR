@@ -16,6 +16,7 @@ from tools.v5_1_test_display_capture import (
     _next_step_text,
     _paired_pixel_comparisons,
     _parse_screenshot,
+    _static_entry_selector_offset,
     _target_hit_matches,
     validate_display_capture,
 )
@@ -153,14 +154,14 @@ class TestDisplayCaptureTests(unittest.TestCase):
         baseline[0x3FEC:0x3FEE] = (0x4863).to_bytes(2, "little")
         selector = _build_entry_selector_observation(
             baseline_local={
-                "target_hit": {
+                "entry_selector_hit": {
                     "registers": {
                         "de": 2,
                     }
                 }
             },
             test_local={
-                "target_hit": {
+                "entry_selector_hit": {
                     "registers": {
                         "de": 2,
                     }
@@ -196,14 +197,14 @@ class TestDisplayCaptureTests(unittest.TestCase):
         baseline[0x3FEC:0x3FEE] = (0x4863).to_bytes(2, "little")
         selector = _build_entry_selector_observation(
                 baseline_local={
-                    "target_hit": {
+                    "entry_selector_hit": {
                         "registers": {
                             "de": 2,
                         }
                     }
                 },
                 test_local={
-                    "target_hit": {
+                    "entry_selector_hit": {
                         "registers": {
                             "de": 4,
                         }
@@ -222,6 +223,20 @@ class TestDisplayCaptureTests(unittest.TestCase):
         self.assertEqual(selector["test_selector_offset"], 4)
         self.assertFalse(selector["selectors_match"])
         self.assertIsNone(selector["entry_index"])
+
+    def test_static_selector_finds_the_block_that_bounds_the_target(self) -> None:
+        baseline = bytearray(0x5000)
+        pointers = (0x401E, 0x43DE, 0x4863, 0x5044)
+        for index, pointer in enumerate(pointers):
+            offset = 0x3FE8 + index * 2
+            baseline[offset : offset + 2] = pointer.to_bytes(2, "little")
+        self.assertEqual(
+            _static_entry_selector_offset(bytes(baseline), 0x44B1),
+            2,
+        )
+        self.assertIsNone(
+            _static_entry_selector_offset(bytes(baseline), 0x7000),
+        )
 
     def test_schema_one_display_capture_remains_valid_during_upgrade(self) -> None:
         capture = _build_safe_capture(

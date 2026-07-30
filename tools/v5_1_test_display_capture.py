@@ -95,6 +95,8 @@ ATTRACT_CAPTURE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
     *((1_000, None),) * 12,
 )
 MAX_REJECTED_TARGET_HITS = 64
+DECODER_ENTRY_LOGICAL = 0x33FA
+LOOKUP_TABLE_BASE = 0x3FE8
 REQUIRED_TOOLS = {
     "controller_button",
     "debug_get_status",
@@ -231,7 +233,7 @@ def validate_display_capture(capture: dict[str, object]) -> None:
                 raise ValueError("entry_selector fields do not match")
             if selector["status"] not in {"resolved", "unresolved"}:
                 raise ValueError("entry_selector status is invalid")
-            if selector["lookup_table_base"] != 0x3FE8:
+            if selector["lookup_table_base"] != LOOKUP_TABLE_BASE:
                 raise ValueError("entry_selector lookup table base is invalid")
             for key in ("baseline_selector_offset", "test_selector_offset"):
                 value = selector[key]
@@ -728,7 +730,7 @@ def _write_human_review_bundle(
 
 
 def _entry_selector_offset(local_capture: dict[str, object]) -> int | None:
-    state = local_capture.get("target_hit")
+    state = local_capture.get("entry_selector_hit")
     if not isinstance(state, dict):
         return None
     registers = state.get("registers")
@@ -742,6 +744,35 @@ def _entry_selector_offset(local_capture: dict[str, object]) -> int | None:
     ):
         return None
     return selector_offset
+
+
+def _static_entry_selector_offset(
+    baseline_rom: bytes,
+    target_address: int,
+) -> int | None:
+    if not 0x4000 <= target_address <= 0x7FFF:
+        return None
+    pointers = [
+        int.from_bytes(
+            baseline_rom[offset : offset + 2],
+            "little",
+        )
+        for offset in range(LOOKUP_TABLE_BASE, 0x4000, 2)
+        if offset + 2 <= len(baseline_rom)
+    ]
+    starts = sorted({pointer for pointer in pointers if 0x4000 <= pointer <= 0x7FFF})
+    start = max(
+        (pointer for pointer in starts if pointer <= target_address),
+        default=None,
+    )
+    end = min(
+        (pointer for pointer in starts if pointer > target_address),
+        default=None,
+    )
+    if start is None or end is None:
+        return None
+    index = pointers.index(start)
+    return index * 2
 
 
 def _build_entry_selector_observation(
@@ -764,7 +795,7 @@ def _build_entry_selector_observation(
     )
     unresolved: dict[str, object] = {
         "status": "unresolved",
-        "lookup_table_base": 0x3FE8,
+        "lookup_table_base": LOOKUP_TABLE_BASE,
         "baseline_selector_offset": baseline_offset,
         "test_selector_offset": test_offset,
         "selectors_match": selectors_match,
@@ -782,7 +813,7 @@ def _build_entry_selector_observation(
     ):
         return unresolved
     selector_offset = baseline_offset
-    lookup_table_base = 0x3FE8
+    lookup_table_base = LOOKUP_TABLE_BASE
     pointer_offset = lookup_table_base + selector_offset
     if pointer_offset + 4 > min(len(baseline_rom), 0x4000):
         return unresolved
@@ -831,6 +862,7 @@ def _capture_display(
     rom_path: Path,
     rom_size: int,
     target_read: dict[str, object],
+    expected_selector_offset: int | None,
     evidence_dir: Path,
     failure_stage: str,
     schedule: tuple[tuple[int, str | None], ...] = INPUT_SCHEDULE,
@@ -853,6 +885,7 @@ def _capture_display(
     safe_post_advance: dict[str, object] | None = None
     start = f"{int(target_read['logical_access']):04X}"
     breakpoint_armed = False
+    entry_breakpoint_armed = False
 
     def arm_breakpoint() -> None:
         nonlocal breakpoint_armed
@@ -881,6 +914,33 @@ def _capture_display(
         )
         breakpoint_armed = False
 
+    def arm_entry_breakpoint() -> None:
+        nonlocal entry_breakpoint_armed
+        client.call(
+            "set_breakpoint_range",
+            {
+                "start_address": f"{DECODER_ENTRY_LOGICAL:04X}",
+                "end_address": f"{DECODER_ENTRY_LOGICAL:04X}",
+                "memory_area": "rom_ram",
+                "execute": True,
+                "read": False,
+                "write": False,
+            },
+        )
+        entry_breakpoint_armed = True
+
+    def disarm_entry_breakpoint() -> None:
+        nonlocal entry_breakpoint_armed
+        client.call(
+            "remove_breakpoint",
+            {
+                "address": f"{DECODER_ENTRY_LOGICAL:04X}",
+                "end_address": f"{DECODER_ENTRY_LOGICAL:04X}",
+                "memory_area": "rom_ram",
+            },
+        )
+        entry_breakpoint_armed = False
+
     try:
         tools = client.initialize()
         missing = sorted(REQUIRED_TOOLS - tools)
@@ -899,7 +959,11 @@ def _capture_display(
         client.call("debug_reset")
         client.call("debug_pause")
         arm_breakpoint()
+        if expected_selector_offset is not None:
+            arm_entry_breakpoint()
         target_found = False
+        entry_selector_confirmed = expected_selector_offset is None
+        local["entry_selector_hits"] = []
         rejected_hits: list[dict[str, int]] = []
         for frames, button in schedule:
             if button is not None:
@@ -919,7 +983,36 @@ def _capture_display(
                 slot = int(target_read["slot"])
                 candidate_bank = int(state[f"slot{slot}_bank"])
                 pc_after = int(state["pc_after"])
-                if _target_hit_matches(state, target_read):
+                if (
+                    entry_breakpoint_armed
+                    and pc_after == DECODER_ENTRY_LOGICAL
+                ):
+                    registers = state.get("registers")
+                    selector_offset = (
+                        registers.get("de")
+                        if isinstance(registers, dict)
+                        else None
+                    )
+                    local["entry_selector_hits"].append(
+                        {
+                            "selector_offset": selector_offset,
+                            "pc_after": pc_after,
+                        }
+                    )
+                    if selector_offset == expected_selector_offset:
+                        local["entry_selector_hit"] = state
+                        local["entry_selector_hit_evidence"] = hit_evidence
+                        entry_selector_confirmed = True
+                        disarm_entry_breakpoint()
+                    else:
+                        disarm_entry_breakpoint()
+                        _step_instruction_and_wait(client)
+                        arm_entry_breakpoint()
+                    continue
+                if (
+                    entry_selector_confirmed
+                    and _target_hit_matches(state, target_read)
+                ):
                     mapped_bank = candidate_bank
                     local["target_hit"] = state
                     local["target_hit_evidence"] = hit_evidence
@@ -939,6 +1032,8 @@ def _capture_display(
                 break
         local["rejected_target_hits"] = rejected_hits
         disarm_breakpoint()
+        if entry_breakpoint_armed:
+            disarm_entry_breakpoint()
 
         if mapped_bank == int(target_read["expected_bank"]):
             previous = 0
@@ -989,6 +1084,18 @@ def _capture_display(
                     {
                         "address": start,
                         "end_address": start,
+                        "memory_area": "rom_ram",
+                    },
+                )
+            except RuntimeError:
+                pass
+        if entry_breakpoint_armed:
+            try:
+                client.call(
+                    "remove_breakpoint",
+                    {
+                        "address": f"{DECODER_ENTRY_LOGICAL:04X}",
+                        "end_address": f"{DECODER_ENTRY_LOGICAL:04X}",
                         "memory_area": "rom_ram",
                     },
                 )
@@ -1136,6 +1243,11 @@ def main() -> int:
                 "runtime resolution does not authorize display capture"
             )
 
+    baseline_rom = baseline_rom_path.read_bytes()
+    expected_selector_offset = _static_entry_selector_offset(
+        baseline_rom,
+        int(resolution["target_read"]["logical_access"]),
+    )
     _CURRENT_FAILURE_STAGE = "baseline-display-capture"
     (
         baseline_emulator_version,
@@ -1147,6 +1259,7 @@ def main() -> int:
         rom_path=baseline_rom_path,
         rom_size=baseline_rom_path.stat().st_size,
         target_read=resolution["target_read"],
+        expected_selector_offset=expected_selector_offset,
         evidence_dir=evidence_dir / "baseline",
         failure_stage="baseline-display-capture",
         schedule=capture_schedule,
@@ -1162,6 +1275,7 @@ def main() -> int:
         rom_path=rom_path,
         rom_size=rom_path.stat().st_size,
         target_read=resolution["target_read"],
+        expected_selector_offset=expected_selector_offset,
         evidence_dir=evidence_dir / "test",
         failure_stage="test-display-capture",
         schedule=capture_schedule,
@@ -1185,7 +1299,6 @@ def main() -> int:
         ),
     )
     comparison_path = write_display_comparison(root, comparison)
-    baseline_rom = baseline_rom_path.read_bytes()
     entry_selector = _build_entry_selector_observation(
         baseline_local=baseline_local,
         test_local=test_local,
