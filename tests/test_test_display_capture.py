@@ -145,7 +145,7 @@ class TestDisplayCaptureTests(unittest.TestCase):
         self.assertIsNone(capture["visual_review"]["result"])
         self.assertFalse(capture["translation_build_eligible"])
         validate_display_capture(capture)
-        self.assertEqual(capture["schema_version"], 2)
+        self.assertEqual(capture["schema_version"], 3)
         self.assertIsNone(capture["entry_selector"])
 
     def test_decoder_entry_selector_is_bound_to_the_runtime_target(self) -> None:
@@ -157,6 +157,7 @@ class TestDisplayCaptureTests(unittest.TestCase):
                 "entry_selector_hit": {
                     "registers": {
                         "de": 2,
+                        "bc": 0x1A37,
                     }
                 }
             },
@@ -164,6 +165,7 @@ class TestDisplayCaptureTests(unittest.TestCase):
                 "entry_selector_hit": {
                     "registers": {
                         "de": 2,
+                        "bc": 0x1A99,
                     }
                 }
             },
@@ -183,6 +185,9 @@ class TestDisplayCaptureTests(unittest.TestCase):
                 "baseline_selector_offset": 2,
                 "test_selector_offset": 2,
                 "selectors_match": True,
+                "baseline_entry_ordinal": 0x1A,
+                "test_entry_ordinal": 0x1A,
+                "ordinals_match": True,
                 "entry_index": 1,
                 "pointer_address": 0x43DE,
                 "next_pointer_address": 0x4863,
@@ -200,6 +205,7 @@ class TestDisplayCaptureTests(unittest.TestCase):
                     "entry_selector_hit": {
                         "registers": {
                             "de": 2,
+                            "bc": 0x1A00,
                         }
                     }
                 },
@@ -207,6 +213,7 @@ class TestDisplayCaptureTests(unittest.TestCase):
                     "entry_selector_hit": {
                         "registers": {
                             "de": 4,
+                            "bc": 0x1B00,
                         }
                     }
                 },
@@ -222,6 +229,9 @@ class TestDisplayCaptureTests(unittest.TestCase):
         self.assertEqual(selector["baseline_selector_offset"], 2)
         self.assertEqual(selector["test_selector_offset"], 4)
         self.assertFalse(selector["selectors_match"])
+        self.assertEqual(selector["baseline_entry_ordinal"], 0x1A)
+        self.assertEqual(selector["test_entry_ordinal"], 0x1B)
+        self.assertFalse(selector["ordinals_match"])
         self.assertIsNone(selector["entry_index"])
 
     def test_static_selector_finds_the_block_that_bounds_the_target(self) -> None:
@@ -249,6 +259,18 @@ class TestDisplayCaptureTests(unittest.TestCase):
         )
         capture["schema_version"] = 1
         capture.pop("entry_selector")
+        validate_display_capture(capture)
+
+    def test_schema_two_display_capture_remains_valid_during_upgrade(self) -> None:
+        capture = _build_safe_capture(
+            build_report=build_report(),
+            resolution=resolution(),
+            emulator_version="3.9.14",
+            mapped_bank=None,
+            captures=[],
+            post_advance_capture=None,
+        )
+        capture["schema_version"] = 2
         validate_display_capture(capture)
 
     def test_missing_runtime_read_does_not_claim_capture_success(self) -> None:

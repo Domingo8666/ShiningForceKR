@@ -71,8 +71,8 @@ except ImportError:  # direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-test-display-capture"
-SCHEMA_VERSION = 2
-LEGACY_SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
+LEGACY_SCHEMA_VERSIONS = {1, 2}
 DEFAULT_TEST_ROM = Path("build/Final_Conflict_Korean_test_phrase.gg")
 DEFAULT_BASELINE_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 DEFAULT_BUILD_REPORT = Path("reports/local/v5_1_test_patch_build.json")
@@ -131,8 +131,8 @@ TOP_LEVEL_KEYS = {
     "translation_build_eligible",
     "next_checkpoint",
 }
-TOP_LEVEL_KEYS_V2 = TOP_LEVEL_KEYS | {"entry_selector"}
-ENTRY_SELECTOR_KEYS = {
+TOP_LEVEL_KEYS_WITH_SELECTOR = TOP_LEVEL_KEYS | {"entry_selector"}
+ENTRY_SELECTOR_KEYS_V2 = {
     "status",
     "lookup_table_base",
     "baseline_selector_offset",
@@ -143,6 +143,11 @@ ENTRY_SELECTOR_KEYS = {
     "next_pointer_address",
     "target_offset_within_entry",
     "pointer_bounds_target",
+}
+ENTRY_SELECTOR_KEYS = ENTRY_SELECTOR_KEYS_V2 | {
+    "baseline_entry_ordinal",
+    "test_entry_ordinal",
+    "ordinals_match",
 }
 CAPTURE_STATUSES = {
     "capture-ready-human-review-required",
@@ -158,15 +163,15 @@ def _is_sha256(value: object) -> bool:
 def validate_display_capture(capture: dict[str, object]) -> None:
     schema_version = capture.get("schema_version")
     expected_keys = (
-        TOP_LEVEL_KEYS_V2
-        if schema_version == SCHEMA_VERSION
+        TOP_LEVEL_KEYS_WITH_SELECTOR
+        if schema_version in {2, SCHEMA_VERSION}
         else TOP_LEVEL_KEYS
     )
     if set(capture) != expected_keys:
         raise ValueError("display capture top-level fields do not match")
     if capture["artifact_kind"] != ARTIFACT_KIND:
         raise ValueError("unexpected display capture artifact kind")
-    if schema_version not in {LEGACY_SCHEMA_VERSION, SCHEMA_VERSION}:
+    if schema_version not in LEGACY_SCHEMA_VERSIONS | {SCHEMA_VERSION}:
         raise ValueError("unexpected display capture schema version")
     if capture["status"] not in CAPTURE_STATUSES:
         raise ValueError("unexpected display capture status")
@@ -226,10 +231,18 @@ def validate_display_capture(capture: dict[str, object]) -> None:
     if confirmed != (mapped_bank == target_read["expected_bank"]):
         raise ValueError("target_read confirmation and mapper bank disagree")
 
-    if schema_version == SCHEMA_VERSION:
+    if schema_version in {2, SCHEMA_VERSION}:
         selector = capture["entry_selector"]
         if selector is not None:
-            if not isinstance(selector, dict) or set(selector) != ENTRY_SELECTOR_KEYS:
+            expected_selector_keys = (
+                ENTRY_SELECTOR_KEYS
+                if schema_version == SCHEMA_VERSION
+                else ENTRY_SELECTOR_KEYS_V2
+            )
+            if (
+                not isinstance(selector, dict)
+                or set(selector) != expected_selector_keys
+            ):
                 raise ValueError("entry_selector fields do not match")
             if selector["status"] not in {"resolved", "unresolved"}:
                 raise ValueError("entry_selector status is invalid")
@@ -251,6 +264,25 @@ def validate_display_capture(capture: dict[str, object]) -> None:
             )
             if selectors_match is not expected_match:
                 raise ValueError("entry_selector match evidence is inconsistent")
+            ordinals_match = True
+            if schema_version == SCHEMA_VERSION:
+                for key in ("baseline_entry_ordinal", "test_entry_ordinal"):
+                    value = selector[key]
+                    if value is not None and (
+                        not isinstance(value, int)
+                        or isinstance(value, bool)
+                        or not 0 <= value <= 0xFF
+                    ):
+                        raise ValueError(f"entry_selector {key} is invalid")
+                ordinals_match = (
+                    selector["baseline_entry_ordinal"] is not None
+                    and selector["baseline_entry_ordinal"]
+                    == selector["test_entry_ordinal"]
+                )
+                if selector["ordinals_match"] is not ordinals_match:
+                    raise ValueError(
+                        "entry_selector ordinal evidence is inconsistent"
+                    )
             derived_keys = (
                 "entry_index",
                 "pointer_address",
@@ -268,6 +300,7 @@ def validate_display_capture(capture: dict[str, object]) -> None:
                 assert isinstance(selector_offset, int)
                 if (
                     not selectors_match
+                    or not ordinals_match
                     or not 0 <= selector_offset <= 0x16
                     or selector_offset % 2
                     or selector["entry_index"] * 2 != selector_offset
@@ -746,6 +779,23 @@ def _entry_selector_offset(local_capture: dict[str, object]) -> int | None:
     return selector_offset
 
 
+def _entry_ordinal(local_capture: dict[str, object]) -> int | None:
+    state = local_capture.get("entry_selector_hit")
+    if not isinstance(state, dict):
+        return None
+    registers = state.get("registers")
+    if not isinstance(registers, dict):
+        return None
+    bc = registers.get("bc")
+    if (
+        not isinstance(bc, int)
+        or isinstance(bc, bool)
+        or not 0 <= bc <= 0xFFFF
+    ):
+        return None
+    return bc >> 8
+
+
 def _static_entry_selector_offset(
     baseline_rom: bytes,
     target_address: int,
@@ -790,8 +840,13 @@ def _build_entry_selector_observation(
         return None
     baseline_offset = _entry_selector_offset(baseline_local)
     test_offset = _entry_selector_offset(test_local)
+    baseline_ordinal = _entry_ordinal(baseline_local)
+    test_ordinal = _entry_ordinal(test_local)
     selectors_match = (
         baseline_offset is not None and baseline_offset == test_offset
+    )
+    ordinals_match = (
+        baseline_ordinal is not None and baseline_ordinal == test_ordinal
     )
     unresolved: dict[str, object] = {
         "status": "unresolved",
@@ -799,6 +854,9 @@ def _build_entry_selector_observation(
         "baseline_selector_offset": baseline_offset,
         "test_selector_offset": test_offset,
         "selectors_match": selectors_match,
+        "baseline_entry_ordinal": baseline_ordinal,
+        "test_entry_ordinal": test_ordinal,
+        "ordinals_match": ordinals_match,
         "entry_index": None,
         "pointer_address": None,
         "next_pointer_address": None,
@@ -807,6 +865,7 @@ def _build_entry_selector_observation(
     }
     if (
         not selectors_match
+        or not ordinals_match
         or not isinstance(baseline_offset, int)
         or not 0 <= baseline_offset <= 0x16
         or baseline_offset % 2
@@ -837,6 +896,9 @@ def _build_entry_selector_observation(
         "baseline_selector_offset": selector_offset,
         "test_selector_offset": selector_offset,
         "selectors_match": True,
+        "baseline_entry_ordinal": baseline_ordinal,
+        "test_entry_ordinal": test_ordinal,
+        "ordinals_match": True,
         "entry_index": selector_offset // 2,
         "pointer_address": pointer_address,
         "next_pointer_address": next_pointer_address,
