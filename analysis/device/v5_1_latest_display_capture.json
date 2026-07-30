@@ -1,6 +1,6 @@
 {
   "artifact_kind": "sanitized-s25u-test-display-capture",
-  "schema_version": 2,
+  "schema_version": 3,
   "status": "capture-ready-human-review-required",
   "purpose": "technical-poc-only",
   "phrase_codepoints": [
@@ -24,6 +24,9 @@
     "baseline_selector_offset": 2,
     "test_selector_offset": 2,
     "selectors_match": true,
+    "baseline_entry_ordinal": 147,
+    "test_entry_ordinal": 147,
+    "ordinals_match": true,
     "entry_index": 1,
     "pointer_address": 17374,
     "next_pointer_address": 18531,
