@@ -33,6 +33,20 @@ def sha256_file(path: Path | str) -> str:
     return digest.hexdigest()
 
 
+def _write_bps_varint(value: int) -> bytes:
+    if value < 0:
+        raise PatchError("BPS variable-length integer cannot be negative")
+    output = bytearray()
+    while True:
+        byte = value & 0x7F
+        value >>= 7
+        if value == 0:
+            output.append(byte | 0x80)
+            return bytes(output)
+        output.append(byte)
+        value -= 1
+
+
 def _read_bps_varint(data: bytes, position: int, limit: int) -> tuple[int, int]:
     result = 0
     shift = 1
@@ -66,6 +80,63 @@ class BPSReport:
     source_crc32: int
     target_crc32: int
     patch_crc32: int
+
+
+def create_bps(
+    source: bytes,
+    target: bytes,
+    *,
+    metadata: bytes = b"",
+) -> bytes:
+    """Create a deterministic, audit-friendly BPS patch."""
+
+    if not isinstance(metadata, bytes):
+        raise PatchError("BPS metadata must be bytes")
+    body = bytearray(b"BPS1")
+    body.extend(_write_bps_varint(len(source)))
+    body.extend(_write_bps_varint(len(target)))
+    body.extend(_write_bps_varint(len(metadata)))
+    body.extend(metadata)
+
+    position = 0
+    while position < len(target):
+        source_read = (
+            position < len(source) and target[position] == source[position]
+        )
+        end = position + 1
+        if source_read:
+            while (
+                end < len(target)
+                and end < len(source)
+                and target[end] == source[end]
+            ):
+                end += 1
+            action = 0
+        else:
+            while end < len(target) and not (
+                end < len(source) and target[end] == source[end]
+            ):
+                end += 1
+            action = 1
+        length = end - position
+        body.extend(_write_bps_varint(((length - 1) << 2) | action))
+        if action == 1:
+            body.extend(target[position:end])
+        position = end
+
+    body.extend(crc32(source).to_bytes(4, "little"))
+    body.extend(crc32(target).to_bytes(4, "little"))
+    body.extend(crc32(body).to_bytes(4, "little"))
+    patch = bytes(body)
+    report = inspect_bps(patch)
+    if (
+        report.source_size != len(source)
+        or report.target_size != len(target)
+        or report.metadata != metadata
+        or apply_bps(source, patch) != target
+    ):
+        raise PatchError("generated BPS failed independent reapplication")
+    return patch
 
 
 def inspect_bps(patch: bytes) -> BPSReport:

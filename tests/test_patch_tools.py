@@ -8,6 +8,7 @@ from tools.patch_io import (
     PatchError,
     apply_bps,
     apply_ips,
+    create_bps,
     extract_bps_target_literals,
     inspect_bps,
     parse_ips,
@@ -54,6 +55,28 @@ def ips_record(offset: int, payload: bytes) -> bytes:
 
 
 class PatchIOTests(unittest.TestCase):
+    def test_deterministic_bps_writer_roundtrips_and_records_metadata(self) -> None:
+        source = b"ABCD---IJK"
+        target = b"ABxy---IJK-more"
+        metadata = b"ShiningForceKR test"
+        patch = create_bps(source, target, metadata=metadata)
+        report = inspect_bps(patch)
+        self.assertEqual(report.metadata, metadata)
+        self.assertEqual(report.source_size, len(source))
+        self.assertEqual(report.target_size, len(target))
+        self.assertEqual(report.action_counts[2:], (0, 0))
+        self.assertGreater(report.action_counts[0], 0)
+        self.assertGreater(report.action_counts[1], 0)
+        self.assertEqual(apply_bps(source, patch), target)
+        self.assertEqual(
+            patch,
+            create_bps(source, target, metadata=metadata),
+        )
+
+    def test_bps_writer_rejects_non_bytes_metadata(self) -> None:
+        with self.assertRaisesRegex(PatchError, "metadata"):
+            create_bps(b"a", b"b", metadata="bad")  # type: ignore[arg-type]
+
     def test_bps_all_four_action_types(self) -> None:
         source = b"abcdef"
         target = b"abcXYefabc"
