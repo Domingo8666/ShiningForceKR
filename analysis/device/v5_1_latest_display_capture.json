@@ -1,6 +1,6 @@
 {
   "artifact_kind": "sanitized-s25u-test-display-capture",
-  "schema_version": 5,
+  "schema_version": 6,
   "status": "runtime-target-read-not-observed",
   "purpose": "technical-poc-only",
   "phrase_codepoints": [
@@ -16,7 +16,8 @@
     "logical_access": 18707,
     "expected_bank": 8,
     "mapped_bank": null,
-    "confirmed": false
+    "confirmed": false,
+    "confirmation_basis": "runtime-read-breakpoint"
   },
   "entry_selector": null,
   "group_entry": null,
