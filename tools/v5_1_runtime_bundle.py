@@ -62,6 +62,10 @@ try:
         PUBLISH_RELATIVE_PATH as SOURCE_GROUP_CODEC_PROBE_RELATIVE_PATH,
         validate_source_group_codec_probe,
     )
+    from .v5_1_source_huffman_locator import (
+        PUBLISH_RELATIVE_PATH as SOURCE_HUFFMAN_LOCATOR_RELATIVE_PATH,
+        validate_source_huffman_locator,
+    )
     from .v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -147,6 +151,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as SOURCE_GROUP_CODEC_PROBE_RELATIVE_PATH,
         validate_source_group_codec_probe,
     )
+    from v5_1_source_huffman_locator import (
+        PUBLISH_RELATIVE_PATH as SOURCE_HUFFMAN_LOCATOR_RELATIVE_PATH,
+        validate_source_huffman_locator,
+    )
     from v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -227,6 +235,8 @@ SAFE_ARTIFACTS = {
         validate_group_source_delta,
     SOURCE_GROUP_CODEC_PROBE_RELATIVE_PATH:
         validate_source_group_codec_probe,
+    SOURCE_HUFFMAN_LOCATOR_RELATIVE_PATH:
+        validate_source_huffman_locator,
     GROUP_TEXT_CANDIDATE_RELATIVE_PATH:
         validate_group_text_candidate_resolution,
     UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH:
@@ -611,6 +621,23 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
         ):
             artifacts.pop(GROUP_SOURCE_DELTA_RELATIVE_PATH)
     group_source_delta = artifacts.get(GROUP_SOURCE_DELTA_RELATIVE_PATH)
+    source_huffman_locator = artifacts.get(
+        SOURCE_HUFFMAN_LOCATOR_RELATIVE_PATH
+    )
+    if source_huffman_locator is not None:
+        if (
+            group_source_delta is None
+            or source_huffman_locator["source_sha256"]
+            != group_source_delta["source_sha256"]
+            or source_huffman_locator["target_sha256"]
+            != group_source_delta["target_sha256"]
+            or source_huffman_locator["source_group_delta_sha256"]
+            != sha256_file(root / GROUP_SOURCE_DELTA_RELATIVE_PATH)
+        ):
+            artifacts.pop(SOURCE_HUFFMAN_LOCATOR_RELATIVE_PATH)
+    source_huffman_locator = artifacts.get(
+        SOURCE_HUFFMAN_LOCATOR_RELATIVE_PATH
+    )
     source_group_codec_probe = artifacts.get(
         SOURCE_GROUP_CODEC_PROBE_RELATIVE_PATH
     )
@@ -618,12 +645,15 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
         if (
             confirmed_group_extract is None
             or group_source_delta is None
+            or source_huffman_locator is None
             or source_group_codec_probe["target_sha256"]
             != confirmed_group_extract["target_sha256"]
             or source_group_codec_probe["source_group_extract_sha256"]
             != sha256_file(root / CONFIRMED_GROUP_EXTRACT_RELATIVE_PATH)
             or source_group_codec_probe["source_group_delta_sha256"]
             != sha256_file(root / GROUP_SOURCE_DELTA_RELATIVE_PATH)
+            or source_group_codec_probe["source_vector_locator_sha256"]
+            != sha256_file(root / SOURCE_HUFFMAN_LOCATOR_RELATIVE_PATH)
             or source_group_codec_probe["source_sha256"]
             != group_source_delta["source_sha256"]
             or source_group_codec_probe["group"]["selector"]

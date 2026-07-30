@@ -175,6 +175,7 @@ class S25UAutopilotTests(unittest.TestCase):
             "group-context-resolution",
             "group-runtime-context",
             "group-source-delta",
+            "source-huffman-locator",
             "source-group-codec-probe",
             "group-text-candidate-resolution",
             "unmatched-glyph-fuzzy",
@@ -234,6 +235,10 @@ class S25UAutopilotTests(unittest.TestCase):
             RUNTIME_STAGE,
         )
         self.assertIn(
+            "python tools/v5_1_source_huffman_locator.py",
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
             "python tools/v5_1_source_group_codec_probe.py",
             RUNTIME_STAGE,
         )
@@ -280,6 +285,14 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertLess(
             RUNTIME_STAGE.index(
                 "python tools/v5_1_group_source_delta.py"
+            ),
+            RUNTIME_STAGE.index(
+                "python tools/v5_1_source_huffman_locator.py"
+            ),
+        )
+        self.assertLess(
+            RUNTIME_STAGE.index(
+                "python tools/v5_1_source_huffman_locator.py"
             ),
             RUNTIME_STAGE.index(
                 "python tools/v5_1_source_group_codec_probe.py"

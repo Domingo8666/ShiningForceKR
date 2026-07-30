@@ -36,6 +36,11 @@ try:
         validate_group_source_delta,
     )
     from .v5_1_renderer_output_trace import _load_json_object
+    from .v5_1_source_huffman_locator import (
+        LOCAL_REPORT_PATH as SOURCE_LOCATOR_LOCAL_PATH,
+        PUBLISH_RELATIVE_PATH as SOURCE_LOCATOR_PATH,
+        validate_source_huffman_locator,
+    )
     from .v5_1_visible_script_record import _bits_equal
 except ImportError:  # direct script execution
     from analyze_v5_1 import EXPECTED_SOURCE_SHA256, EXPECTED_SOURCE_SIZE
@@ -59,6 +64,11 @@ except ImportError:  # direct script execution
         validate_group_source_delta,
     )
     from v5_1_renderer_output_trace import _load_json_object
+    from v5_1_source_huffman_locator import (
+        LOCAL_REPORT_PATH as SOURCE_LOCATOR_LOCAL_PATH,
+        PUBLISH_RELATIVE_PATH as SOURCE_LOCATOR_PATH,
+        validate_source_huffman_locator,
+    )
     from v5_1_visible_script_record import _bits_equal
 
 
@@ -76,6 +86,7 @@ TOP_LEVEL_KEYS = {
     "target_sha256",
     "source_group_extract_sha256",
     "source_group_delta_sha256",
+    "source_vector_locator_sha256",
     "captured_utc",
     "group",
     "codec_probe",
@@ -143,6 +154,8 @@ def probe_source_group_codec(
     *,
     source: bytes,
     records: list[dict[str, object]],
+    vector_offset: int = VECTOR_OFFSET,
+    bank_base: int = BANK_BASE,
 ) -> tuple[dict[str, object], dict[str, object]]:
     if not records or len(records) > 0xFF:
         raise ValueError("source codec probe record population is invalid")
@@ -151,8 +164,8 @@ def probe_source_group_codec(
         trees = load_trees_at(
             source,
             known,
-            VECTOR_OFFSET,
-            BANK_BASE,
+            vector_offset,
+            bank_base,
             VECTOR_ENTRIES,
         )
     except (PatchError, ValueError, IndexError, RecursionError) as error:
@@ -271,6 +284,7 @@ def build_source_group_codec_probe(
     target_sha256: str,
     source_group_extract_sha256: str,
     source_group_delta_sha256: str,
+    source_vector_locator_sha256: str,
     selector: int,
     record_count: int,
     codec_probe: dict[str, object],
@@ -304,6 +318,7 @@ def build_source_group_codec_probe(
         "target_sha256": target_sha256,
         "source_group_extract_sha256": source_group_extract_sha256,
         "source_group_delta_sha256": source_group_delta_sha256,
+        "source_vector_locator_sha256": source_vector_locator_sha256,
         "captured_utc": captured_utc,
         "group": {
             "selector": selector,
@@ -343,6 +358,7 @@ def validate_source_group_codec_probe(value: dict[str, object]) -> None:
                 "target_sha256",
                 "source_group_extract_sha256",
                 "source_group_delta_sha256",
+                "source_vector_locator_sha256",
             )
         )
     ):
@@ -441,7 +457,15 @@ def main() -> int:
     )
     group_path = root / GROUP_EXTRACT_PATH
     delta_path = root / SOURCE_DELTA_PATH
-    prerequisites = (source_path, group_path, delta_path)
+    locator_path = root / SOURCE_LOCATOR_PATH
+    locator_local_path = root / SOURCE_LOCATOR_LOCAL_PATH
+    prerequisites = (
+        source_path,
+        group_path,
+        delta_path,
+        locator_path,
+        locator_local_path,
+    )
     if not all(path.is_file() for path in prerequisites):
         if args.if_ready:
             print("Source group codec probe is not ready")
@@ -455,8 +479,11 @@ def main() -> int:
         raise ValueError("source group codec probe clean ROM identity mismatch")
     group = _load_json_object(group_path)
     delta = _load_json_object(delta_path)
+    locator = _load_json_object(locator_path)
+    locator_local = _load_json_object(locator_local_path)
     validate_confirmed_group_extract(group)
     validate_group_source_delta(delta)
+    validate_source_huffman_locator(locator)
     group_info = group["group"]
     delta_group = delta["group"]
     assert isinstance(group_info, dict)
@@ -467,8 +494,26 @@ def main() -> int:
         or delta["source_group_extract_sha256"] != sha256_file(group_path)
         or delta_group["selector"] != group_info["selector"]
         or delta_group["record_count"] != group_info["declared_entry_count"]
+        or locator["source_sha256"] != EXPECTED_SOURCE_SHA256
+        or locator["target_sha256"] != group["target_sha256"]
+        or locator["source_group_delta_sha256"] != sha256_file(delta_path)
+        or locator_local.get("source_sha256") != EXPECTED_SOURCE_SHA256
+        or locator_local.get("target_sha256") != group["target_sha256"]
     ):
         raise ValueError("source group codec probe identities disagree")
+    selected_vector = locator_local.get("analysis", {}).get(
+        "selected_vector"
+    )
+    if (
+        locator["status"] != "source-huffman-vector-uniquely-located"
+        or not isinstance(selected_vector, dict)
+        or not isinstance(selected_vector.get("vector_offset"), int)
+        or not isinstance(selected_vector.get("bank_base"), int)
+    ):
+        if args.if_ready:
+            print("Source group codec probe waits for a unique vector")
+            return 0
+        raise SystemExit("source group codec vector is not uniquely located")
     records = parse_length_prefixed_group(
         source,
         physical_start=int(group_info["physical_start"]),
@@ -477,6 +522,8 @@ def main() -> int:
     counts, local_analysis = probe_source_group_codec(
         source=source,
         records=records,
+        vector_offset=int(selected_vector["vector_offset"]),
+        bank_base=int(selected_vector["bank_base"]),
     )
     captured_utc = datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"
@@ -486,6 +533,7 @@ def main() -> int:
         target_sha256=str(group["target_sha256"]),
         source_group_extract_sha256=sha256_file(group_path),
         source_group_delta_sha256=sha256_file(delta_path),
+        source_vector_locator_sha256=sha256_file(locator_path),
         selector=int(group_info["selector"]),
         record_count=int(group_info["declared_entry_count"]),
         codec_probe=counts,

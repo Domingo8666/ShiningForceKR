@@ -390,6 +390,20 @@ else
 
   if [ "$stage_status" -eq 0 ]; then
     if [ -n "$source_rom" ]; then
+      python tools/v5_1_source_huffman_locator.py \
+        --source-rom "$source_rom" \
+        --if-ready
+      source_huffman_locator_status=$?
+      if [ "$source_huffman_locator_status" -ne 0 ]; then
+        stage_status="$source_huffman_locator_status"
+        diagnostic_trigger=probe
+        record_stage_failure source-huffman-locator
+      fi
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
+    if [ -n "$source_rom" ]; then
       python tools/v5_1_source_group_codec_probe.py \
         --source-rom "$source_rom" \
         --if-ready

@@ -45,6 +45,7 @@ class SourceGroupCodecProbeTests(unittest.TestCase):
             target_sha256="2" * 64,
             source_group_extract_sha256="3" * 64,
             source_group_delta_sha256="4" * 64,
+            source_vector_locator_sha256="5" * 64,
             selector=2,
             record_count=3,
             codec_probe={
