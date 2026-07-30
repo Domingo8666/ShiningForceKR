@@ -375,6 +375,16 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_target_group_population.py --if-ready
+    target_group_population_status=$?
+    if [ "$target_group_population_status" -ne 0 ]; then
+      stage_status="$target_group_population_status"
+      diagnostic_trigger=probe
+      record_stage_failure target-group-population
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then
