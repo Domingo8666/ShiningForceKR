@@ -98,6 +98,10 @@ try:
         PUBLISH_RELATIVE_PATH as TARGET_GROUP_EXPANDED_GLYPHS_RELATIVE_PATH,
         validate_target_group_expanded_glyphs,
     )
+    from .v5_1_target_group_record_quality import (
+        PUBLISH_RELATIVE_PATH as TARGET_GROUP_RECORD_QUALITY_RELATIVE_PATH,
+        validate_target_group_record_quality,
+    )
     from .v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -219,6 +223,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as TARGET_GROUP_EXPANDED_GLYPHS_RELATIVE_PATH,
         validate_target_group_expanded_glyphs,
     )
+    from v5_1_target_group_record_quality import (
+        PUBLISH_RELATIVE_PATH as TARGET_GROUP_RECORD_QUALITY_RELATIVE_PATH,
+        validate_target_group_record_quality,
+    )
     from v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -317,6 +325,8 @@ SAFE_ARTIFACTS = {
         validate_target_group_expanded_corpus,
     TARGET_GROUP_EXPANDED_GLYPHS_RELATIVE_PATH:
         validate_target_group_expanded_glyphs,
+    TARGET_GROUP_RECORD_QUALITY_RELATIVE_PATH:
+        validate_target_group_record_quality,
     GROUP_TEXT_CANDIDATE_RELATIVE_PATH:
         validate_group_text_candidate_resolution,
     UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH:
@@ -750,6 +760,20 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != sha256_file(root / TARGET_GROUP_EXPANDED_GLYPHS_RELATIVE_PATH)
         ):
             artifacts.pop(TARGET_GROUP_EXPANDED_CORPUS_RELATIVE_PATH)
+    target_group_record_quality = artifacts.get(
+        TARGET_GROUP_RECORD_QUALITY_RELATIVE_PATH
+    )
+    if target_group_record_quality is not None:
+        if (
+            TARGET_GROUP_EXPANDED_CORPUS_RELATIVE_PATH not in artifacts
+            or target_group_record_quality["target_sha256"]
+            != target_group_expanded_corpus["target_sha256"]
+            or target_group_record_quality[
+                "source_expanded_corpus_sha256"
+            ]
+            != sha256_file(root / TARGET_GROUP_EXPANDED_CORPUS_RELATIVE_PATH)
+        ):
+            artifacts.pop(TARGET_GROUP_RECORD_QUALITY_RELATIVE_PATH)
     group_context_resolution = artifacts.get(
         GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH
     )
