@@ -4,7 +4,7 @@
   "status": "runtime-stage-ready",
   "trigger": "manual",
   "exit_code": 0,
-  "attempt_utc": "2026-07-30T15:46:20Z",
+  "attempt_utc": "2026-07-30T16:02:55Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
