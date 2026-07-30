@@ -1,0 +1,36 @@
+{
+  "artifact_kind": "sanitized-v5-1-source-record-pairing",
+  "schema_version": 1,
+  "status": "source-record-structure-ambiguous",
+  "source_sha256": "4705256cc1a242aab7fea170369eb64723f796e27c6edfe0f93a674a8ba00f42",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_group_extract_sha256": "587bbdef2842664dd728b8eabb9eca58150e4eb963c568cdc641f13a7959c166",
+  "source_group_delta_sha256": "10e7253d51ac50db6f62a757984e729e1c34b8d795cc27b8e1d58a155327811a",
+  "source_target_corpus_sha256": "9899256e2c6b92884958194ad2916544c182a5c7c1213569294f22691c2fb25f",
+  "local_paired_corpus_sha256": "6be938df10db403f03b3b9600ec2d9cfef3a0a5bdbde5a0797838185db59ec5a",
+  "captured_utc": "2026-07-30T15:46:12.876582Z",
+  "group": {
+    "selector": 2,
+    "source_record_count": 148,
+    "target_candidate_record_count": 120
+  },
+  "pairing": {
+    "source_total_payload_byte_count": 1747,
+    "duplicate_target_ordinal_count": 0,
+    "records_with_internal_dominant_symbol_count": 19,
+    "dominant_final_symbol_record_count": 10,
+    "unpaired_target_record_count": 0,
+    "ordinal_pair_count": 120,
+    "source_nonempty_record_count": 148,
+    "distinct_final_symbol_count": 80,
+    "source_distinct_body_symbol_count": 255,
+    "source_body_symbol_count": 1737
+  },
+  "hancharacter_contract_mode": "translator_declared",
+  "source_symbol_pairing_complete": false,
+  "source_unicode_pairing_complete": false,
+  "speaker_assignment_complete": false,
+  "local_payload_policy": "source-symbols-terminators-target-text-tokens-and-speakers-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "classify-source-record-boundaries"
+}
