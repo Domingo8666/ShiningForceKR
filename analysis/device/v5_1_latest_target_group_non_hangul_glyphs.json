@@ -1,0 +1,31 @@
+{
+  "artifact_kind": "sanitized-v5-1-target-group-non-hangul-glyphs",
+  "schema_version": 1,
+  "status": "exact-non-hangul-overrides-ready",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_expanded_glyphs_sha256": "251d61d78d1abcc4a6199a1d88b646776d912abfb04da3a13834429a6a9dae5c",
+  "source_font_reference_sha256": "0ec6b8707e8c47d85995b5b2b507180aed7bcc724792fe5477e998d41f8b075f",
+  "captured_utc": "2026-07-30T21:42:26.675937Z",
+  "classification": {
+    "eligible_reference_glyph_count": 8546,
+    "ambiguous_exact_occurrence_count": 981,
+    "unmatched_distinct_count": 96,
+    "unique_exact_distinct_count": 13,
+    "unique_exact_occurrence_count": 14,
+    "in_range_distinct_count": 280,
+    "occurrence_count": 1104,
+    "outside_font_range_distinct_count": 5,
+    "distinct_glyph_count": 285,
+    "ambiguous_exact_distinct_count": 171,
+    "unmatched_occurrence_count": 109
+  },
+  "exact_match_policy": {
+    "pixel_distance": 0,
+    "unique_reference_required": true,
+    "non_hangul_reference_only": true,
+    "visible_unicode_category_required": true
+  },
+  "local_payload_policy": "glyph-coordinates-masks-codepoints-characters-and-overrides-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "assemble-expanded-target-script-corpus"
+}

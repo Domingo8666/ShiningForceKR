@@ -1,0 +1,26 @@
+{
+  "artifact_kind": "sanitized-v5-1-source-target-anchor",
+  "schema_version": 1,
+  "status": "source-target-sequence-anchor-resolved",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_record_quality_sha256": "39846c92e045c5145cacedff3a7c477dc14e199405127bd489319de4e0b7b7ab",
+  "source_script_reference_sha256": "b853d0233f5125cd3c5ef0f523e071f83585a98a56447ad57987e1db123f276d",
+  "local_alignment_sha256": "37d4f22a3dc63a631ec3c45c704546b7f0cbafc4bf3d39debb74ce32f20761f4",
+  "captured_utc": "2026-07-30T21:43:03.390135Z",
+  "alignment": {
+    "target_window_record_count": 25,
+    "translation_ready_target_window_count": 8,
+    "source_window_line_count": 25,
+    "paired_anchor_count": 1,
+    "target_anchor_candidate_count": 1,
+    "source_anchor_candidate_count": 1,
+    "target_selector_text_record_count": 216,
+    "source_section_text_line_count": 79
+  },
+  "single_anchor_only": true,
+  "local_payload_policy": "source-target-text-speakers-aliases-selectors-ordinals-indices-and-windows-local-only",
+  "source_pairing_complete": false,
+  "speaker_assignment_complete": false,
+  "translation_build_eligible": false,
+  "next_checkpoint": "align-records-within-anchored-sequence-window"
+}
