@@ -1322,6 +1322,17 @@ def _set_unlimited_fast_forward(
     client.call("toggle_fast_forward", {"enabled": enabled})
 
 
+def _use_continuous_attract_watch(
+    schedule: tuple[tuple[int, str | None], ...],
+    expected_entry_ordinal: int | None,
+) -> bool:
+    return (
+        expected_entry_ordinal is None
+        and bool(schedule)
+        and all(button is None for _, button in schedule)
+    )
+
+
 def _capture_display(
     *,
     rom_path: Path,
@@ -1462,8 +1473,9 @@ def _capture_display(
         entry_selector_confirmed = expected_selector_offset is None
         local["entry_selector_hits"] = []
         rejected_hits: list[dict[str, int]] = []
-        continuous_attract = bool(schedule) and all(
-            button is None for _, button in schedule
+        continuous_attract = _use_continuous_attract_watch(
+            schedule,
+            expected_entry_ordinal,
         )
         continuous_deadline = (
             time.monotonic() + ATTRACT_CAPTURE_TIMEOUT_SECONDS

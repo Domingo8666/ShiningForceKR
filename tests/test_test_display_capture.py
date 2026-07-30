@@ -29,6 +29,7 @@ from tools.v5_1_test_display_capture import (
     _parse_screenshot,
     _static_entry_selector_offset,
     _target_hit_matches,
+    _use_continuous_attract_watch,
     validate_display_capture,
 )
 
@@ -64,6 +65,20 @@ class TestDisplayCaptureTests(unittest.TestCase):
             12_000,
         )
         self.assertEqual(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 30.0)
+
+    def test_length_prefixed_capture_uses_proven_frame_stepping(self) -> None:
+        self.assertFalse(
+            _use_continuous_attract_watch(
+                ATTRACT_CAPTURE_SCHEDULE,
+                expected_entry_ordinal=147,
+            )
+        )
+        self.assertTrue(
+            _use_continuous_attract_watch(
+                ATTRACT_CAPTURE_SCHEDULE,
+                expected_entry_ordinal=None,
+            )
+        )
 
     def test_attract_capture_uses_unlimited_fast_forward(self) -> None:
         class Client:
