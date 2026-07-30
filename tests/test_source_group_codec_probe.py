@@ -35,6 +35,7 @@ class SourceGroupCodecProbeTests(unittest.TestCase):
                 records=records,
             )
         self.assertFalse(counts["vector_parse_succeeded"])
+        self.assertEqual(counts["attempted_record_count"], 1)
         self.assertEqual(counts["records_without_roundtrip_count"], 1)
         self.assertEqual(local["vector_error"], "PatchError")
 

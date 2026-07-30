@@ -115,6 +115,30 @@ def _bounded_int(value: object, minimum: int, maximum: int) -> bool:
     )
 
 
+def _vector_failure_result(
+    records: list[dict[str, object]],
+    error_name: str,
+) -> tuple[dict[str, object], dict[str, object]]:
+    zero_length = sum(
+        int(int(record["record_length_bytes"]) == 0)
+        for record in records
+    )
+    counts = {
+        "vector_parse_succeeded": False,
+        "populated_context_count": 0,
+        "zero_length_record_count": zero_length,
+        "attempted_record_count": len(records) - zero_length,
+        "candidate_context_roundtrip_count": 0,
+        "candidate_symbol_stream_count": 0,
+        "canonical_context_roundtrip_record_count": 0,
+        "records_with_any_roundtrip_count": 0,
+        "records_with_unique_stream_count": 0,
+        "records_with_multiple_streams_count": 0,
+        "records_without_roundtrip_count": len(records),
+    }
+    return counts, {"vector_error": error_name, "records": []}
+
+
 def probe_source_group_codec(
     *,
     source: bytes,
@@ -131,29 +155,10 @@ def probe_source_group_codec(
             BANK_BASE,
             VECTOR_ENTRIES,
         )
-    except PatchError as error:
-        counts = {
-            "vector_parse_succeeded": False,
-            "populated_context_count": 0,
-            "zero_length_record_count": sum(
-                int(int(record["record_length_bytes"]) == 0)
-                for record in records
-            ),
-            "attempted_record_count": 0,
-            "candidate_context_roundtrip_count": 0,
-            "candidate_symbol_stream_count": 0,
-            "canonical_context_roundtrip_record_count": 0,
-            "records_with_any_roundtrip_count": 0,
-            "records_with_unique_stream_count": 0,
-            "records_with_multiple_streams_count": 0,
-            "records_without_roundtrip_count": len(records),
-        }
-        return counts, {
-            "vector_error": type(error).__name__,
-            "records": [],
-        }
+    except (PatchError, ValueError, IndexError, RecursionError) as error:
+        return _vector_failure_result(records, type(error).__name__)
     if not trees:
-        raise ValueError("source codec probe found no populated contexts")
+        return _vector_failure_result(records, "NoPopulatedContexts")
 
     zero_length = 0
     attempted = 0
@@ -382,6 +387,19 @@ def validate_source_group_codec_probe(value: dict[str, object]) -> None:
     ):
         raise ValueError("source group codec probe aggregates are inconsistent")
     vector_ok = probe["vector_parse_succeeded"] is True
+    if not vector_ok and any(
+        probe[key] != 0
+        for key in (
+            "populated_context_count",
+            "candidate_context_roundtrip_count",
+            "candidate_symbol_stream_count",
+            "canonical_context_roundtrip_record_count",
+            "records_with_any_roundtrip_count",
+            "records_with_unique_stream_count",
+            "records_with_multiple_streams_count",
+        )
+    ):
+        raise ValueError("source group codec probe failure counts are unsafe")
     all_have_unique = (
         vector_ok and probe["records_with_unique_stream_count"] == count
     )
