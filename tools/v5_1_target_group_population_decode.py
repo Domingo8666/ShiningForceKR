@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+import hashlib
 import json
 from pathlib import Path
 import re
@@ -208,6 +209,26 @@ def deduplicate_population_records(
     return output, confirmed_entry_id
 
 
+def population_record_fingerprint(
+    records: list[dict[str, object]],
+) -> str:
+    compact = [
+        {
+            "record_length_bytes": record.get("record_length_bytes"),
+            "payload_sha256": record.get("payload_sha256"),
+            "aliases": record.get("aliases"),
+        }
+        for record in records
+    ]
+    encoded = json.dumps(
+        compact,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def build_target_group_population_decode(
     *,
     target_sha256: str,
@@ -399,6 +420,76 @@ def main() -> int:
         for record in records
         if int(record["record_length_bytes"]) > 0
     ]
+    candidates = local_visible.get("mapping", {}).get(
+        "initial_page_candidates"
+    )
+    entries = catalog.get("entries")
+    if not isinstance(candidates, list) or not isinstance(entries, list):
+        raise ValueError("target population decode font inputs are missing")
+    candidate_pages = sorted(
+        int(item["page"])
+        for item in candidates
+        if isinstance(item, dict) and isinstance(item.get("page"), int)
+    )
+    record_fingerprint = population_record_fingerprint(records)
+    prior_safe_path = root / PUBLISH_RELATIVE_PATH
+    prior_local_path = root / LOCAL_REPORT_PATH
+    if prior_safe_path.is_file() and prior_local_path.is_file():
+        try:
+            prior_safe = _load_json_object(prior_safe_path)
+            prior_local = _load_json_object(prior_local_path)
+            validate_target_group_population_decode(prior_safe)
+            prior_decode = prior_local.get("decode_counts")
+            reusable = (
+                prior_safe["target_sha256"] == target_sha256
+                and prior_safe["source_font_catalog_sha256"]
+                == sha256_file(catalog_path)
+                and prior_local.get("target_sha256") == target_sha256
+                and prior_local.get("population_record_fingerprint")
+                == record_fingerprint
+                and prior_local.get("candidate_pages") == candidate_pages
+                and isinstance(prior_decode, dict)
+                and set(prior_decode) == DECODE_KEYS
+                and isinstance(prior_local.get("context_analysis"), dict)
+                and isinstance(prior_local.get("quality_analysis"), dict)
+                and isinstance(prior_local.get("records"), list)
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            reusable = False
+            prior_local = {}
+            prior_decode = None
+        if reusable:
+            captured_utc = datetime.now(timezone.utc).isoformat().replace(
+                "+00:00", "Z"
+            )
+            safe = build_target_group_population_decode(
+                target_sha256=target_sha256,
+                source_population_sha256=sha256_file(population_path),
+                source_visible_mapping_sha256=sha256_file(visible_path),
+                source_font_catalog_sha256=sha256_file(catalog_path),
+                decode=prior_decode,
+                captured_utc=captured_utc,
+            )
+            prior_local["captured_utc"] = captured_utc
+            prior_local["source_population_counts"] = population["population"]
+            prior_local_path.write_text(
+                json.dumps(
+                    prior_local,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            prior_safe_path.write_text(
+                json.dumps(safe, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            print(
+                "SFKR target group population decode: "
+                f"{prior_safe_path} (reused exact local record set)"
+            )
+            return 0
     context_counts, context_local = analyze_group_contexts(
         rom=rom,
         records=nonempty_records,
@@ -414,17 +505,6 @@ def main() -> int:
             and bool(record["candidate_decodes"])
         )
     ]
-    candidates = local_visible.get("mapping", {}).get(
-        "initial_page_candidates"
-    )
-    entries = catalog.get("entries")
-    if not isinstance(candidates, list) or not isinstance(entries, list):
-        raise ValueError("target population decode font inputs are missing")
-    candidate_pages = sorted(
-        int(item["page"])
-        for item in candidates
-        if isinstance(item, dict) and isinstance(item.get("page"), int)
-    )
     if exact_records:
         quality_counts, quality_local = resolve_group_text_candidates(
             records=exact_records,
@@ -501,6 +581,10 @@ def main() -> int:
         "schema_version": 1,
         "target_sha256": target_sha256,
         "captured_utc": captured_utc,
+        "source_population_counts": population["population"],
+        "population_record_fingerprint": record_fingerprint,
+        "candidate_pages": candidate_pages,
+        "decode_counts": decode,
         "confirmed_entry_id": confirmed_entry_id,
         "records": records,
         "context_analysis": {

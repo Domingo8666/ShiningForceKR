@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 from tools.v5_1_target_group_population_decode import (  # noqa: E402
     build_target_group_population_decode,
     deduplicate_population_records,
+    population_record_fingerprint,
     validate_target_group_population_decode,
 )
 
@@ -49,6 +50,10 @@ class TargetGroupPopulationDecodeTests(unittest.TestCase):
         self.assertEqual(len(records), 1)
         self.assertEqual(len(records[0]["aliases"]), 2)
         self.assertEqual(confirmed, records[0]["entry_id"])
+        self.assertEqual(
+            population_record_fingerprint(records),
+            population_record_fingerprint(deepcopy(records)),
+        )
 
     def test_builds_safe_receipt_and_rejects_text(self) -> None:
         artifact = build_target_group_population_decode(
