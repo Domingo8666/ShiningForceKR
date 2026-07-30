@@ -16,6 +16,7 @@ try:
         _capture_state,
         _default_command,
         _runtime_failure_receipt,
+        _step_frames_and_wait,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
@@ -33,6 +34,7 @@ except ImportError:  # direct script execution
         _capture_state,
         _default_command,
         _runtime_failure_receipt,
+        _step_frames_and_wait,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
@@ -44,15 +46,16 @@ except ImportError:  # direct script execution
     )
 
 ARTIFACT_KIND = "sanitized-decoder-register-trace"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_decoder_register_trace.json"
 )
 DECODER_ENTRY = 0x33FA
 EXPECTED_SELECTOR_DE = 2
-TRACE_STEPS = 64
-MIN_USEFUL_PARTIAL_STEPS = 8
+TRACE_STEPS = 13
+POST_SKIP_ENTRY = 0x340B
+POST_SKIP_TRACE_STEPS = 24
 STATE_KEYS = {
     "pc",
     "af",
@@ -74,6 +77,9 @@ TOP_LEVEL_KEYS = {
     "selector_de",
     "step_count",
     "states",
+    "post_skip_state",
+    "post_skip_step_count",
+    "post_skip_states",
     "translation_build_eligible",
     "next_checkpoint",
 }
@@ -103,10 +109,7 @@ def validate_decoder_register_trace(trace: dict[str, object]) -> None:
         raise ValueError("unexpected decoder register trace kind")
     if trace["schema_version"] != SCHEMA_VERSION:
         raise ValueError("unexpected decoder register trace schema")
-    if trace["status"] not in {
-        "decoder-register-trace-captured",
-        "decoder-register-trace-partial",
-    }:
+    if trace["status"] != "decoder-register-trace-captured":
         raise ValueError("decoder register trace is incomplete")
     digest = trace["target_sha256"]
     if (
@@ -148,6 +151,24 @@ def validate_decoder_register_trace(trace: dict[str, object]) -> None:
             for key in ("slot0_bank", "slot1_bank", "slot2_bank")
         ):
             raise ValueError("decoder mapper bank is invalid")
+    post_skip_state = trace["post_skip_state"]
+    post_skip_states = trace["post_skip_states"]
+    if (
+        not isinstance(post_skip_state, dict)
+        or set(post_skip_state) != STATE_KEYS
+        or post_skip_state.get("pc") != POST_SKIP_ENTRY
+    ):
+        raise ValueError("decoder post-skip state is invalid")
+    if (
+        not isinstance(post_skip_states, list)
+        or not 1 <= len(post_skip_states) <= POST_SKIP_TRACE_STEPS + 1
+        or trace["post_skip_step_count"] != len(post_skip_states) - 1
+        or post_skip_states[0] != post_skip_state
+    ):
+        raise ValueError("decoder post-skip trace length is invalid")
+    for state in post_skip_states:
+        if not isinstance(state, dict) or set(state) != STATE_KEYS:
+            raise ValueError("decoder post-skip state fields do not match")
     if trace["translation_build_eligible"] is not False:
         raise ValueError("register trace cannot approve a translation build")
     if trace["next_checkpoint"] != "resolve-decoder-bc-register-role":
@@ -185,14 +206,28 @@ def decoder_register_trace_needed(root: Path) -> bool:
         if isinstance(diagnostic, dict)
         else None
     )
-    if (
-        not isinstance(failure, dict)
-        or failure.get("failure_stage")
-        not in {
+    requested = (
+        isinstance(failure, dict)
+        and failure.get("failure_stage")
+        in {
             "decoder-register-trace",
             "test-patch-fixed-count-read-range",
         }
-    ):
+    )
+    display_path = (
+        root / "analysis/device/v5_1_latest_display_capture.json"
+    )
+    if display_path.is_file():
+        try:
+            display = json.loads(display_path.read_text(encoding="utf-8"))
+            requested = requested or (
+                isinstance(display, dict)
+                and display.get("status")
+                == "runtime-target-read-not-observed"
+            )
+        except (OSError, json.JSONDecodeError):
+            pass
+    if not requested:
         return False
     trace_path = root / PUBLISH_RELATIVE_PATH
     if not trace_path.is_file():
@@ -202,13 +237,7 @@ def decoder_register_trace_needed(root: Path) -> bool:
         if not isinstance(trace, dict):
             return True
         validate_decoder_register_trace(trace)
-        return (
-            trace["target_sha256"] != sha256_file(target_path)
-            or (
-                trace["status"] == "decoder-register-trace-partial"
-                and int(trace["step_count"]) < MIN_USEFUL_PARTIAL_STEPS
-            )
-        )
+        return trace["target_sha256"] != sha256_file(target_path)
     except (OSError, ValueError, json.JSONDecodeError):
         return True
 
@@ -223,13 +252,14 @@ def main() -> int:
     verify_target_identity(rom)
     target_sha256 = sha256_file(rom_path)
     states: list[dict[str, int]] = []
+    post_skip_states: list[dict[str, int]] = []
 
-    def write_current_trace(status: str) -> Path:
+    def write_current_trace() -> Path:
         trace: dict[str, object] = {
             "artifact_kind": ARTIFACT_KIND,
             "schema_version": SCHEMA_VERSION,
             "target_sha256": target_sha256,
-            "status": status,
+            "status": "decoder-register-trace-captured",
             "captured_utc": datetime.now(timezone.utc).strftime(
                 "%Y-%m-%dT%H:%M:%SZ"
             ),
@@ -237,6 +267,9 @@ def main() -> int:
             "selector_de": EXPECTED_SELECTOR_DE,
             "step_count": len(states) - 1,
             "states": states,
+            "post_skip_state": post_skip_states[0],
+            "post_skip_step_count": len(post_skip_states) - 1,
+            "post_skip_states": post_skip_states,
             "translation_build_eligible": False,
             "next_checkpoint": "resolve-decoder-bc-register-role",
         }
@@ -277,12 +310,41 @@ def main() -> int:
             _step_instruction_and_wait(client)
             state, _ = _capture_state(client)
             states.append(_safe_state(state))
-        path = write_current_trace("decoder-register-trace-captured")
+        client.call(
+            "set_breakpoint_range",
+            {
+                "start_address": f"{POST_SKIP_ENTRY:04X}",
+                "end_address": f"{POST_SKIP_ENTRY:04X}",
+                "memory_area": "rom_ram",
+                "execute": True,
+                "read": False,
+                "write": False,
+            },
+        )
+        status = _step_frames_and_wait(client, 1)
+        if status.get("at_breakpoint") is not True:
+            raise RuntimeError("decoder skip-loop exit was not reached")
+        post_skip_state, _ = _capture_state(client)
+        post_skip_states.append(_safe_state(post_skip_state))
+        try:
+            client.call(
+                "remove_breakpoint",
+                {
+                    "address": f"{POST_SKIP_ENTRY:04X}",
+                    "end_address": f"{POST_SKIP_ENTRY:04X}",
+                    "memory_area": "rom_ram",
+                },
+            )
+        except RuntimeError:
+            pass
+        for _ in range(POST_SKIP_TRACE_STEPS):
+            _step_instruction_and_wait(client)
+            state, _ = _capture_state(client)
+            post_skip_states.append(_safe_state(state))
+        path = write_current_trace()
         print(f"SFKR decoder register trace: {path}")
         return 0
     except Exception as error:
-        if len(states) - 1 >= MIN_USEFUL_PARTIAL_STEPS:
-            write_current_trace("decoder-register-trace-partial")
         receipt = _runtime_failure_receipt(stage, error, client)
         _write_runtime_failure_receipt(root, receipt)
         raise

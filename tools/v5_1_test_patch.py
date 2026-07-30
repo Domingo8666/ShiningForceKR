@@ -654,6 +654,17 @@ def select_runtime_length_prefixed_entry(
         record_offsets.append(cursor)
         length = baseline[cursor]
         cursor += 1 + length
+    post_skip_state = register_trace["post_skip_state"]
+    assert isinstance(post_skip_state, dict)
+    expected_post_skip_logical = (
+        pointer_address + (cursor - group_physical_start)
+    )
+    if (
+        int(post_skip_state["pc"]) != 0x340B
+        or (int(post_skip_state["bc"]) >> 8) != 0
+        or int(post_skip_state["hl"]) != expected_post_skip_logical
+    ):
+        raise PatchError("runtime skip-loop endpoint disagrees")
     if (
         baseline[group_physical_start] != first_length
         or not 0 <= cursor < len(baseline)

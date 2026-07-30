@@ -8,7 +8,6 @@ import unittest
 from tools.patch_io import sha256_file
 from tools.v5_1_decoder_register_trace import (
     ARTIFACT_KIND,
-    MIN_USEFUL_PARTIAL_STEPS,
     PUBLISH_RELATIVE_PATH,
     decoder_register_trace_needed,
     validate_decoder_register_trace,
@@ -42,7 +41,7 @@ def valid_trace(target_sha256: str = "1" * 64) -> dict[str, object]:
     ]
     return {
         "artifact_kind": ARTIFACT_KIND,
-        "schema_version": 1,
+        "schema_version": 2,
         "target_sha256": target_sha256,
         "status": "decoder-register-trace-captured",
         "captured_utc": "2026-07-30T05:00:00Z",
@@ -50,6 +49,21 @@ def valid_trace(target_sha256: str = "1" * 64) -> dict[str, object]:
         "selector_de": 2,
         "step_count": 1,
         "states": states,
+        "post_skip_state": {
+            **states[-1],
+            "pc": 0x340B,
+            "bc": 2,
+            "hl": 0x4912,
+        },
+        "post_skip_step_count": 0,
+        "post_skip_states": [
+            {
+                **states[-1],
+                "pc": 0x340B,
+                "bc": 2,
+                "hl": 0x4912,
+            }
+        ],
         "translation_build_eligible": False,
         "next_checkpoint": "resolve-decoder-bc-register-role",
     }
@@ -69,16 +83,11 @@ class DecoderRegisterTraceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "state fields"):
             validate_decoder_register_trace(trace)
 
-    def test_useful_partial_trace_is_valid(self) -> None:
+    def test_partial_trace_is_rejected(self) -> None:
         trace = valid_trace()
         trace["status"] = "decoder-register-trace-partial"
-        trace["states"] = trace["states"] * 5
-        trace["step_count"] = len(trace["states"]) - 1
-        self.assertGreaterEqual(
-            trace["step_count"],
-            MIN_USEFUL_PARTIAL_STEPS,
-        )
-        validate_decoder_register_trace(trace)
+        with self.assertRaisesRegex(ValueError, "incomplete"):
+            validate_decoder_register_trace(trace)
 
     def test_failed_fixed_count_range_requests_one_trace(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

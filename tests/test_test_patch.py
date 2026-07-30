@@ -383,7 +383,7 @@ class TestPatchTests(unittest.TestCase):
         states[13]["bc"] = 0x9202
         trace = {
             "artifact_kind": "sanitized-decoder-register-trace",
-            "schema_version": 1,
+            "schema_version": 2,
             "target_sha256": digest,
             "status": "decoder-register-trace-captured",
             "captured_utc": "2026-07-30T05:10:25Z",
@@ -391,6 +391,21 @@ class TestPatchTests(unittest.TestCase):
             "selector_de": 2,
             "step_count": len(states) - 1,
             "states": states,
+            "post_skip_state": {
+                **states[-1],
+                "pc": 0x340B,
+                "bc": 2,
+                "hl": pointer + (cursor - physical),
+            },
+            "post_skip_step_count": 0,
+            "post_skip_states": [
+                {
+                    **states[-1],
+                    "pc": 0x340B,
+                    "bc": 2,
+                    "hl": pointer + (cursor - physical),
+                }
+            ],
             "translation_build_eligible": False,
             "next_checkpoint": "resolve-decoder-bc-register-role",
         }
