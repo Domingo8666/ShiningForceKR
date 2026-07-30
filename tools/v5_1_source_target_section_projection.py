@@ -35,6 +35,7 @@ try:
         validate_source_target_anchor,
     )
     from .v5_1_target_group_record_quality import (
+        LOCAL_JSONL_PATH as LOCAL_QUALITY_JSONL_PATH,
         LOCAL_REPORT_PATH as LOCAL_QUALITY_PATH,
         PUBLISH_RELATIVE_PATH as QUALITY_PATH,
         TIERS,
@@ -58,6 +59,7 @@ except ImportError:  # direct script execution
         validate_source_target_anchor,
     )
     from v5_1_target_group_record_quality import (
+        LOCAL_JSONL_PATH as LOCAL_QUALITY_JSONL_PATH,
         LOCAL_REPORT_PATH as LOCAL_QUALITY_PATH,
         PUBLISH_RELATIVE_PATH as QUALITY_PATH,
         TIERS,
@@ -256,6 +258,22 @@ def _bounded_int(value: object, minimum: int, maximum: int) -> bool:
     )
 
 
+def validate_local_quality_identity(
+    *,
+    quality: dict[str, object],
+    local_quality: dict[str, object],
+    local_quality_jsonl_path: Path,
+) -> None:
+    expected = quality.get("local_quality_sha256")
+    if (
+        not _is_sha256(expected)
+        or local_quality.get("jsonl_sha256") != expected
+        or not local_quality_jsonl_path.is_file()
+        or sha256_file(local_quality_jsonl_path) != expected
+    ):
+        raise ValueError("section projection local quality identity disagrees")
+
+
 def build_source_target_section_projection(
     *,
     target_sha256: str,
@@ -411,6 +429,7 @@ def main() -> int:
     paths = {
         "quality": root / QUALITY_PATH,
         "local_quality": root / LOCAL_QUALITY_PATH,
+        "local_quality_jsonl": root / LOCAL_QUALITY_JSONL_PATH,
         "source": root / SOURCE_PATH,
         "local_source": root / LOCAL_SOURCE_PATH,
         "anchor": root / ANCHOR_PATH,
@@ -439,14 +458,17 @@ def main() -> int:
         != sha256_file(paths["source"])
         or anchor["local_alignment_sha256"]
         != sha256_file(paths["local_anchor"])
-        or quality["local_quality_sha256"]
-        != sha256_file(paths["local_quality"])
         or source["local_reference_sha256"]
         != sha256_file(paths["local_source"])
         or local_quality.get("target_sha256") != quality["target_sha256"]
         or local_anchor.get("target_sha256") != quality["target_sha256"]
     ):
         raise ValueError("section projection identity disagrees")
+    validate_local_quality_identity(
+        quality=quality,
+        local_quality=local_quality,
+        local_quality_jsonl_path=paths["local_quality_jsonl"],
+    )
     target_records = local_quality.get("records")
     source_sections = local_source.get("sections")
     if not isinstance(target_records, list) or not isinstance(

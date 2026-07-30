@@ -477,7 +477,8 @@ else
       diagnostic_trigger=probe
       source_target_section_projection_failure_stage=source-target-section-projection
       case "$source_target_section_projection_output" in
-        *"section projection identity disagrees"*)
+        *"section projection identity disagrees"*|\
+        *"section projection local quality identity disagrees"*)
           source_target_section_projection_failure_stage=section-projection-identity
           ;;
         *"section projection anchor is not unique"*)

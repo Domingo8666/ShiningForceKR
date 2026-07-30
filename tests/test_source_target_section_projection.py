@@ -2,6 +2,7 @@ from copy import deepcopy
 import hashlib
 from pathlib import Path
 import sys
+from tempfile import TemporaryDirectory
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +13,7 @@ from tools.v5_1_source_target_anchor import normalize_source_line  # noqa: E402
 from tools.v5_1_source_target_section_projection import (  # noqa: E402
     build_source_target_section_projection,
     project_anchored_section,
+    validate_local_quality_identity,
     validate_source_target_section_projection,
 )
 
@@ -99,6 +101,34 @@ class SourceTargetSectionProjectionTests(unittest.TestCase):
         unsafe["source_text"] = "must remain local"
         with self.assertRaisesRegex(ValueError, "fields do not match"):
             validate_source_target_section_projection(unsafe)
+
+    def test_local_quality_identity_uses_the_jsonl_payload_hash(self) -> None:
+        with TemporaryDirectory() as directory:
+            jsonl_path = Path(directory) / "quality.jsonl"
+            jsonl_path.write_text('{"quality_tier":"translation-ready"}\n', encoding="utf-8")
+            digest = hashlib.sha256(jsonl_path.read_bytes()).hexdigest()
+            validate_local_quality_identity(
+                quality={"local_quality_sha256": digest},
+                local_quality={"jsonl_sha256": digest},
+                local_quality_jsonl_path=jsonl_path,
+            )
+            summary_path = Path(directory) / "quality.json"
+            summary_path.write_text('{"jsonl_sha256":"different"}\n', encoding="utf-8")
+            self.assertNotEqual(
+                hashlib.sha256(summary_path.read_bytes()).hexdigest(),
+                digest,
+            )
+
+    def test_local_quality_identity_rejects_a_changed_jsonl_payload(self) -> None:
+        with TemporaryDirectory() as directory:
+            jsonl_path = Path(directory) / "quality.jsonl"
+            jsonl_path.write_text('{"quality_tier":"glyph-recovery"}\n', encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "local quality identity"):
+                validate_local_quality_identity(
+                    quality={"local_quality_sha256": "1" * 64},
+                    local_quality={"jsonl_sha256": "1" * 64},
+                    local_quality_jsonl_path=jsonl_path,
+                )
 
 
 if __name__ == "__main__":
