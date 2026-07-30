@@ -104,10 +104,8 @@
     "baseline_png_sha256": "0d7294005257f149b8f19de061fb684cb99e93236c461c304225ef4eacd4d9ef",
     "test_png_sha256": "c1fff0a4b56c39c5a952da5c12640744c083a6182198cb0af1f01238b9785627"
   },
-  "result": "technical-marker-absent-auto-rejected",
-  "automatic_rejected_physical_starts": [
-    133395
-  ],
+  "result": "technical-marker-detected-human-review-required",
+  "automatic_rejected_physical_starts": [],
   "translation_build_eligible": false,
-  "next_checkpoint": "try-next-runtime-observed-stream"
+  "next_checkpoint": "human-review-technical-marker"
 }
