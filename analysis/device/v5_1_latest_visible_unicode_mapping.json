@@ -1,0 +1,27 @@
+{
+  "artifact_kind": "sanitized-v5-1-visible-unicode-mapping",
+  "schema_version": 1,
+  "status": "visible-glyph-map-incomplete",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "captured_utc": "2026-07-30T12:01:42.830361Z",
+  "runtime_entry": {
+    "logical_start": 18707,
+    "record_length_bytes": 16,
+    "mapped_bank": 8,
+    "physical_start": 133395
+  },
+  "mapping": {
+    "decoded_symbol_count": 19,
+    "page_select_count": 0,
+    "visible_glyph_count": 0,
+    "unique_glyph_count": 0,
+    "ambiguous_glyph_count": 0,
+    "unmatched_glyph_count": 0,
+    "control_symbol_count": 19,
+    "terminator_count": 1
+  },
+  "renderer_chain_confirmed": true,
+  "local_payload_policy": "symbols-codepoints-characters-and-text-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "extract-full-script-record-set"
+}
