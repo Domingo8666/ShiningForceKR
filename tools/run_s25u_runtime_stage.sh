@@ -365,6 +365,16 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_target_group_stream_map.py --if-ready
+    target_group_stream_map_status=$?
+    if [ "$target_group_stream_map_status" -ne 0 ]; then
+      stage_status="$target_group_stream_map_status"
+      diagnostic_trigger=probe
+      record_stage_failure target-group-stream-map
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then

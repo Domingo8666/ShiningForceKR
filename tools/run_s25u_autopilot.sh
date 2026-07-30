@@ -226,6 +226,7 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_confirmed_group_extract.json|\
     analysis/device/v5_1_latest_target_group_usage.json|\
     analysis/device/v5_1_latest_decoder_caller_resolution.json|\
+    analysis/device/v5_1_latest_target_group_stream_map.json|\
     analysis/device/v5_1_latest_group_context_resolution.json|\
     analysis/device/v5_1_latest_group_runtime_context.json|\
     analysis/device/v5_1_latest_group_source_delta.json|\

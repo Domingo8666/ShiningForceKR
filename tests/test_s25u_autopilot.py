@@ -173,6 +173,7 @@ class S25UAutopilotTests(unittest.TestCase):
             "font-transfer-source",
             "confirmed-group-extract",
             "target-group-usage",
+            "target-group-stream-map",
             "decoder-caller-resolution",
             "group-context-resolution",
             "group-runtime-context",
@@ -234,6 +235,10 @@ class S25UAutopilotTests(unittest.TestCase):
             RUNTIME_STAGE,
         )
         self.assertIn(
+            "python tools/v5_1_target_group_stream_map.py --if-ready",
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
             "python tools/v5_1_group_context_resolution.py --if-ready",
             RUNTIME_STAGE,
         )
@@ -284,6 +289,14 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertLess(
             RUNTIME_STAGE.index(
                 "python tools/v5_1_target_group_usage.py --if-ready"
+            ),
+            RUNTIME_STAGE.index(
+                "python tools/v5_1_target_group_stream_map.py --if-ready"
+            ),
+        )
+        self.assertLess(
+            RUNTIME_STAGE.index(
+                "python tools/v5_1_target_group_stream_map.py --if-ready"
             ),
             RUNTIME_STAGE.index(
                 "python tools/v5_1_decoder_caller_resolution.py --if-ready"
