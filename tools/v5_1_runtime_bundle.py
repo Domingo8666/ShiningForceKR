@@ -42,6 +42,14 @@ try:
         PUBLISH_RELATIVE_PATH as FONT_TRANSFER_SOURCE_RELATIVE_PATH,
         validate_font_transfer_source,
     )
+    from .v5_1_confirmed_group_extract import (
+        PUBLISH_RELATIVE_PATH as CONFIRMED_GROUP_EXTRACT_RELATIVE_PATH,
+        validate_confirmed_group_extract,
+    )
+    from .v5_1_confirmed_group_unicode import (
+        PUBLISH_RELATIVE_PATH as CONFIRMED_GROUP_UNICODE_RELATIVE_PATH,
+        validate_confirmed_group_unicode,
+    )
     from .v5_1_progress_preview import (
         PUBLISH_IMAGE_RELATIVE_PATH,
         PUBLISH_RECEIPT_RELATIVE_PATH,
@@ -90,6 +98,14 @@ except ImportError:  # direct script execution
     from v5_1_font_transfer_source import (
         PUBLISH_RELATIVE_PATH as FONT_TRANSFER_SOURCE_RELATIVE_PATH,
         validate_font_transfer_source,
+    )
+    from v5_1_confirmed_group_extract import (
+        PUBLISH_RELATIVE_PATH as CONFIRMED_GROUP_EXTRACT_RELATIVE_PATH,
+        validate_confirmed_group_extract,
+    )
+    from v5_1_confirmed_group_unicode import (
+        PUBLISH_RELATIVE_PATH as CONFIRMED_GROUP_UNICODE_RELATIVE_PATH,
+        validate_confirmed_group_unicode,
     )
     from v5_1_progress_preview import (
         PUBLISH_IMAGE_RELATIVE_PATH,
@@ -145,6 +161,10 @@ SAFE_ARTIFACTS = {
         validate_initial_font_page_trace,
     FONT_TRANSFER_SOURCE_RELATIVE_PATH:
         validate_font_transfer_source,
+    CONFIRMED_GROUP_EXTRACT_RELATIVE_PATH:
+        validate_confirmed_group_extract,
+    CONFIRMED_GROUP_UNICODE_RELATIVE_PATH:
+        validate_confirmed_group_unicode,
     PUBLISH_RECEIPT_RELATIVE_PATH: validate_progress_preview,
 }
 SAFE_BINARY_ARTIFACTS = {
@@ -430,6 +450,51 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != initial_font_page_trace["candidate_page_count_before"]
         ):
             artifacts.pop(FONT_TRANSFER_SOURCE_RELATIVE_PATH)
+    confirmed_group_extract = artifacts.get(
+        CONFIRMED_GROUP_EXTRACT_RELATIVE_PATH
+    )
+    decoder_register_trace = artifacts.get(
+        Path("analysis/device/v5_1_latest_decoder_register_trace.json")
+    )
+    if confirmed_group_extract is not None:
+        if (
+            decoder_register_trace is None
+            or visible_script_roundtrip is None
+            or confirmed_group_extract["target_sha256"]
+            != visible_script_roundtrip["baseline_target_sha256"]
+            or confirmed_group_extract["target_sha256"]
+            != decoder_register_trace["target_sha256"]
+            or confirmed_group_extract["source_register_trace_sha256"]
+            != sha256_file(
+                root
+                / "analysis/device/v5_1_latest_decoder_register_trace.json"
+            )
+            or confirmed_group_extract["source_visible_roundtrip_sha256"]
+            != sha256_file(root / VISIBLE_SCRIPT_ROUNDTRIP_RELATIVE_PATH)
+        ):
+            artifacts.pop(CONFIRMED_GROUP_EXTRACT_RELATIVE_PATH)
+    confirmed_group_extract = artifacts.get(
+        CONFIRMED_GROUP_EXTRACT_RELATIVE_PATH
+    )
+    confirmed_group_unicode = artifacts.get(
+        CONFIRMED_GROUP_UNICODE_RELATIVE_PATH
+    )
+    if confirmed_group_unicode is not None:
+        if (
+            confirmed_group_extract is None
+            or visible_unicode_mapping is None
+            or confirmed_group_unicode["target_sha256"]
+            != confirmed_group_extract["target_sha256"]
+            or confirmed_group_unicode["source_group_extract_sha256"]
+            != sha256_file(root / CONFIRMED_GROUP_EXTRACT_RELATIVE_PATH)
+            or confirmed_group_unicode["source_visible_mapping_sha256"]
+            != sha256_file(root / VISIBLE_UNICODE_MAPPING_RELATIVE_PATH)
+            or confirmed_group_unicode["group"]["selector"]
+            != confirmed_group_extract["group"]["selector"]
+            or confirmed_group_unicode["group"]["record_count"]
+            != confirmed_group_extract["group"]["declared_entry_count"]
+        ):
+            artifacts.pop(CONFIRMED_GROUP_UNICODE_RELATIVE_PATH)
     return artifacts
 
 

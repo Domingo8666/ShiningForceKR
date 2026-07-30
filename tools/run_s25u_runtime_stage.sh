@@ -343,6 +343,26 @@ else
       record_stage_failure font-transfer-source
     fi
   fi
+
+  if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_confirmed_group_extract.py --if-ready
+    confirmed_group_extract_status=$?
+    if [ "$confirmed_group_extract_status" -ne 0 ]; then
+      stage_status="$confirmed_group_extract_status"
+      diagnostic_trigger=probe
+      record_stage_failure confirmed-group-extract
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_confirmed_group_unicode.py --if-ready
+    confirmed_group_unicode_status=$?
+    if [ "$confirmed_group_unicode_status" -ne 0 ]; then
+      stage_status="$confirmed_group_unicode_status"
+      diagnostic_trigger=probe
+      record_stage_failure confirmed-group-unicode
+    fi
+  fi
 fi
 
 python tools/v5_1_runtime_diagnostic.py \
