@@ -191,6 +191,52 @@ def decode_symbols(
     raise PatchError("candidate entry did not terminate within symbol limit")
 
 
+def decode_symbol_count(
+    data: bytes,
+    known: bytes,
+    trees: dict[int, ParsedTree],
+    start_offset: int,
+    symbol_count: int,
+    initial_symbol: int = CANDIDATE_END_SYMBOL,
+    max_bytes: int = 4096,
+) -> tuple[list[int], int]:
+    """Decode an exact number of symbols without treating a value as a stop.
+
+    Some Final Conflict callers decompress a fixed-size output block.  A
+    terminator byte inside that block belongs to the decoded payload, while the
+    caller's fixed output count determines when decoding finishes.
+    """
+
+    if not isinstance(symbol_count, int) or isinstance(symbol_count, bool):
+        raise PatchError("Huffman symbol count must be an integer")
+    if not 0 <= symbol_count <= 4096:
+        raise PatchError("Huffman symbol count must be between 0 and 4096")
+    if max_bytes <= 0:
+        raise PatchError("Huffman byte limit must be positive")
+
+    output: list[int] = []
+    previous = initial_symbol
+    bit_index = 0
+    for _ in range(symbol_count):
+        tree = trees.get(previous)
+        if tree is None:
+            raise PatchError(f"no Huffman tree for previous symbol 0x{previous:02x}")
+        node = tree.root
+        while not node.is_leaf:
+            if (bit_index >> 3) >= max_bytes:
+                raise PatchError("fixed-count Huffman block exceeded byte limit")
+            bit = _bit_at(data, known, start_offset, bit_index)
+            bit_index += 1
+            node = node.right if bit else node.left
+            if node is None:
+                raise PatchError("malformed Huffman branch")
+        symbol = node.symbol
+        assert symbol is not None
+        output.append(symbol)
+        previous = symbol
+    return output, bit_index
+
+
 def decode_symbol_entries(
     data: bytes,
     known: bytes,
@@ -301,6 +347,42 @@ def encode_symbols(
         bits.extend(code)
         if len(bits) > max_bits:
             raise PatchError("encoded Huffman entry exceeded bit limit")
+        previous = symbol
+    output = bytearray((len(bits) + 7) // 8)
+    for index, bit in enumerate(bits):
+        if bit:
+            output[index >> 3] |= 1 << (7 - (index & 7))
+    return bytes(output), len(bits)
+
+
+def encode_symbol_count(
+    trees: dict[int, ParsedTree],
+    symbols: list[int],
+    initial_symbol: int = CANDIDATE_END_SYMBOL,
+    max_bits: int = 32768,
+) -> tuple[bytes, int]:
+    """Encode a fixed-count block while preserving context across terminators."""
+
+    if len(symbols) > 4096:
+        raise PatchError("Huffman fixed-count block exceeds 4096 symbols")
+    bits: list[int] = []
+    previous = initial_symbol
+    code_cache: dict[int, dict[int, tuple[int, ...]]] = {}
+    for symbol in symbols:
+        tree = trees.get(previous)
+        if tree is None:
+            raise PatchError(
+                f"no Huffman tree for previous symbol 0x{previous:02x}"
+            )
+        codes = code_cache.setdefault(previous, _symbol_codes(tree.root))
+        code = codes.get(symbol)
+        if code is None:
+            raise PatchError(
+                f"symbol 0x{symbol:02x} is absent after 0x{previous:02x}"
+            )
+        bits.extend(code)
+        if len(bits) > max_bits:
+            raise PatchError("encoded fixed-count Huffman block exceeded bit limit")
         previous = symbol
     output = bytearray((len(bits) + 7) // 8)
     for index, bit in enumerate(bits):

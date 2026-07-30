@@ -4,8 +4,10 @@ import unittest
 
 from tools.patch_io import PatchError, sha256_bytes
 from tools.v5_1_test_patch import (
+    mark_all_count_preserving_entries,
     plan_in_place_write,
     plan_unpadded_entry_prefix_write,
+    select_runtime_decode_block,
     select_runtime_entry,
     select_runtime_group_entry,
     select_runtime_stream,
@@ -179,6 +181,30 @@ def confirmed_selected_group_capture(target_sha256: str) -> dict[str, object]:
     return capture
 
 
+def confirmed_decode_block_capture(target_sha256: str) -> dict[str, object]:
+    return {
+        "artifact_kind": "sanitized-s25u-test-display-capture",
+        "schema_version": 5,
+        "baseline_target_sha256": target_sha256,
+        "target_read": {
+            "logical_access": 0x4000,
+            "expected_bank": 2,
+            "confirmed": True,
+        },
+        "entry_selector": {
+            "status": "resolved",
+            "baseline_selector_offset": 2,
+            "test_selector_offset": 2,
+            "selectors_match": True,
+            "baseline_entry_ordinal": 3,
+            "test_entry_ordinal": 3,
+            "ordinals_match": True,
+            "pointer_address": 0x4000,
+            "next_pointer_address": 0x4020,
+        },
+    }
+
+
 class TestPatchTests(unittest.TestCase):
     def setUp(self) -> None:
         self.baseline = bytearray(b"\xFF" * 0x10000)
@@ -281,6 +307,65 @@ class TestPatchTests(unittest.TestCase):
             selected["intermediate_observed_target_file_offset"],
             0x8000,
         )
+
+    def test_runtime_decode_block_uses_pointer_and_incremented_b_count(
+        self,
+    ) -> None:
+        baseline = bytes(self.baseline)
+        digest = sha256_bytes(baseline)
+        selected = select_runtime_decode_block(
+            baseline,
+            confirmed_decode_block_capture(digest),
+            confirmed_stream_resolution(digest),
+        )
+        self.assertEqual(selected["kind"], "runtime-decoder-block")
+        self.assertEqual(selected["target_file_offset"], 0x8000)
+        self.assertEqual(selected["next_target_file_offset"], 0x8020)
+        self.assertEqual(selected["decoder_entry_b_before_increment"], 3)
+        self.assertEqual(selected["runtime_symbol_count"], 4)
+
+    def test_all_compatible_entries_receive_count_preserving_marker(
+        self,
+    ) -> None:
+        end = 0xC9
+        marker = [0x5F, 0x02, 0x08, 0x11, 0x04, end]
+        symbols = [
+            1,
+            2,
+            3,
+            4,
+            5,
+            end,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            end,
+        ]
+        replaced, indexes = mark_all_count_preserving_entries(
+            symbols,
+            marker,
+        )
+        self.assertEqual(indexes, [0, 1])
+        self.assertEqual(replaced[:6], marker)
+        self.assertEqual(replaced[6:15], marker[:3] + marker)
+        self.assertEqual(len(replaced), len(symbols))
+        self.assertEqual(
+            [index for index, value in enumerate(replaced) if value == end],
+            [5, 14],
+        )
+
+    def test_marker_rejects_a_block_without_compatible_entry(self) -> None:
+        marker = [0x5F, 0x02, 0x08, 0x11, 0x04, 0xC9]
+        with self.assertRaisesRegex(PatchError, "no marker-compatible"):
+            mark_all_count_preserving_entries(
+                [1, 2, 3, 4, 5, 6, 0xC9],
+                marker,
+            )
 
     def test_shared_target_is_rejected(self) -> None:
         self.baseline[0x103:0x106] = bytes.fromhex("02 00 80")

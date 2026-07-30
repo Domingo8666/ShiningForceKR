@@ -187,6 +187,24 @@ class TestDisplayCaptureTests(unittest.TestCase):
             (0x449F, 0x44B8),
         )
 
+    def test_fixed_output_block_capture_watches_the_reencoded_prefix(
+        self,
+    ) -> None:
+        entry = {
+            "kind": "runtime-decoder-block",
+            "pointer_address": 0x43DE,
+            "target_file_offset": 0x203DE,
+            "replacement_encoded_bits": 81,
+        }
+        self.assertEqual(
+            _display_watch_target(entry),
+            (0x43DE, 0x203DE),
+        )
+        self.assertEqual(
+            _display_watch_range(entry, 0x43DE),
+            (0x43DE, 0x43E8),
+        )
+
     def test_range_hit_records_the_actual_hl_read(self) -> None:
         target = {
             "slot": 1,

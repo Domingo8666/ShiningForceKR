@@ -3,7 +3,7 @@ set -uo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_rom="${SFKR_SOURCE_ROM:-/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg}"
-interval="${SFKR_AUTOPILOT_INTERVAL:-60}"
+interval="${SFKR_AUTOPILOT_INTERVAL:-30}"
 state_dir="${SFKR_AUTOPILOT_STATE_DIR:-$HOME/.local/state/shiningforcekr}"
 once=0
 force=0
@@ -14,7 +14,7 @@ Usage: bash tools/run_s25u_autopilot.sh [options]
 
 Options:
   --source-rom PATH  S25U-local original ROM path
-  --interval SEC     GitHub poll interval (minimum/default 60)
+  --interval SEC     GitHub poll interval (minimum/default 30)
   --state-dir PATH   Termux-private state directory
   --force            Run once even if the current commit was already processed
   --once             Exit after one synchronization/run decision
@@ -76,8 +76,8 @@ case "$interval" in
     exit 2
     ;;
 esac
-if [ "$interval" -lt 60 ]; then
-  echo "--interval must be at least 60 seconds" >&2
+if [ "$interval" -lt 30 ]; then
+  echo "--interval must be at least 30 seconds" >&2
   exit 2
 fi
 

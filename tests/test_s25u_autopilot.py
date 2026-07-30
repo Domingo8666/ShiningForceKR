@@ -75,9 +75,11 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn('kill -TERM "$owned_pid"', MANAGER)
         self.assertIn('kill -KILL "$owned_pid"', MANAGER)
 
-    def test_default_poll_interval_is_one_minute(self) -> None:
-        self.assertIn('SFKR_AUTOPILOT_INTERVAL:-60', SCRIPT)
-        self.assertIn('SFKR_AUTOPILOT_INTERVAL:-60', MANAGER)
+    def test_default_poll_interval_is_thirty_seconds(self) -> None:
+        self.assertIn('SFKR_AUTOPILOT_INTERVAL:-30', SCRIPT)
+        self.assertIn('SFKR_AUTOPILOT_INTERVAL:-30', MANAGER)
+        self.assertIn('if [ "$interval" -lt 30 ]', SCRIPT)
+        self.assertIn('if [ "$interval" -lt 30 ]', MANAGER)
 
     def test_runtime_stage_batches_exact_no_change_rejections(self) -> None:
         self.assertIn("comparison_attempt_limit=8", RUNTIME_STAGE)
@@ -87,6 +89,14 @@ class S25UAutopilotTests(unittest.TestCase):
         )
         self.assertIn(
             "v5_1_test_display_comparison.py --result-only",
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
+            'entry.get("kind") == "runtime-decoder-block"',
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
+            'if [ "$fixed_block_probe" = "yes" ]',
             RUNTIME_STAGE,
         )
 

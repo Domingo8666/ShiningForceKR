@@ -29,7 +29,9 @@ try:
     from .patch_io import PatchError, apply_bps, apply_ips, sha256_bytes
     from .sfgfc_huffman import (
         CANDIDATE_END_SYMBOL,
+        decode_symbol_count,
         decode_symbols,
+        encode_symbol_count,
         encode_symbols,
         load_trees_at,
     )
@@ -47,6 +49,7 @@ try:
         validate_consumer_resolution,
     )
     from .v5_1_test_phrase import (
+        build_test_phrase_plan,
         build_length_preserving_test_phrase_plan,
     )
 except ImportError:  # direct script execution
@@ -60,7 +63,9 @@ except ImportError:  # direct script execution
     from patch_io import PatchError, apply_bps, apply_ips, sha256_bytes
     from sfgfc_huffman import (
         CANDIDATE_END_SYMBOL,
+        decode_symbol_count,
         decode_symbols,
+        encode_symbol_count,
         encode_symbols,
         load_trees_at,
     )
@@ -78,6 +83,7 @@ except ImportError:  # direct script execution
         validate_consumer_resolution,
     )
     from v5_1_test_phrase import (
+        build_test_phrase_plan,
         build_length_preserving_test_phrase_plan,
     )
 
@@ -432,6 +438,138 @@ def select_runtime_group_entry(
     }
 
 
+def select_runtime_decode_block(
+    baseline: bytes,
+    capture: dict[str, object],
+    stream_resolution: dict[str, object],
+) -> dict[str, object]:
+    """Select the fixed-output block proven by the decoder prologue and reads.
+
+    The patched prologue loads a group pointer from ``0x3FE8 + DE`` and
+    increments B before entering the decoder.  B is therefore tested as an
+    output-count-minus-one hypothesis, not as a string ordinal.  The later
+    no-change fixed-count roundtrip and observed interior read must both agree
+    before a test write is allowed.
+    """
+
+    stream = select_runtime_stream(baseline, stream_resolution)
+    if (
+        capture.get("artifact_kind")
+        != "sanitized-s25u-test-display-capture"
+        or capture.get("schema_version") not in {4, 5}
+        or capture.get("baseline_target_sha256") != sha256_bytes(baseline)
+    ):
+        raise PatchError("runtime decode-block identity mismatch")
+    selector = capture.get("entry_selector")
+    target_read = capture.get("target_read")
+    if (
+        not isinstance(selector, dict)
+        or selector.get("status") != "resolved"
+        or selector.get("selectors_match") is not True
+        or selector.get("ordinals_match") is not True
+        or not isinstance(target_read, dict)
+        or target_read.get("confirmed") is not True
+    ):
+        raise PatchError("runtime decode-block selector evidence is incomplete")
+
+    pointer_address = int(selector["pointer_address"])
+    next_pointer_address = int(selector["next_pointer_address"])
+    b_before_increment = int(selector["baseline_entry_ordinal"])
+    mapped_bank = int(stream["pointer_bank"])
+    observed_target_logical = int(stream["pointer_address"])
+    if (
+        selector.get("test_entry_ordinal") != b_before_increment
+        or not 0 <= b_before_increment <= 0xFF
+        or not 0x4000 <= pointer_address < next_pointer_address <= 0x8000
+        or not pointer_address <= observed_target_logical < next_pointer_address
+        or int(target_read["expected_bank"]) != mapped_bank
+    ):
+        raise PatchError("runtime decode-block pointer/count evidence disagrees")
+
+    group_physical_start = (
+        mapped_bank * 0x4000 + (pointer_address - 0x4000)
+    )
+    next_group_physical_start = (
+        mapped_bank * 0x4000 + (next_pointer_address - 0x4000)
+    )
+    expected_observed_target = (
+        group_physical_start + observed_target_logical - pointer_address
+    )
+    if (
+        expected_observed_target != int(stream["target_file_offset"])
+        or not 0 <= group_physical_start < next_group_physical_start <= len(baseline)
+    ):
+        raise PatchError("runtime decode-block physical mapping disagrees")
+
+    return {
+        "kind": "runtime-decoder-block",
+        "selection_basis": "decoder-prologue-pointer-and-fixed-output-count",
+        "target_file_offset": group_physical_start,
+        "pointer_bank": mapped_bank,
+        "pointer_address": pointer_address,
+        "group_pointer_address": pointer_address,
+        "next_pointer_address": next_pointer_address,
+        "group_physical_start": group_physical_start,
+        "next_group_physical_start": next_group_physical_start,
+        "decoder_entry_b_before_increment": b_before_increment,
+        "runtime_symbol_count": b_before_increment + 1,
+        "target_alias_count": 1,
+        "next_target_file_offset": next_group_physical_start,
+        "runtime_instruction_bank": int(stream["runtime_instruction_bank"]),
+        "runtime_instruction_pc": int(stream["runtime_instruction_pc"]),
+        "runtime_operand_kind": str(stream["runtime_operand_kind"]),
+        "intermediate_observed_target_file_offset": int(
+            stream["target_file_offset"]
+        ),
+        "intermediate_observed_target_logical_address": (
+            observed_target_logical
+        ),
+        "all_target_offsets": [group_physical_start],
+    }
+
+
+def mark_all_count_preserving_entries(
+    symbols: list[int],
+    marker_symbols: list[int],
+    *,
+    end_symbol: int = CANDIDATE_END_SYMBOL,
+) -> tuple[list[int], list[int]]:
+    """Replace every compatible terminated entry without moving its offsets.
+
+    A compatible entry has room for the six-symbol marker and any remaining
+    symbols can be filled with complete, non-drawing page-select triplets.
+    Entry lengths and terminator positions stay unchanged, so every decoded
+    offset in the fixed-size output block is preserved.
+    """
+
+    if (
+        len(marker_symbols) < 4
+        or marker_symbols[-1] != end_symbol
+        or len(marker_symbols[:3]) != 3
+    ):
+        raise PatchError("technical marker sequence is invalid")
+    result = list(symbols)
+    modified: list[int] = []
+    start = 0
+    entry_index = 0
+    for index, symbol in enumerate(symbols):
+        if symbol != end_symbol:
+            continue
+        length = index - start + 1
+        padding = length - len(marker_symbols)
+        if padding >= 0 and padding % 3 == 0:
+            replacement = marker_symbols[:3] * (padding // 3) + marker_symbols
+            if len(replacement) != length:
+                raise AssertionError("count-preserving marker length mismatch")
+            result[start : index + 1] = replacement
+            modified.append(entry_index)
+        start = index + 1
+        entry_index += 1
+    if not modified:
+        raise PatchError("fixed-output block has no marker-compatible entry")
+    return result, modified
+
+
 def _bits_equal(left: bytes, right: bytes, bits: int) -> bool:
     return all(
         ((left[index >> 3] >> (7 - (index & 7))) & 1)
@@ -578,7 +716,7 @@ def build_test_patch(
     baseline = apply_bps(source, patch)
     verify_target_identity(baseline)
     runtime_entry = (
-        select_runtime_group_entry(
+        select_runtime_decode_block(
             baseline,
             group_resolution,
             stream_resolution,
@@ -604,7 +742,90 @@ def build_test_patch(
         KO_VECTOR_ENTRIES,
     )
     target_offset = int(runtime_entry["target_file_offset"])
-    if str(runtime_entry["kind"]).startswith("runtime-group-"):
+    if runtime_entry["kind"] == "runtime-decoder-block":
+        block_capacity_bytes = (
+            int(runtime_entry["next_group_physical_start"]) - target_offset
+        )
+        original_symbols, original_bits = decode_symbol_count(
+            baseline,
+            known,
+            trees,
+            target_offset,
+            int(runtime_entry["runtime_symbol_count"]),
+            initial_symbol=CANDIDATE_END_SYMBOL,
+            max_bytes=block_capacity_bytes,
+        )
+        original_encoded, reencoded_bits = encode_symbol_count(
+            trees,
+            original_symbols,
+            initial_symbol=CANDIDATE_END_SYMBOL,
+            max_bits=block_capacity_bytes * 8,
+        )
+        if reencoded_bits != original_bits or not _bits_equal(
+            baseline[target_offset:],
+            original_encoded,
+            original_bits,
+        ):
+            raise PatchError(
+                "fixed-output decoder block no-change roundtrip is not exact"
+            )
+        observed_target = int(
+            runtime_entry["intermediate_observed_target_file_offset"]
+        )
+        if not (
+            target_offset
+            <= observed_target
+            < target_offset + (original_bits + 7) // 8
+        ):
+            raise PatchError(
+                "observed decoder read is outside the fixed-output block"
+            )
+
+        phrase_plan = build_test_phrase_plan(patch)
+        encoding = phrase_plan["encoding"]
+        assert isinstance(encoding, dict)
+        marker_symbols = [int(value) for value in encoding["symbols"]]
+        replacement_symbols, modified_entries = (
+            mark_all_count_preserving_entries(
+                original_symbols,
+                marker_symbols,
+            )
+        )
+        replacement, replacement_bits = encode_symbol_count(
+            trees,
+            replacement_symbols,
+            initial_symbol=CANDIDATE_END_SYMBOL,
+            max_bits=block_capacity_bytes * 8,
+        )
+        decoded_replacement, decoded_replacement_bits = decode_symbol_count(
+            replacement,
+            bytes((1,)) * len(replacement),
+            trees,
+            0,
+            len(replacement_symbols),
+            initial_symbol=CANDIDATE_END_SYMBOL,
+            max_bytes=len(replacement),
+        )
+        if (
+            decoded_replacement != replacement_symbols
+            or decoded_replacement_bits != replacement_bits
+        ):
+            raise PatchError("fixed-output marker block roundtrip mismatch")
+        runtime_entry["runtime_encoded_bits"] = original_bits
+        runtime_entry["replacement_encoded_bits"] = replacement_bits
+        runtime_entry["modified_terminated_entry_count"] = len(
+            modified_entries
+        )
+        runtime_entry["modified_terminated_entry_indexes"] = modified_entries
+        expected_write = plan_unpadded_entry_prefix_write(
+            baseline,
+            group_physical_start=target_offset,
+            entry_start_bit=0,
+            original_bits=block_capacity_bytes * 8,
+            replacement=replacement,
+            replacement_bits=replacement_bits,
+        )
+    elif str(runtime_entry["kind"]).startswith("runtime-group-"):
         original_symbols = [None] * int(runtime_entry["runtime_symbol_count"])
         original_bits = int(runtime_entry["runtime_encoded_bits"])
     else:
@@ -638,32 +859,36 @@ def build_test_patch(
             target_offset,
             list(runtime_entry["all_target_offsets"]),
         )
-    if original_bits != int(runtime_entry["runtime_encoded_bits"]):
+    if (
+        runtime_entry["kind"] != "runtime-decoder-block"
+        and original_bits != int(runtime_entry["runtime_encoded_bits"])
+    ):
         raise PatchError("runtime and rebuilt entry bit lengths disagree")
-    phrase_plan = build_length_preserving_test_phrase_plan(
-        patch,
-        original_bits,
-    )
-    encoding = phrase_plan["encoding"]
-    assert isinstance(encoding, dict)
-    replacement = bytes.fromhex(str(encoding["encoded_hex"]))
-    replacement_bits = int(encoding["encoded_bits"])
-    expected_write = plan_unpadded_entry_prefix_write(
-        baseline,
-        group_physical_start=(
-            int(runtime_entry["group_physical_start"])
-            if str(runtime_entry["kind"]).startswith("runtime-group-")
-            else target_offset
-        ),
-        entry_start_bit=(
-            int(runtime_entry["group_entry_start_bit"])
-            if str(runtime_entry["kind"]).startswith("runtime-group-")
-            else 0
-        ),
-        original_bits=original_bits,
-        replacement=replacement,
-        replacement_bits=replacement_bits,
-    )
+    if runtime_entry["kind"] != "runtime-decoder-block":
+        phrase_plan = build_length_preserving_test_phrase_plan(
+            patch,
+            original_bits,
+        )
+        encoding = phrase_plan["encoding"]
+        assert isinstance(encoding, dict)
+        replacement = bytes.fromhex(str(encoding["encoded_hex"]))
+        replacement_bits = int(encoding["encoded_bits"])
+        expected_write = plan_unpadded_entry_prefix_write(
+            baseline,
+            group_physical_start=(
+                int(runtime_entry["group_physical_start"])
+                if str(runtime_entry["kind"]).startswith("runtime-group-")
+                else target_offset
+            ),
+            entry_start_bit=(
+                int(runtime_entry["group_entry_start_bit"])
+                if str(runtime_entry["kind"]).startswith("runtime-group-")
+                else 0
+            ),
+            original_bits=original_bits,
+            replacement=replacement,
+            replacement_bits=replacement_bits,
+        )
     validated = validate_expected_writes(baseline, [expected_write])
     target, audit = apply_expected_writes(baseline, validated)
     overlay = expected_writes_to_ips(validated)
@@ -688,6 +913,10 @@ def build_test_patch(
             "encoded_bits": original_bits,
             "encoded_bytes": (original_bits + 7) // 8,
             "roundtrip_exact": True,
+            "symbol_count": len(original_symbols),
+            "terminator_count": original_symbols.count(
+                CANDIDATE_END_SYMBOL
+            ),
         },
         "replacement": {
             "encoded_bits": replacement_bits,
@@ -699,7 +928,9 @@ def build_test_patch(
                 else 0
             ),
             "technical_tail_policy": (
-                "exact-entry-length"
+                "preserve-unread-tail-within-next-pointer-extent"
+                if runtime_entry["kind"] == "runtime-decoder-block"
+                else "exact-entry-length"
             ),
         },
         "expected_write_audit": audit,

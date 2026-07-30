@@ -7,8 +7,10 @@ from tools.sfgfc_huffman import (
     CANDIDATE_END_SYMBOL,
     HuffmanNode,
     ParsedTree,
+    decode_symbol_count,
     decode_symbol_entries,
     decode_symbols,
+    encode_symbol_count,
     encode_symbol_entries,
     encode_symbols,
 )
@@ -85,6 +87,35 @@ class HuffmanEncoderTests(unittest.TestCase):
         )
         self.assertEqual(decoded, entries)
         self.assertEqual(decoded_bits, bits)
+
+    def test_fixed_count_block_keeps_context_across_terminator(self) -> None:
+        end = CANDIDATE_END_SYMBOL
+        trees = {
+            end: tree(end, 0x10, end),
+            0x10: tree(0x10, end, 0x11),
+        }
+        symbols = [0x10, end, 0x10, end]
+        encoded, bits = encode_symbol_count(trees, symbols)
+        self.assertEqual(bits, 4)
+        self.assertEqual(encoded, b"\x00")
+        decoded, decoded_bits = decode_symbol_count(
+            encoded,
+            b"\x01",
+            trees,
+            0,
+            len(symbols),
+            max_bytes=1,
+        )
+        self.assertEqual(decoded, symbols)
+        self.assertEqual(decoded_bits, bits)
+
+    def test_fixed_count_limits_fail_closed(self) -> None:
+        end = CANDIDATE_END_SYMBOL
+        trees = {end: tree(end, end, 0x10)}
+        with self.assertRaisesRegex(PatchError, "between 0 and 4096"):
+            decode_symbol_count(b"\x00", b"\x01", trees, 0, 4097)
+        with self.assertRaisesRegex(PatchError, "exceeds 4096"):
+            encode_symbol_count(trees, [end] * 4097)
 
     def test_consecutive_entry_limits_fail_closed(self) -> None:
         end = CANDIDATE_END_SYMBOL
