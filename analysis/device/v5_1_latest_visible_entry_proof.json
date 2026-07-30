@@ -1,0 +1,37 @@
+{
+  "artifact_kind": "sanitized-s25u-visible-entry-proof",
+  "schema_version": 1,
+  "status": "exact-visible-entry-confirmed",
+  "purpose": "technical-poc-only",
+  "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "test_target_sha256": "fc063d908ab52b17af2f07a6c904a1cce71270ea28126a1780de3d7c28c03711",
+  "phrase_codepoints": [
+    "U+D55C",
+    "U+B2E4"
+  ],
+  "runtime_entry": {
+    "kind": "runtime-length-prefixed-entry",
+    "selection_basis": "decoder-register-proven-length-prefixed-skip-loop",
+    "physical_start": 133395,
+    "logical_start": 18707,
+    "mapped_bank": 8,
+    "group_pointer_address": 17374,
+    "length_prefix_logical_address": 18706,
+    "record_length_bytes": 16,
+    "skipped_record_count": 147,
+    "symbol_count": 19,
+    "encoded_bits": 100,
+    "roundtrip_exact": true
+  },
+  "display_proof": {
+    "capture_png_sha256": "c1fff0a4b56c39c5a952da5c12640744c083a6182198cb0af1f01238b9785627",
+    "new_technical_marker_matches": 1,
+    "review_result": "phrase-visible-pass",
+    "phrase_visible": true,
+    "surrounding_text_readable": true,
+    "portrait_intact": true,
+    "dialogue_box_intact": true
+  },
+  "translation_build_eligible": false,
+  "next_checkpoint": "expand-poc-to-multiple-visible-glyphs"
+}
