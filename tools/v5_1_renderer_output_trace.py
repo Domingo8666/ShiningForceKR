@@ -71,7 +71,7 @@ except ImportError:  # direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-renderer-output-trace"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DEFAULT_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 VISIBLE_ROUNDTRIP_PATH = Path(
     "analysis/device/v5_1_latest_visible_script_roundtrip.json"
@@ -91,6 +91,11 @@ DECODER_REGISTER_TRACE_PATH = Path(
 TRACE_PAGE_SIZE = 1000
 TRACE_BUFFER_SIZE = 100000
 TRACE_RETURN_TIMEOUT_SECONDS = 15.0
+PRIMARY_RENDERER_BANK = 0x21
+PRIMARY_RENDERER_RANGES = (
+    (0x7000, 0x730B),
+    (0x7A00, 0x7A9D),
+)
 DECODER_OUTPUT_CANDIDATES = {
     0x3411,
     0x3431,
@@ -155,6 +160,9 @@ RENDERER_WINDOW_KEYS = {
     "vdp_control_write_count",
     "vdp_event_line_count",
     "unique_output_pattern_count",
+    "primary_renderer_entry_hit_count",
+    "primary_renderer_data_write_count",
+    "primary_renderer_control_write_count",
 }
 _VDP_EVENT_LINE = re.compile(
     r"^\s*\[IO\]\s+OUT\s+Port:\$(?P<port>BE|BF)"
@@ -251,10 +259,23 @@ def validate_renderer_output_trace(value: dict[str, object]) -> None:
         ("vdp_control_write_count", 0, 0x100000),
         ("vdp_event_line_count", 0, 0x100000),
         ("unique_output_pattern_count", 0, 0x10000),
+        ("primary_renderer_entry_hit_count", 0, 0x100000),
+        ("primary_renderer_data_write_count", 0, 0x100000),
+        ("primary_renderer_control_write_count", 0, 0x100000),
     ):
         if not _bounded_int(renderer[key], minimum, maximum):
             raise ValueError(f"renderer output {key} is invalid")
-    observed = renderer["vdp_data_write_count"] > 0
+    if (
+        renderer["primary_renderer_data_write_count"]
+        > renderer["vdp_data_write_count"]
+        or renderer["primary_renderer_control_write_count"]
+        > renderer["vdp_control_write_count"]
+    ):
+        raise ValueError("renderer-attributed output counts exceed frame counts")
+    observed = (
+        renderer["primary_renderer_entry_hit_count"] > 0
+        and renderer["primary_renderer_data_write_count"] > 0
+    )
     if (
         value["consumer_chain_confirmed"] is not observed
         or (
@@ -320,11 +341,24 @@ def _classify_vdp_output(
     ):
         port = typed_registers.get("bc", 0) & 0xFF
         value = _out_register_value(opcodes[1], typed_registers)
+    elif (
+        len(opcodes) >= 2
+        and opcodes[0] == 0xED
+        and opcodes[1] in {0xA3, 0xAB, 0xB3, 0xBB}
+    ):
+        # OUTI/OUTD/OTIR/OTDR send one byte from (HL) to port C per
+        # traced instruction.  The trace does not include the memory byte,
+        # so only the port is classified; raw values remain local-only.
+        port = typed_registers.get("bc", 0) & 0xFF
+        value = None
     else:
         return None
     if port not in {0xBE, 0xBF}:
         return None
-    return {"port": port, "value": value}
+    result = {"port": port}
+    if value is not None:
+        result["value"] = value
+    return result
 
 
 def analyze_trace_lines(
@@ -332,6 +366,7 @@ def analyze_trace_lines(
 ) -> tuple[dict[str, int], dict[str, object]]:
     parsed_count = 0
     candidate_hits: list[int] = []
+    primary_renderer_entry_hits: list[int] = []
     outputs: list[dict[str, int]] = []
     io_events: list[dict[str, int]] = []
     for line in lines:
@@ -348,12 +383,15 @@ def analyze_trace_lines(
             continue
         parsed_count += 1
         pc = int(parsed["pc"])
+        bank = int(parsed["bank"])
         if pc in DECODER_OUTPUT_CANDIDATES:
             candidate_hits.append(pc)
+        if bank == PRIMARY_RENDERER_BANK and pc == PRIMARY_RENDERER_RANGES[0][0]:
+            primary_renderer_entry_hits.append(pc)
         output = _classify_vdp_output(parsed)
         if output is not None:
             output["pc"] = pc
-            output["bank"] = int(parsed["bank"])
+            output["bank"] = bank
             outputs.append(output)
     instruction_data = [
         item for item in outputs if item["port"] == 0xBE
@@ -373,6 +411,15 @@ def analyze_trace_lines(
         (item["bank"], item["pc"], item["port"])
         for item in outputs
     }
+    primary_outputs = [
+        item
+        for item in outputs
+        if item["bank"] == PRIMARY_RENDERER_BANK
+        and any(
+            start <= item["pc"] <= end
+            for start, end in PRIMARY_RENDERER_RANGES
+        )
+    ]
     safe = {
         "trace_entries_observed": len(lines),
         "parsed_instruction_count": parsed_count,
@@ -382,10 +429,18 @@ def analyze_trace_lines(
         "unique_output_pattern_count": len(patterns),
         "candidate_entry_hit_count": len(candidate_hits),
         "unique_candidate_entry_count": len(set(candidate_hits)),
+        "primary_renderer_entry_hit_count": len(primary_renderer_entry_hits),
+        "primary_renderer_data_write_count": sum(
+            item["port"] == 0xBE for item in primary_outputs
+        ),
+        "primary_renderer_control_write_count": sum(
+            item["port"] == 0xBF for item in primary_outputs
+        ),
     }
     local = {
         "raw_trace_lines": lines,
         "candidate_entry_hits": candidate_hits,
+        "primary_renderer_entry_hits": primary_renderer_entry_hits,
         "vdp_outputs": outputs,
         "vdp_io_events": io_events,
     }
@@ -406,7 +461,10 @@ def build_renderer_output_trace(
     roundtrip = visible_roundtrip["roundtrip"]
     assert isinstance(runtime, dict)
     assert isinstance(roundtrip, dict)
-    observed = trace_summary["vdp_data_write_count"] > 0
+    observed = (
+        trace_summary["primary_renderer_entry_hit_count"] > 0
+        and trace_summary["primary_renderer_data_write_count"] > 0
+    )
     safe: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
@@ -455,6 +513,15 @@ def build_renderer_output_trace(
             ],
             "unique_output_pattern_count": trace_summary[
                 "unique_output_pattern_count"
+            ],
+            "primary_renderer_entry_hit_count": trace_summary[
+                "primary_renderer_entry_hit_count"
+            ],
+            "primary_renderer_data_write_count": trace_summary[
+                "primary_renderer_data_write_count"
+            ],
+            "primary_renderer_control_write_count": trace_summary[
+                "primary_renderer_control_write_count"
             ],
         },
         "consumer_chain_confirmed": observed,

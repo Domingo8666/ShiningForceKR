@@ -78,6 +78,9 @@ def _trace_summary(*, data_writes: int = 1) -> dict[str, int]:
         "unique_output_pattern_count": 2 if data_writes else 1,
         "candidate_entry_hit_count": 1,
         "unique_candidate_entry_count": 1,
+        "primary_renderer_entry_hit_count": 1,
+        "primary_renderer_data_write_count": data_writes,
+        "primary_renderer_control_write_count": 1,
     }
 
 
@@ -122,6 +125,21 @@ class RendererOutputTraceTests(unittest.TestCase):
             )
         )
 
+    def test_classifies_repeating_block_vdp_data_output(self) -> None:
+        event = _classify_vdp_output(
+            {
+                "opcodes": bytes((0xED, 0xB3)),
+                "registers": {
+                    "a": 0,
+                    "bc": 0x20BE,
+                    "de": 0,
+                    "hl": 0xC100,
+                    "sp": 0,
+                },
+            }
+        )
+        self.assertEqual(event, {"port": 0xBE})
+
     def test_analyzes_trace_without_publishing_values(self) -> None:
         summary, local = analyze_trace_lines(
             [
@@ -156,6 +174,23 @@ class RendererOutputTraceTests(unittest.TestCase):
         self.assertEqual(summary["vdp_control_write_count"], 1)
         self.assertEqual(summary["vdp_event_line_count"], 2)
         self.assertEqual(len(local["vdp_io_events"]), 2)
+
+    def test_attributes_primary_korean_renderer_outputs(self) -> None:
+        summary, _ = analyze_trace_lines(
+            [
+                (
+                    "21:7000 A:42 BC:0000 DE:0000 HL:0000 SP:D000  "
+                    "D3 BE"
+                ),
+                (
+                    "21:7A20 A:00 BC:12BF DE:3456 HL:0000 SP:D000  "
+                    "ED 59"
+                ),
+            ]
+        )
+        self.assertEqual(summary["primary_renderer_entry_hit_count"], 1)
+        self.assertEqual(summary["primary_renderer_data_write_count"], 1)
+        self.assertEqual(summary["primary_renderer_control_write_count"], 1)
 
     def test_selects_outermost_call_return(self) -> None:
         self.assertEqual(
