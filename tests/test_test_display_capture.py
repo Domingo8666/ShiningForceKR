@@ -15,6 +15,8 @@ from tools.v5_1_test_display_capture import (
     _build_safe_capture,
     _continue_until_breakpoint,
     _display_watch_target,
+    _display_watch_range,
+    _observed_target_address,
     _set_unlimited_fast_forward,
     _build_entry_selector_observation,
     _write_human_review_bundle,
@@ -172,6 +174,37 @@ class TestDisplayCaptureTests(unittest.TestCase):
             ),
             (0x44B1, 0x204B1),
         )
+
+    def test_group_capture_watches_the_complete_rewritten_entry(self) -> None:
+        entry = {
+            "kind": "runtime-group-observed-entry",
+            "pointer_address": 0x449F,
+            "group_entry_start_bit_in_byte": 6,
+            "runtime_encoded_bits": 200,
+        }
+        self.assertEqual(
+            _display_watch_range(entry, 0x44B1),
+            (0x449F, 0x44B8),
+        )
+
+    def test_range_hit_records_the_actual_hl_read(self) -> None:
+        target = {
+            "slot": 1,
+            "expected_bank": 8,
+            "instruction_pc": 0x3406,
+            "logical_access": 0x44B1,
+            "logical_start": 0x449F,
+            "logical_end": 0x44B8,
+            "operand_kind": "hl-indirect",
+        }
+        state = {
+            "slot1_bank": 8,
+            "pc_after": 0x3407,
+            "registers": {"hl": 0x44A5},
+        }
+        self.assertEqual(_observed_target_address(state, target), 0x44A5)
+        state["registers"]["hl"] = 0x4500
+        self.assertIsNone(_observed_target_address(state, target))
 
     def test_png_payload_is_verified_before_hashing(self) -> None:
         png, metadata = _parse_screenshot(

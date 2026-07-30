@@ -1163,6 +1163,50 @@ def _display_watch_target(
     )
 
 
+def _display_watch_range(
+    runtime_entry: dict[str, object],
+    logical_access: int,
+) -> tuple[int, int]:
+    """Watch the complete bit-aligned group entry after it is rewritten."""
+
+    if not str(runtime_entry.get("kind", "")).startswith("runtime-group-"):
+        return logical_access, logical_access
+    start = int(runtime_entry["pointer_address"])
+    bit_offset = int(runtime_entry["group_entry_start_bit_in_byte"])
+    encoded_bits = int(runtime_entry["runtime_encoded_bits"])
+    if (
+        not 0x4000 <= start <= 0x7FFF
+        or not 0 <= bit_offset <= 7
+        or encoded_bits <= 0
+    ):
+        raise PatchError("runtime group watch range is invalid")
+    end = start + (bit_offset + encoded_bits - 1) // 8
+    if not start <= logical_access <= end or end > 0x7FFF:
+        raise PatchError("confirmed runtime read is outside the group watch range")
+    return start, end
+
+
+def _observed_target_address(
+    state: dict[str, object],
+    target_read: dict[str, object],
+) -> int | None:
+    if not _target_hit_matches(state, target_read):
+        return None
+    logical_access = int(target_read["logical_access"])
+    logical_start = int(target_read.get("logical_start", logical_access))
+    logical_end = int(target_read.get("logical_end", logical_access))
+    operand_kind = target_read.get("operand_kind")
+    observed = logical_access
+    if operand_kind == "hl-indirect":
+        registers = state.get("registers")
+        if not isinstance(registers, dict) or not isinstance(
+            registers.get("hl"), int
+        ):
+            return None
+        observed = int(registers["hl"])
+    return observed if logical_start <= observed <= logical_end else None
+
+
 def _continue_until_breakpoint(
     client: McpStdioClient,
     timeout_seconds: float,
@@ -1222,7 +1266,9 @@ def _capture_display(
     mapped_bank: int | None = None
     safe_captures: list[dict[str, object]] = []
     safe_post_advance: dict[str, object] | None = None
-    start = f"{int(target_read['logical_access']):04X}"
+    logical_access = int(target_read["logical_access"])
+    start = f"{int(target_read.get('logical_start', logical_access)):04X}"
+    end = f"{int(target_read.get('logical_end', logical_access)):04X}"
     breakpoint_armed = False
     entry_breakpoint_armed = False
     fast_forward_enabled = False
@@ -1233,7 +1279,7 @@ def _capture_display(
             "set_breakpoint_range",
             {
                 "start_address": start,
-                "end_address": start,
+                "end_address": end,
                 "memory_area": "rom_ram",
                 "execute": False,
                 "read": True,
@@ -1248,7 +1294,7 @@ def _capture_display(
             "remove_breakpoint",
             {
                 "address": start,
-                "end_address": start,
+                "end_address": end,
                 "memory_area": "rom_ram",
             },
         )
@@ -1378,11 +1424,10 @@ def _capture_display(
                         _step_instruction_and_wait(client)
                         arm_entry_breakpoint()
                     continue
-                if (
-                    entry_selector_confirmed
-                    and _target_hit_matches(state, target_read)
-                ):
+                observed_target = _observed_target_address(state, target_read)
+                if entry_selector_confirmed and observed_target is not None:
                     mapped_bank = candidate_bank
+                    local["observed_logical_access"] = observed_target
                     local["target_hit"] = state
                     local["target_hit_evidence"] = hit_evidence
                     target_found = True
@@ -1460,7 +1505,7 @@ def _capture_display(
                     "remove_breakpoint",
                     {
                         "address": start,
-                        "end_address": start,
+                        "end_address": end,
                         "memory_area": "rom_ram",
                     },
                 )
@@ -1601,21 +1646,31 @@ def main() -> int:
             logical_access, physical_target_byte = _display_watch_target(
                 built_entry
             )
+            logical_start, logical_end = _display_watch_range(
+                built_entry,
+                logical_access,
+            )
             expected_bank = int(built_entry["pointer_bank"])
             instruction_bank = int(
                 built_entry["runtime_instruction_bank"]
             )
             instruction_pc = int(built_entry["runtime_instruction_pc"])
+            operand_kind = str(built_entry["runtime_operand_kind"])
         else:
             logical_access = int(selected["logical_start"])
+            logical_start = logical_access
+            logical_end = logical_access
             expected_bank = int(selected["mapped_bank"])
             physical_target_byte = int(selected["physical_start"])
             instruction_bank = int(selected["instruction_bank"])
             instruction_pc = int(selected["instruction_pc"])
+            operand_kind = str(selected["operand_kind"])
         resolution = {
             "target_read": {
                 "slot": logical_access // 0x4000,
                 "logical_access": logical_access,
+                "logical_start": logical_start,
+                "logical_end": logical_end,
                 "physical_target_byte": physical_target_byte,
                 "instruction_bank": instruction_bank,
                 "instruction_pc": instruction_pc,
@@ -1623,6 +1678,7 @@ def main() -> int:
                 "physical_pc_after": instruction_pc + 1,
                 "expected_bank": expected_bank,
                 "mapped_bank": expected_bank,
+                "operand_kind": operand_kind,
             }
         }
         capture_schedule = ATTRACT_CAPTURE_SCHEDULE
@@ -1704,6 +1760,15 @@ def main() -> int:
         failure_stage="test-display-capture",
         schedule=capture_schedule,
     )
+    observed_test_access = test_local.get("observed_logical_access")
+    if mapped_bank == int(resolution["target_read"]["expected_bank"]):
+        if not isinstance(observed_test_access, int):
+            raise PatchError("confirmed range hit has no observed logical address")
+        resolution["target_read"]["logical_access"] = observed_test_access
+        resolution["target_read"]["physical_target_byte"] = (
+            int(resolution["target_read"]["expected_bank"]) * 0x4000
+            + (observed_test_access & 0x3FFF)
+        )
     _CURRENT_FAILURE_STAGE = "display-version-check"
     if baseline_emulator_version != emulator_version:
         raise PatchError("baseline and test captures used different emulator versions")
