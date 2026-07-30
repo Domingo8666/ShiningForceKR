@@ -25,8 +25,9 @@ done
 stage_status=0
 diagnostic_trigger=manual
 failure_report="$root/reports/local/v5_1_runtime_failure.json"
+test_patch_failure_token="$root/reports/local/v5_1_test_patch_failure_token.txt"
 next_step_file="$root/reports/NEXT_STEP.txt"
-rm -f "$failure_report"
+rm -f "$failure_report" "$test_patch_failure_token"
 
 write_next_step() {
   next_step_temp="$next_step_file.tmp"
@@ -127,7 +128,22 @@ else
       if [ "$test_build_status" -ne 0 ]; then
         stage_status="$test_build_status"
         diagnostic_trigger=probe
-        record_stage_failure test-patch
+        test_patch_failure_stage="test-patch"
+        if [ -f "$test_patch_failure_token" ]; then
+          candidate_failure_stage="$(
+            tr -d '\r\n' <"$test_patch_failure_token"
+          )"
+          case "$candidate_failure_stage" in
+            test-patch-fixed-count-roundtrip|\
+            test-patch-fixed-count-read-range|\
+            test-patch-no-marker-candidate|\
+            test-patch-marker-encoding|\
+            test-patch-marker-roundtrip)
+              test_patch_failure_stage="$candidate_failure_stage"
+              ;;
+          esac
+        fi
+        record_stage_failure "$test_patch_failure_stage"
         break
       fi
       if [ ! -f build/Final_Conflict_Korean_test_phrase.gg ] || \

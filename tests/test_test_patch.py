@@ -4,6 +4,7 @@ import unittest
 
 from tools.patch_io import PatchError, sha256_bytes
 from tools.v5_1_test_patch import (
+    classify_test_patch_failure,
     mark_all_count_preserving_entries,
     plan_in_place_write,
     plan_unpadded_entry_prefix_write,
@@ -366,6 +367,38 @@ class TestPatchTests(unittest.TestCase):
                 [1, 2, 3, 4, 5, 6, 0xC9],
                 marker,
             )
+
+    def test_fixed_block_failures_publish_only_safe_tokens(self) -> None:
+        cases = {
+            "fixed-output decoder block decode failed": (
+                "test-patch-fixed-count-roundtrip"
+            ),
+            "fixed-output decoder block no-change roundtrip is not exact": (
+                "test-patch-fixed-count-roundtrip"
+            ),
+            "observed decoder read is outside the fixed-output block": (
+                "test-patch-fixed-count-read-range"
+            ),
+            "fixed-output block has no marker-compatible entry": (
+                "test-patch-no-marker-candidate"
+            ),
+            "fixed-output marker block encoding failed": (
+                "test-patch-marker-encoding"
+            ),
+            "fixed-output marker block roundtrip mismatch": (
+                "test-patch-marker-roundtrip"
+            ),
+        }
+        for message, token in cases.items():
+            with self.subTest(message=message):
+                self.assertEqual(
+                    classify_test_patch_failure(PatchError(message)),
+                    token,
+                )
+        self.assertEqual(
+            classify_test_patch_failure(PatchError("private local detail")),
+            "test-patch",
+        )
 
     def test_shared_target_is_rejected(self) -> None:
         self.baseline[0x103:0x106] = bytes.fromhex("02 00 80")

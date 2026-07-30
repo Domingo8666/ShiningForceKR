@@ -104,8 +104,41 @@ DEFAULT_OUTPUT_IPS = Path(
     "build/Final_Conflict_Korean_test_phrase_overlay.ips"
 )
 DEFAULT_REPORT = Path("reports/local/v5_1_test_patch_build.json")
+DEFAULT_FAILURE_TOKEN = Path(
+    "reports/local/v5_1_test_patch_failure_token.txt"
+)
 MAX_ENTRY_SYMBOLS = 256
 MAX_ENTRY_BYTES = 256
+
+TEST_PATCH_FAILURE_TOKENS = {
+    "fixed-output decoder block decode failed": (
+        "test-patch-fixed-count-roundtrip"
+    ),
+    "fixed-output decoder block re-encode failed": (
+        "test-patch-fixed-count-roundtrip"
+    ),
+    "fixed-output decoder block no-change roundtrip is not exact": (
+        "test-patch-fixed-count-roundtrip"
+    ),
+    "observed decoder read is outside the fixed-output block": (
+        "test-patch-fixed-count-read-range"
+    ),
+    "fixed-output block has no marker-compatible entry": (
+        "test-patch-no-marker-candidate"
+    ),
+    "fixed-output marker block encoding failed": (
+        "test-patch-marker-encoding"
+    ),
+    "fixed-output marker block roundtrip mismatch": (
+        "test-patch-marker-roundtrip"
+    ),
+}
+
+
+def classify_test_patch_failure(error: PatchError) -> str:
+    """Reduce a local build exception to a path-free published token."""
+
+    return TEST_PATCH_FAILURE_TOKENS.get(str(error), "test-patch")
 
 
 def _selected_resolution(
@@ -746,21 +779,31 @@ def build_test_patch(
         block_capacity_bytes = (
             int(runtime_entry["next_group_physical_start"]) - target_offset
         )
-        original_symbols, original_bits = decode_symbol_count(
-            baseline,
-            known,
-            trees,
-            target_offset,
-            int(runtime_entry["runtime_symbol_count"]),
-            initial_symbol=CANDIDATE_END_SYMBOL,
-            max_bytes=block_capacity_bytes,
-        )
-        original_encoded, reencoded_bits = encode_symbol_count(
-            trees,
-            original_symbols,
-            initial_symbol=CANDIDATE_END_SYMBOL,
-            max_bits=block_capacity_bytes * 8,
-        )
+        try:
+            original_symbols, original_bits = decode_symbol_count(
+                baseline,
+                known,
+                trees,
+                target_offset,
+                int(runtime_entry["runtime_symbol_count"]),
+                initial_symbol=CANDIDATE_END_SYMBOL,
+                max_bytes=block_capacity_bytes,
+            )
+        except PatchError as error:
+            raise PatchError(
+                "fixed-output decoder block decode failed"
+            ) from error
+        try:
+            original_encoded, reencoded_bits = encode_symbol_count(
+                trees,
+                original_symbols,
+                initial_symbol=CANDIDATE_END_SYMBOL,
+                max_bits=block_capacity_bytes * 8,
+            )
+        except PatchError as error:
+            raise PatchError(
+                "fixed-output decoder block re-encode failed"
+            ) from error
         if reencoded_bits != original_bits or not _bits_equal(
             baseline[target_offset:],
             original_encoded,
@@ -791,12 +834,17 @@ def build_test_patch(
                 marker_symbols,
             )
         )
-        replacement, replacement_bits = encode_symbol_count(
-            trees,
-            replacement_symbols,
-            initial_symbol=CANDIDATE_END_SYMBOL,
-            max_bits=block_capacity_bytes * 8,
-        )
+        try:
+            replacement, replacement_bits = encode_symbol_count(
+                trees,
+                replacement_symbols,
+                initial_symbol=CANDIDATE_END_SYMBOL,
+                max_bits=block_capacity_bytes * 8,
+            )
+        except PatchError as error:
+            raise PatchError(
+                "fixed-output marker block encoding failed"
+            ) from error
         decoded_replacement, decoded_replacement_bits = decode_symbol_count(
             replacement,
             bytes((1,)) * len(replacement),
@@ -1004,6 +1052,13 @@ def _write_outputs(
         os.replace(staged_report, report_path)
 
 
+def _write_failure_token(path: Path, token: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(token + "\n", encoding="ascii")
+    os.replace(temporary, path)
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
@@ -1024,6 +1079,11 @@ def main() -> int:
     parser.add_argument("--output-rom", type=Path, default=DEFAULT_OUTPUT_ROM)
     parser.add_argument("--output-ips", type=Path, default=DEFAULT_OUTPUT_IPS)
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
+    parser.add_argument(
+        "--failure-token",
+        type=Path,
+        default=DEFAULT_FAILURE_TOKEN,
+    )
     parser.add_argument(
         "--if-ready",
         action="store_true",
@@ -1078,28 +1138,41 @@ def main() -> int:
     output_rom = _absolute(root, args.output_rom)
     output_ips = _absolute(root, args.output_ips)
     report_path = _absolute(root, args.report)
+    failure_token_path = _absolute(root, args.failure_token)
+    _require_within(
+        failure_token_path,
+        root / "reports" / "local",
+        "failure token",
+    )
+    failure_token_path.unlink(missing_ok=True)
     if source_path in {output_rom, output_ips, report_path}:
         raise SystemExit("refusing to overwrite the clean source ROM")
     _require_within(output_rom, root / "build", "test ROM output")
     _require_within(output_ips, root / "build", "IPS output")
     _require_within(report_path, root / "reports" / "local", "build report")
 
-    target, overlay, report = build_test_patch(
-        source_path.read_bytes(),
-        _absolute(root, args.patch).read_bytes(),
-        resolution,
-        _read_json(_absolute(root, args.trace_plan)),
-        stream_resolution=stream_resolution,
-        group_resolution=group_resolution,
-    )
-    _write_outputs(
-        output_rom,
-        output_ips,
-        report_path,
-        target,
-        overlay,
-        report,
-    )
+    try:
+        target, overlay, report = build_test_patch(
+            source_path.read_bytes(),
+            _absolute(root, args.patch).read_bytes(),
+            resolution,
+            _read_json(_absolute(root, args.trace_plan)),
+            stream_resolution=stream_resolution,
+            group_resolution=group_resolution,
+        )
+        _write_outputs(
+            output_rom,
+            output_ips,
+            report_path,
+            target,
+            overlay,
+            report,
+        )
+    except PatchError as error:
+        token = classify_test_patch_failure(error)
+        _write_failure_token(failure_token_path, token)
+        print(f"Test patch blocked: {token}.")
+        return 1
     print(f"Built S25U-local test ROM: {output_rom}")
     print(f"Built S25U-local IPS overlay: {output_ips}")
     print(f"Build report: {report_path}")

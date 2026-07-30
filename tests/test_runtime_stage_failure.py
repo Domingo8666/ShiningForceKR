@@ -40,6 +40,19 @@ class RuntimeStageFailureTests(unittest.TestCase):
                 self.assertEqual(receipt["failure_stage"], stage)
                 validate_runtime_failure_receipt(receipt)
 
+    def test_test_patch_diagnostics_are_safe(self) -> None:
+        for stage in (
+            "test-patch-fixed-count-roundtrip",
+            "test-patch-fixed-count-read-range",
+            "test-patch-no-marker-candidate",
+            "test-patch-marker-encoding",
+            "test-patch-marker-roundtrip",
+        ):
+            with self.subTest(stage=stage):
+                receipt = build_stage_failure_receipt(stage)
+                self.assertEqual(receipt["failure_stage"], stage)
+                validate_runtime_failure_receipt(receipt)
+
     def test_unknown_pipeline_substage_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             build_stage_failure_receipt("unknown-stage")
