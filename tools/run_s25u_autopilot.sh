@@ -4,6 +4,7 @@ set -uo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_rom="${SFKR_SOURCE_ROM:-/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg}"
 interval="${SFKR_AUTOPILOT_INTERVAL:-30}"
+runtime_timeout="${SFKR_RUNTIME_TIMEOUT:-900}"
 state_dir="${SFKR_AUTOPILOT_STATE_DIR:-$HOME/.local/state/shiningforcekr}"
 once=0
 force=0
@@ -15,6 +16,8 @@ Usage: bash tools/run_s25u_autopilot.sh [options]
 Options:
   --source-rom PATH  S25U-local original ROM path
   --interval SEC     GitHub poll interval (minimum/default 30)
+  --runtime-timeout SEC
+                      Runtime-stage wall limit (minimum 300, default 900)
   --state-dir PATH   Termux-private state directory
   --force            Run once even if the current commit was already processed
   --once             Exit after one synchronization/run decision
@@ -41,6 +44,14 @@ while [ "$#" -gt 0 ]; do
         exit 2
       fi
       interval="$2"
+      shift 2
+      ;;
+    --runtime-timeout)
+      if [ "$#" -lt 2 ]; then
+        echo "--runtime-timeout requires seconds" >&2
+        exit 2
+      fi
+      runtime_timeout="$2"
       shift 2
       ;;
     --state-dir)
@@ -78,6 +89,16 @@ case "$interval" in
 esac
 if [ "$interval" -lt 30 ]; then
   echo "--interval must be at least 30 seconds" >&2
+  exit 2
+fi
+case "$runtime_timeout" in
+  ''|*[!0-9]*)
+    echo "--runtime-timeout must be an integer" >&2
+    exit 2
+    ;;
+esac
+if [ "$runtime_timeout" -lt 300 ]; then
+  echo "--runtime-timeout must be at least 300 seconds" >&2
   exit 2
 fi
 
@@ -315,14 +336,22 @@ record_processed_head() {
 run_current_head() {
   input_head="$(git rev-parse HEAD)"
   log "starting S25U runtime stage for commit $input_head"
-  bash tools/run_s25u_runtime_stage.sh --source-rom "$source_rom"
+  timeout -k 30s "$runtime_timeout" \
+    bash tools/run_s25u_runtime_stage.sh --source-rom "$source_rom"
   stage_status=$?
+  if [ "$stage_status" -eq 124 ] || [ "$stage_status" -eq 137 ]; then
+    log "S25U runtime stage exceeded ${runtime_timeout}s; it will be retried"
+  fi
 
   if git fetch origin main >/dev/null 2>&1; then
     post_head="$(git rev-parse HEAD)"
     remote_head="$(git rev-parse origin/main)"
     if [ "$post_head" = "$remote_head" ]; then
-      record_processed_head "$post_head"
+      if [ "$stage_status" -eq 0 ] || [ "$post_head" != "$input_head" ]; then
+        record_processed_head "$post_head"
+      else
+        log "runtime stage produced no synchronized result; keeping commit eligible for retry"
+      fi
     else
       log "runtime result is not synchronized with origin/main"
     fi
