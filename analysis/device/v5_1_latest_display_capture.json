@@ -1,6 +1,6 @@
 {
   "artifact_kind": "sanitized-s25u-test-display-capture",
-  "schema_version": 3,
+  "schema_version": 4,
   "status": "capture-ready-human-review-required",
   "purpose": "technical-poc-only",
   "phrase_codepoints": [
@@ -32,6 +32,21 @@
     "next_pointer_address": 18531,
     "target_offset_within_entry": 211,
     "pointer_bounds_target": true
+  },
+  "group_entry": {
+    "status": "target-outside-selected-entry",
+    "entry_ordinal": 147,
+    "decoded_prefix_entry_count": 148,
+    "group_pointer_address": 17374,
+    "entry_start_bit": 12311,
+    "entry_end_bit_exclusive": 12417,
+    "entry_encoded_bits": 106,
+    "entry_symbol_count": 26,
+    "entry_start_logical_byte": 18912,
+    "entry_end_logical_byte_inclusive": 18926,
+    "target_logical_byte": 17585,
+    "target_within_entry_bytes": false,
+    "prefix_roundtrip_exact": true
   },
   "captures": [
     {
