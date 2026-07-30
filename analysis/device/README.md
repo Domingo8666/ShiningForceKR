@@ -62,9 +62,10 @@ trace에서 제한적으로 지원하는 Z80 읽기 주소를 복원합니다. �
 엔트리 바이트와 디코딩 심벌은 로컬 보고서 밖으로 내보내지 않습니다.
 
 테스트 ROM이 생성된 뒤 `tools/v5_1_test_display_capture.py`는 확정된
-압축 엔트리 read와 매퍼 뱅크를 다시 확인하고 전체 화면 PNG 묶음을
-`evidence/local/`에 저장합니다. `v5_1_latest_display_capture.json`에는
-기준·테스트 빌드 해시, 경로 없는 read 정보, PNG 해시·크기와 사람 검토
+압축 엔트리의 read 또는 레지스터로 증명된 디코더 전달 지점과 매퍼
+뱅크를 다시 확인하고 전체 화면 PNG 묶음을 `evidence/local/`에
+저장합니다. `v5_1_latest_display_capture.json`에는
+기준·테스트 빌드 해시, 경로 없는 도달 정보, PNG 해시·크기와 사람 검토
 대기 상태만 기록합니다. `tools/v5_1_progress_preview.py`는 사용자의
 진행 사진 요청에 따라 시험 화면 중 가장 늦은 사전 진행 프레임 1장만
 `v5_1_latest_progress_preview.png`로 교체 게시합니다. 함께 게시되는

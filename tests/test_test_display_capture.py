@@ -12,8 +12,10 @@ from tools.v5_1_test_display_capture import (
     ATTRACT_CAPTURE_SCHEDULE,
     ATTRACT_CAPTURE_TIMEOUT_SECONDS,
     CAPTURE_FRAMES_AFTER_HIT,
+    DECODER_PAYLOAD_READY_LOGICAL,
     _build_safe_capture,
     _continue_until_breakpoint,
+    _decoder_payload_endpoint_matches,
     _display_watch_target,
     _display_watch_range,
     _observed_target_address,
@@ -196,6 +198,21 @@ class TestDisplayCaptureTests(unittest.TestCase):
         state["registers"]["hl"] = 0x4921
         self.assertIsNone(_observed_target_address(state, target))
 
+    def test_decoder_endpoint_confirms_the_exact_selected_payload(self) -> None:
+        target = {
+            "slot": 1,
+            "logical_access": 0x4913,
+            "expected_bank": 8,
+        }
+        state = {
+            "pc_after": DECODER_PAYLOAD_READY_LOGICAL,
+            "slot1_bank": 8,
+            "registers": {"hl": 0x4913},
+        }
+        self.assertTrue(_decoder_payload_endpoint_matches(state, target))
+        state["registers"]["hl"] = 0x4912
+        self.assertFalse(_decoder_payload_endpoint_matches(state, target))
+
     def test_group_capture_watches_the_complete_rewritten_entry(self) -> None:
         entry = {
             "kind": "runtime-group-observed-entry",
@@ -320,7 +337,11 @@ class TestDisplayCaptureTests(unittest.TestCase):
         self.assertIsNone(capture["visual_review"]["result"])
         self.assertFalse(capture["translation_build_eligible"])
         validate_display_capture(capture)
-        self.assertEqual(capture["schema_version"], 5)
+        self.assertEqual(capture["schema_version"], 6)
+        self.assertEqual(
+            capture["target_read"]["confirmation_basis"],
+            "runtime-read-breakpoint",
+        )
         self.assertIsNone(capture["entry_selector"])
         self.assertIsNone(capture["group_entry"])
 
@@ -462,6 +483,7 @@ class TestDisplayCaptureTests(unittest.TestCase):
             post_advance_capture=None,
         )
         capture["schema_version"] = 1
+        capture["target_read"].pop("confirmation_basis")
         capture.pop("entry_selector")
         capture.pop("group_entry")
         validate_display_capture(capture)
@@ -476,6 +498,7 @@ class TestDisplayCaptureTests(unittest.TestCase):
             post_advance_capture=None,
         )
         capture["schema_version"] = 2
+        capture["target_read"].pop("confirmation_basis")
         capture.pop("group_entry")
         validate_display_capture(capture)
 
@@ -489,6 +512,7 @@ class TestDisplayCaptureTests(unittest.TestCase):
             post_advance_capture=None,
         )
         capture["schema_version"] = 3
+        capture["target_read"].pop("confirmation_basis")
         capture.pop("group_entry")
         validate_display_capture(capture)
 

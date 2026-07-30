@@ -76,8 +76,8 @@ except ImportError:  # direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-test-display-capture"
-SCHEMA_VERSION = 5
-LEGACY_SCHEMA_VERSIONS = {1, 2, 3, 4}
+SCHEMA_VERSION = 6
+LEGACY_SCHEMA_VERSIONS = {1, 2, 3, 4, 5}
 DEFAULT_TEST_ROM = Path("build/Final_Conflict_Korean_test_phrase.gg")
 DEFAULT_BASELINE_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 DEFAULT_BUILD_REPORT = Path("reports/local/v5_1_test_patch_build.json")
@@ -102,6 +102,7 @@ ATTRACT_CAPTURE_SCHEDULE: tuple[tuple[int, str | None], ...] = (
 ATTRACT_CAPTURE_TIMEOUT_SECONDS = 30.0
 MAX_REJECTED_TARGET_HITS = 64
 DECODER_ENTRY_LOGICAL = 0x33FA
+DECODER_PAYLOAD_READY_LOGICAL = 0x340C
 LOOKUP_TABLE_BASE = 0x3FE8
 REQUIRED_TOOLS = {
     "controller_button",
@@ -202,7 +203,7 @@ def validate_display_capture(capture: dict[str, object]) -> None:
     schema_version = capture.get("schema_version")
     expected_keys = (
         TOP_LEVEL_KEYS_V4
-        if schema_version in {4, SCHEMA_VERSION}
+        if schema_version in {4, 5, SCHEMA_VERSION}
         else (
             TOP_LEVEL_KEYS_WITH_SELECTOR
             if schema_version in {2, 3}
@@ -242,13 +243,16 @@ def validate_display_capture(capture: dict[str, object]) -> None:
         raise ValueError("display capture must start from a cold reset")
 
     target_read = capture["target_read"]
-    if not isinstance(target_read, dict) or set(target_read) != {
+    target_read_keys = {
         "slot",
         "logical_access",
         "expected_bank",
         "mapped_bank",
         "confirmed",
-    }:
+    }
+    if schema_version == SCHEMA_VERSION:
+        target_read_keys.add("confirmation_basis")
+    if not isinstance(target_read, dict) or set(target_read) != target_read_keys:
         raise ValueError("display capture target_read fields do not match")
     for key in ("slot", "logical_access", "expected_bank"):
         value = target_read[key]
@@ -272,13 +276,19 @@ def validate_display_capture(capture: dict[str, object]) -> None:
         raise ValueError("target_read confirmed must be boolean")
     if confirmed != (mapped_bank == target_read["expected_bank"]):
         raise ValueError("target_read confirmation and mapper bank disagree")
+    if (
+        schema_version == SCHEMA_VERSION
+        and target_read["confirmation_basis"]
+        not in {"runtime-read-breakpoint", "decoder-selection-endpoint"}
+    ):
+        raise ValueError("target_read confirmation basis is invalid")
 
-    if schema_version in {2, 3, 4, SCHEMA_VERSION}:
+    if schema_version in {2, 3, 4, 5, SCHEMA_VERSION}:
         selector = capture["entry_selector"]
         if selector is not None:
             expected_selector_keys = (
                 ENTRY_SELECTOR_KEYS
-                if schema_version in {3, 4, SCHEMA_VERSION}
+                if schema_version in {3, 4, 5, SCHEMA_VERSION}
                 else ENTRY_SELECTOR_KEYS_V2
             )
             if (
@@ -307,7 +317,7 @@ def validate_display_capture(capture: dict[str, object]) -> None:
             if selectors_match is not expected_match:
                 raise ValueError("entry_selector match evidence is inconsistent")
             ordinals_match = True
-            if schema_version in {3, 4, SCHEMA_VERSION}:
+            if schema_version in {3, 4, 5, SCHEMA_VERSION}:
                 for key in ("baseline_entry_ordinal", "test_entry_ordinal"):
                     value = selector[key]
                     if value is not None and (
@@ -366,12 +376,12 @@ def validate_display_capture(capture: dict[str, object]) -> None:
             if not confirmed:
                 raise ValueError("entry_selector requires a confirmed target read")
 
-    if schema_version in {4, SCHEMA_VERSION}:
+    if schema_version in {4, 5, SCHEMA_VERSION}:
         group_entry = capture["group_entry"]
         if group_entry is not None:
             expected_group_entry_keys = (
                 GROUP_ENTRY_KEYS
-                if schema_version == SCHEMA_VERSION
+                if schema_version in {5, SCHEMA_VERSION}
                 else GROUP_ENTRY_KEYS_V4
             )
             if (
@@ -445,7 +455,7 @@ def validate_display_capture(capture: dict[str, object]) -> None:
                 raise ValueError("group_entry and entry_selector disagree")
             if not confirmed:
                 raise ValueError("group_entry requires a confirmed target read")
-            if schema_version == SCHEMA_VERSION:
+            if schema_version in {5, SCHEMA_VERSION}:
                 candidates = group_entry["target_byte_candidates"]
                 if not isinstance(candidates, list):
                     raise ValueError(
@@ -711,6 +721,7 @@ def _build_safe_capture(
     mapped_bank: int | None,
     captures: list[dict[str, object]],
     post_advance_capture: dict[str, object] | None,
+    confirmation_basis: str = "runtime-read-breakpoint",
     entry_selector: dict[str, object] | None = None,
     group_entry: dict[str, object] | None = None,
 ) -> dict[str, object]:
@@ -744,6 +755,7 @@ def _build_safe_capture(
             "expected_bank": expected_bank,
             "mapped_bank": mapped_bank,
             "confirmed": confirmed,
+            "confirmation_basis": confirmation_basis,
         },
         "entry_selector": entry_selector,
         "group_entry": group_entry,
@@ -1155,6 +1167,22 @@ def _target_hit_matches(
     )
 
 
+def _decoder_payload_endpoint_matches(
+    state: dict[str, object],
+    target_read: dict[str, object],
+) -> bool:
+    """Confirm the selected payload immediately before decoder handoff."""
+
+    registers = state.get("registers")
+    slot = int(target_read["slot"])
+    return (
+        int(state["pc_after"]) == DECODER_PAYLOAD_READY_LOGICAL
+        and int(state[f"slot{slot}_bank"]) == int(target_read["expected_bank"])
+        and isinstance(registers, dict)
+        and registers.get("hl") == int(target_read["logical_access"])
+    )
+
+
 def _display_watch_target(
     runtime_entry: dict[str, object],
 ) -> tuple[int, int]:
@@ -1308,6 +1336,7 @@ def _capture_display(
     end = f"{int(target_read.get('logical_end', logical_access)):04X}"
     breakpoint_armed = False
     entry_breakpoint_armed = False
+    endpoint_breakpoint_armed = False
     fast_forward_enabled = False
 
     def arm_breakpoint() -> None:
@@ -1363,6 +1392,33 @@ def _capture_display(
             },
         )
         entry_breakpoint_armed = False
+
+    def arm_endpoint_breakpoint() -> None:
+        nonlocal endpoint_breakpoint_armed
+        client.call(
+            "set_breakpoint_range",
+            {
+                "start_address": f"{DECODER_PAYLOAD_READY_LOGICAL:04X}",
+                "end_address": f"{DECODER_PAYLOAD_READY_LOGICAL:04X}",
+                "memory_area": "rom_ram",
+                "execute": True,
+                "read": False,
+                "write": False,
+            },
+        )
+        endpoint_breakpoint_armed = True
+
+    def disarm_endpoint_breakpoint() -> None:
+        nonlocal endpoint_breakpoint_armed
+        client.call(
+            "remove_breakpoint",
+            {
+                "address": f"{DECODER_PAYLOAD_READY_LOGICAL:04X}",
+                "end_address": f"{DECODER_PAYLOAD_READY_LOGICAL:04X}",
+                "memory_area": "rom_ram",
+            },
+        )
+        endpoint_breakpoint_armed = False
 
     try:
         tools = client.initialize()
@@ -1474,17 +1530,33 @@ def _capture_display(
                         local["entry_selector_hit_evidence"] = hit_evidence
                         entry_selector_confirmed = True
                         disarm_entry_breakpoint()
+                        if expected_entry_ordinal is not None:
+                            arm_endpoint_breakpoint()
                     else:
                         disarm_entry_breakpoint()
                         _step_instruction_and_wait(client)
                         arm_entry_breakpoint()
                     continue
+                if (
+                    endpoint_breakpoint_armed
+                    and _decoder_payload_endpoint_matches(state, target_read)
+                ):
+                    mapped_bank = candidate_bank
+                    local["observed_logical_access"] = logical_access
+                    local["target_hit"] = state
+                    local["target_hit_evidence"] = hit_evidence
+                    local["confirmation_basis"] = (
+                        "decoder-selection-endpoint"
+                    )
+                    target_found = True
+                    break
                 observed_target = _observed_target_address(state, target_read)
                 if entry_selector_confirmed and observed_target is not None:
                     mapped_bank = candidate_bank
                     local["observed_logical_access"] = observed_target
                     local["target_hit"] = state
                     local["target_hit_evidence"] = hit_evidence
+                    local["confirmation_basis"] = "runtime-read-breakpoint"
                     target_found = True
                     break
                 rejected_hits.append(
@@ -1506,6 +1578,8 @@ def _capture_display(
         disarm_breakpoint()
         if entry_breakpoint_armed:
             disarm_entry_breakpoint()
+        if endpoint_breakpoint_armed:
+            disarm_endpoint_breakpoint()
 
         if mapped_bank == int(target_read["expected_bank"]):
             previous = 0
@@ -1573,6 +1647,18 @@ def _capture_display(
                     {
                         "address": f"{DECODER_ENTRY_LOGICAL:04X}",
                         "end_address": f"{DECODER_ENTRY_LOGICAL:04X}",
+                        "memory_area": "rom_ram",
+                    },
+                )
+            except RuntimeError:
+                pass
+        if endpoint_breakpoint_armed:
+            try:
+                client.call(
+                    "remove_breakpoint",
+                    {
+                        "address": f"{DECODER_PAYLOAD_READY_LOGICAL:04X}",
+                        "end_address": f"{DECODER_PAYLOAD_READY_LOGICAL:04X}",
                         "memory_area": "rom_ram",
                     },
                 )
@@ -1950,6 +2036,9 @@ def main() -> int:
         mapped_bank=mapped_bank,
         captures=captures,
         post_advance_capture=post_advance_capture,
+        confirmation_basis=str(
+            test_local.get("confirmation_basis", "runtime-read-breakpoint")
+        ),
         entry_selector=entry_selector,
         group_entry=group_entry,
     )
