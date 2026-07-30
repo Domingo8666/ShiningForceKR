@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
-import time
 
 try:
     from .patch_io import sha256_file
@@ -24,6 +23,11 @@ try:
         _runtime_failure_receipt,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
+    )
+    from .run_s25u_renderer_probe import (
+        ATTRACT_ROUTE_SCHEDULE,
+        _decoder_entry_mappings,
+        _probe_decoder_entry,
     )
     from .v5_1_runtime_hit_resolver import _parse_trace_line
     from .v5_1_test_display_capture import (
@@ -46,6 +50,11 @@ except ImportError:  # direct script execution
         _runtime_failure_receipt,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
+    )
+    from run_s25u_renderer_probe import (
+        ATTRACT_ROUTE_SCHEDULE,
+        _decoder_entry_mappings,
+        _probe_decoder_entry,
     )
     from v5_1_runtime_hit_resolver import _parse_trace_line
     from v5_1_test_display_capture import (
@@ -80,7 +89,6 @@ DECODER_REGISTER_TRACE_PATH = Path(
 TRACE_PAGE_SIZE = 1000
 TRACE_BUFFER_SIZE = 100000
 TRACE_RETURN_TIMEOUT_SECONDS = 15.0
-ROUTE_TIMEOUT_SECONDS = 60.0
 DECODER_OUTPUT_CANDIDATES = {
     0x3411,
     0x3431,
@@ -662,55 +670,32 @@ def _reach_exact_payload(
     mapped_bank: int,
     progress: dict[str, str] | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
-    entry_armed = False
     endpoint_armed = False
-    fast_forward = False
     selected_state: dict[str, object] | None = None
     ready_state: dict[str, object] | None = None
     try:
         if progress is not None:
             progress["stage"] = "renderer-output-route-watch"
-        _set_execute_breakpoint(client, DECODER_ENTRY_LOGICAL)
-        entry_armed = True
-        _set_unlimited_fast_forward(client, True)
-        fast_forward = True
+        selected_state, _ = _probe_decoder_entry(
+            client,
+            _decoder_entry_mappings(),
+            schedule=ATTRACT_ROUTE_SCHEDULE,
+        )
         if progress is not None:
             progress["stage"] = "renderer-output-route-hunt"
-        deadline = time.monotonic() + ROUTE_TIMEOUT_SECONDS
-        while time.monotonic() < deadline:
-            status = _continue_until_breakpoint(
-                client,
-                deadline - time.monotonic(),
-            )
-            if status.get("at_breakpoint") is not True:
-                break
-            z80 = client.call("get_z80_status")
-            candidate_de = _parse_hex_word(z80.get("DE"), "DE")
-            candidate_bc = _parse_hex_word(z80.get("BC"), "BC")
-            if (
-                candidate_de == selector_de
-                and (candidate_bc >> 8) == entry_ordinal
-            ):
-                selected_state, _ = _capture_state(client)
-                if int(selected_state["pc_after"]) != DECODER_ENTRY_LOGICAL:
-                    raise RuntimeError(
-                        "matching decoder registers were not at the entry"
-                    )
-                break
-            _remove_breakpoint(client, DECODER_ENTRY_LOGICAL)
-            entry_armed = False
-            _step_instruction_and_wait(client)
-            _set_execute_breakpoint(client, DECODER_ENTRY_LOGICAL)
-            entry_armed = True
         if selected_state is None:
             raise RuntimeError("exact visible decoder selection was not reached")
-
+        selected_registers = _registers(selected_state)
+        if (
+            int(selected_state["pc_after"]) != DECODER_ENTRY_LOGICAL
+            or selected_registers.get("de") != selector_de
+            or (selected_registers.get("bc", 0) >> 8) != entry_ordinal
+        ):
+            raise RuntimeError(
+                "first proven decoder entry is not the visible record"
+            )
         if progress is not None:
             progress["stage"] = "renderer-output-route-entry"
-        _set_unlimited_fast_forward(client, False)
-        fast_forward = False
-        _remove_breakpoint(client, DECODER_ENTRY_LOGICAL)
-        entry_armed = False
         for _ in range(DECODER_ENTRY_TRACE_STEPS):
             _step_instruction_and_wait(client)
         if progress is not None:
@@ -744,16 +729,6 @@ def _reach_exact_payload(
             raise RuntimeError("decoder payload handoff registers disagree")
         return selected_state, ready_state
     finally:
-        if fast_forward:
-            try:
-                _set_unlimited_fast_forward(client, False)
-            except Exception:
-                pass
-        if entry_armed:
-            try:
-                _remove_breakpoint(client, DECODER_ENTRY_LOGICAL)
-            except Exception:
-                pass
         if endpoint_armed:
             try:
                 _remove_breakpoint(client, DECODER_SKIP_ENDPOINT_LOGICAL)
