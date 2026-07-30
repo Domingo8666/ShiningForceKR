@@ -712,6 +712,9 @@ def _build_safe_capture(
     expected_bank = int(target_read["expected_bank"])
     confirmed = mapped_bank == expected_bank
     ready = confirmed and bool(captures) and post_advance_capture is not None
+    if not confirmed:
+        entry_selector = None
+        group_entry = None
     safe = {
         "artifact_kind": ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
@@ -1469,11 +1472,21 @@ def main() -> int:
             isinstance(built_entry, dict)
             and built_entry.get("kind") == "runtime-group-entry"
         ):
-            logical_access = int(built_entry["pointer_address"])
+            entry_start_bit = int(built_entry["group_entry_start_bit"])
+            entry_end_bit = int(
+                built_entry["group_entry_end_bit_exclusive"]
+            )
+            entry_byte_span = (
+                (entry_end_bit - 1) // 8 - entry_start_bit // 8 + 1
+            )
+            probe_byte_offset = 1 if entry_byte_span > 1 else 0
+            logical_access = (
+                int(built_entry["pointer_address"]) + probe_byte_offset
+            )
             expected_bank = int(built_entry["pointer_bank"])
             physical_target_byte = int(
                 built_entry["target_file_offset"]
-            )
+            ) + probe_byte_offset
             instruction_bank = int(
                 built_entry["runtime_instruction_bank"]
             )
@@ -1656,6 +1669,7 @@ def main() -> int:
         }
     )
     _write_json(local_report_path, local)
+    _CURRENT_FAILURE_STAGE = "display-capture-safe-schema"
     safe = _build_safe_capture(
         build_report=build_report,
         resolution=resolution,
@@ -1666,6 +1680,7 @@ def main() -> int:
         entry_selector=entry_selector,
         group_entry=group_entry,
     )
+    _CURRENT_FAILURE_STAGE = "display-capture-safe-publish"
     safe_path = root / PUBLISH_RELATIVE_PATH
     _write_json(safe_path, safe)
     print(

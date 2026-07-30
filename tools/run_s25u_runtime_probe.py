@@ -109,6 +109,8 @@ RUNTIME_FAILURE_STAGES = {
     "display-pixel-comparison",
     "display-comparison-artifact",
     "display-capture-artifact",
+    "display-capture-safe-schema",
+    "display-capture-safe-publish",
     "display-comparison",
 }
 RUNTIME_FAILURE_KINDS = {

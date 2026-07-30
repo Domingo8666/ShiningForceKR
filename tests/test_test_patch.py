@@ -147,6 +147,21 @@ def confirmed_group_capture(target_sha256: str) -> dict[str, object]:
     }
 
 
+def confirmed_selected_group_capture(target_sha256: str) -> dict[str, object]:
+    capture = confirmed_group_capture(target_sha256)
+    capture["target_read"]["logical_access"] = 0x4001
+    capture["group_entry"].update(
+        {
+            "entry_start_bit": 2,
+            "entry_end_bit_exclusive": 18,
+            "entry_encoded_bits": 16,
+            "entry_end_logical_byte_inclusive": 0x4002,
+            "target_logical_byte": 0x4001,
+        }
+    )
+    return capture
+
+
 class TestPatchTests(unittest.TestCase):
     def setUp(self) -> None:
         self.baseline = bytearray(b"\xFF" * 0x10000)
@@ -224,6 +239,21 @@ class TestPatchTests(unittest.TestCase):
         self.assertEqual(selected["pointer_address"], 0x4000)
         self.assertEqual(selected["group_entry_start_bit"], 2)
         self.assertEqual(selected["runtime_encoded_bits"], 1)
+
+    def test_runtime_group_entry_accepts_an_interior_capture_probe(self) -> None:
+        baseline = bytes(self.baseline)
+        digest = sha256_bytes(baseline)
+        selected = select_runtime_group_entry(
+            baseline,
+            confirmed_selected_group_capture(digest),
+            confirmed_stream_resolution(digest),
+        )
+        self.assertEqual(selected["target_file_offset"], 0x8000)
+        self.assertEqual(selected["pointer_address"], 0x4000)
+        self.assertEqual(
+            selected["intermediate_observed_target_file_offset"],
+            0x8000,
+        )
 
     def test_shared_target_is_rejected(self) -> None:
         self.baseline[0x103:0x106] = bytes.fromhex("02 00 80")

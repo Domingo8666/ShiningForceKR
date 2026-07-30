@@ -333,6 +333,36 @@ class TestDisplayCaptureTests(unittest.TestCase):
         self.assertFalse(capture["target_read"]["confirmed"])
         validate_display_capture(capture)
 
+    def test_missing_runtime_read_drops_unbound_selector_evidence(self) -> None:
+        selector = {
+            "status": "unresolved",
+            "lookup_table_base": 0x3FE8,
+            "baseline_selector_offset": 2,
+            "test_selector_offset": 2,
+            "selectors_match": True,
+            "baseline_entry_ordinal": 147,
+            "test_entry_ordinal": 147,
+            "ordinals_match": True,
+            "entry_index": None,
+            "pointer_address": None,
+            "next_pointer_address": None,
+            "target_offset_within_entry": None,
+            "pointer_bounds_target": False,
+        }
+        capture = _build_safe_capture(
+            build_report=build_report(),
+            resolution=resolution(),
+            emulator_version="3.9.14",
+            mapped_bank=None,
+            captures=[],
+            post_advance_capture=None,
+            entry_selector=selector,
+            group_entry={"untrusted": True},
+        )
+        self.assertIsNone(capture["entry_selector"])
+        self.assertIsNone(capture["group_entry"])
+        validate_display_capture(capture)
+
     def test_inconsistent_ready_state_is_rejected(self) -> None:
         capture = _build_safe_capture(
             build_report=build_report(),

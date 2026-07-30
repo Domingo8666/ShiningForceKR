@@ -298,7 +298,6 @@ def select_runtime_group_entry(
         or selector.get("baseline_entry_ordinal") != group.get("entry_ordinal")
         or selector.get("pointer_address") != group.get("group_pointer_address")
         or stream["pointer_bank"] != capture["target_read"]["expected_bank"]
-        or stream["pointer_address"] != group.get("target_logical_byte")
     ):
         raise PatchError("runtime group resolution evidence is inconsistent")
 
@@ -320,11 +319,17 @@ def select_runtime_group_entry(
     group_physical_start = (
         mapped_bank * 0x4000 + (pointer_address - 0x4000)
     )
+    stream_logical_address = int(stream["pointer_address"])
     expected_intermediate_target = (
         group_physical_start
-        + (int(group["target_logical_byte"]) - pointer_address)
+        + (stream_logical_address - pointer_address)
     )
-    if expected_intermediate_target != int(stream["target_file_offset"]):
+    if (
+        not pointer_address
+        <= stream_logical_address
+        <= int(group["entry_end_logical_byte_inclusive"])
+        or expected_intermediate_target != int(stream["target_file_offset"])
+    ):
         raise PatchError("runtime stream does not belong to the resolved group")
     target_file_offset = group_physical_start + entry_start_bit // 8
     target_logical_address = pointer_address + entry_start_bit // 8
