@@ -32,6 +32,9 @@ def _roundtrip() -> dict[str, object]:
         "decoded_entry_count": 3,
         "roundtrip_exact_entry_count": 3,
         "terminator_exact_entry_count": 3,
+        "zero_length_entry_count": 0,
+        "decode_failed_entry_count": 0,
+        "unresolved_entry_count": 0,
         "total_record_bytes": 9,
         "total_decoded_symbols": 12,
         "total_encoded_bits": 67,
@@ -63,13 +66,14 @@ class ConfirmedGroupExtractTests(unittest.TestCase):
             ],
         )
 
-    def test_rejects_zero_length_or_truncated_records(self) -> None:
-        with self.assertRaisesRegex(ValueError, "record length"):
-            parse_length_prefixed_group(
-                bytes([0]),
-                physical_start=0,
-                entry_count=1,
-            )
+    def test_preserves_zero_length_and_rejects_truncated_records(self) -> None:
+        records = parse_length_prefixed_group(
+            bytes([0, 1, 0xAA]),
+            physical_start=0,
+            entry_count=2,
+        )
+        self.assertEqual(records[0]["record_length_bytes"], 0)
+        self.assertEqual(records[0]["payload"], b"")
         with self.assertRaisesRegex(ValueError, "record length"):
             parse_length_prefixed_group(
                 bytes([3, 1]),

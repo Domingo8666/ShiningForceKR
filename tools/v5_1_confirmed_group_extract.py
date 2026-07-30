@@ -101,6 +101,9 @@ ROUNDTRIP_KEYS = {
     "decoded_entry_count",
     "roundtrip_exact_entry_count",
     "terminator_exact_entry_count",
+    "zero_length_entry_count",
+    "decode_failed_entry_count",
+    "unresolved_entry_count",
     "total_record_bytes",
     "total_decoded_symbols",
     "total_encoded_bits",
@@ -195,7 +198,7 @@ def parse_length_prefixed_group(
         length = rom[cursor]
         payload_start = cursor + 1
         payload_end = payload_start + length
-        if length == 0 or payload_end > len(rom):
+        if payload_end > len(rom):
             raise ValueError("confirmed group record length is invalid")
         records.append(
             {
@@ -247,6 +250,8 @@ def extract_confirmed_group(
     local_records: list[dict[str, object]] = []
     roundtrip_count = 0
     terminator_count = 0
+    zero_length_count = 0
+    decode_failed_count = 0
     total_symbols = 0
     total_bits = 0
     for record in records:
@@ -254,28 +259,46 @@ def extract_confirmed_group(
         length = int(record["record_length_bytes"])
         payload = record["payload"]
         assert isinstance(payload, bytes)
-        symbols, encoded_bits = decode_symbols(
-            rom,
-            known,
-            trees,
-            start,
-            initial_symbol=CANDIDATE_END_SYMBOL,
-            end_symbol=CANDIDATE_END_SYMBOL,
-            max_symbols=0x1000,
-            max_bytes=length,
-        )
-        reencoded, reencoded_bits = encode_symbols(
-            trees,
-            symbols,
-            initial_symbol=CANDIDATE_END_SYMBOL,
-            end_symbol=CANDIDATE_END_SYMBOL,
-            max_bits=length * 8,
-        )
-        bit_exact = (
-            encoded_bits == reencoded_bits
-            and _bits_equal(payload, reencoded, encoded_bits)
-        )
-        exact_terminator = symbols.count(CANDIDATE_END_SYMBOL) == 1
+        symbols: list[int] = []
+        encoded_bits = 0
+        bit_exact = False
+        exact_terminator = False
+        decode_error: str | None = None
+        if length == 0:
+            zero_length_count += 1
+            decode_error = "zero-length-runtime-or-empty-record"
+        else:
+            try:
+                symbols, encoded_bits = decode_symbols(
+                    rom,
+                    known,
+                    trees,
+                    start,
+                    initial_symbol=CANDIDATE_END_SYMBOL,
+                    end_symbol=CANDIDATE_END_SYMBOL,
+                    max_symbols=0x1000,
+                    max_bytes=length,
+                )
+                reencoded, reencoded_bits = encode_symbols(
+                    trees,
+                    symbols,
+                    initial_symbol=CANDIDATE_END_SYMBOL,
+                    end_symbol=CANDIDATE_END_SYMBOL,
+                    max_bits=length * 8,
+                )
+                bit_exact = (
+                    encoded_bits == reencoded_bits
+                    and _bits_equal(payload, reencoded, encoded_bits)
+                )
+                exact_terminator = (
+                    symbols.count(CANDIDATE_END_SYMBOL) == 1
+                )
+                if not bit_exact or not exact_terminator:
+                    decode_error = "no-change-roundtrip-mismatch"
+                    decode_failed_count += 1
+            except PatchError as error:
+                decode_error = type(error).__name__
+                decode_failed_count += 1
         roundtrip_count += int(bit_exact)
         terminator_count += int(exact_terminator)
         total_symbols += len(symbols)
@@ -299,19 +322,24 @@ def extract_confirmed_group(
                 "encoded_bits": encoded_bits,
                 "roundtrip_exact": bit_exact,
                 "terminator_exact": exact_terminator,
+                "classification": (
+                    "decoded-roundtrip"
+                    if bit_exact and exact_terminator
+                    else "unresolved"
+                ),
+                "decode_error": decode_error,
             }
         )
-    if (
-        roundtrip_count != len(records)
-        or terminator_count != len(records)
-    ):
-        raise PatchError("confirmed group no-change roundtrip failed")
 
+    unresolved_count = zero_length_count + decode_failed_count
     safe_counts = {
         "parsed_entry_count": len(records),
         "decoded_entry_count": len(local_records),
         "roundtrip_exact_entry_count": roundtrip_count,
         "terminator_exact_entry_count": terminator_count,
+        "zero_length_entry_count": zero_length_count,
+        "decode_failed_entry_count": decode_failed_count,
+        "unresolved_entry_count": unresolved_count,
         "total_record_bytes": sum(
             int(record["record_length_bytes"]) for record in records
         ),
@@ -346,13 +374,22 @@ def build_confirmed_group_extract(
             "roundtrip_exact_entry_count",
             "terminator_exact_entry_count",
         )
-    ) and bool(layout["selected_record_matches"])
+    ) and (
+        int(roundtrip["unresolved_entry_count"]) == 0
+        and bool(layout["selected_record_matches"])
+    )
+    population_enumerated = (
+        int(roundtrip["parsed_entry_count"]) == entry_count
+        and bool(layout["selected_record_matches"])
+    )
     safe = {
         "artifact_kind": ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
         "status": (
             "confirmed-group-roundtrip-pass"
             if complete
+            else "confirmed-group-population-enumerated-with-unresolved"
+            if population_enumerated
             else "confirmed-group-roundtrip-incomplete"
         ),
         "target_sha256": target_sha256,
@@ -376,6 +413,8 @@ def build_confirmed_group_extract(
         "next_checkpoint": (
             "map-confirmed-group-glyphs-to-unicode"
             if complete
+            else "classify-confirmed-group-unresolved-records"
+            if population_enumerated
             else "repair-confirmed-group-extraction"
         ),
     }
@@ -392,6 +431,7 @@ def validate_confirmed_group_extract(value: dict[str, object]) -> None:
         or value["status"]
         not in {
             "confirmed-group-roundtrip-pass",
+            "confirmed-group-population-enumerated-with-unresolved",
             "confirmed-group-roundtrip-incomplete",
         }
         or not all(
@@ -438,10 +478,23 @@ def validate_confirmed_group_extract(value: dict[str, object]) -> None:
     if not isinstance(roundtrip, dict) or set(roundtrip) != ROUNDTRIP_KEYS:
         raise ValueError("confirmed group roundtrip fields do not match")
     for key in ROUNDTRIP_KEYS:
-        if not _bounded_int(roundtrip[key], 1, 0x1000000):
+        minimum = (
+            1
+            if key
+            in {
+                "parsed_entry_count",
+                "total_record_bytes",
+                "total_decoded_symbols",
+                "total_encoded_bits",
+                "maximum_record_bytes",
+            }
+            else 0
+        )
+        if not _bounded_int(roundtrip[key], minimum, 0x1000000):
             raise ValueError(f"confirmed group {key} is invalid")
     count = int(group["declared_entry_count"])
-    complete = all(
+    population_enumerated = roundtrip["parsed_entry_count"] == count
+    complete = population_enumerated and all(
         roundtrip[key] == count
         for key in (
             "parsed_entry_count",
@@ -449,16 +502,30 @@ def validate_confirmed_group_extract(value: dict[str, object]) -> None:
             "roundtrip_exact_entry_count",
             "terminator_exact_entry_count",
         )
+    ) and roundtrip["unresolved_entry_count"] == 0
+    if (
+        roundtrip["zero_length_entry_count"]
+        + roundtrip["decode_failed_entry_count"]
+        != roundtrip["unresolved_entry_count"]
+    ):
+        raise ValueError("confirmed group unresolved counts are inconsistent")
+    expected_status = (
+        "confirmed-group-roundtrip-pass"
+        if complete
+        else "confirmed-group-population-enumerated-with-unresolved"
+        if population_enumerated
+        else "confirmed-group-roundtrip-incomplete"
+    )
+    expected_checkpoint = (
+        "map-confirmed-group-glyphs-to-unicode"
+        if complete
+        else "classify-confirmed-group-unresolved-records"
+        if population_enumerated
+        else "repair-confirmed-group-extraction"
     )
     if (
-        (value["status"] == "confirmed-group-roundtrip-pass")
-        is not complete
-        or value["next_checkpoint"]
-        != (
-            "map-confirmed-group-glyphs-to-unicode"
-            if complete
-            else "repair-confirmed-group-extraction"
-        )
+        value["status"] != expected_status
+        or value["next_checkpoint"] != expected_checkpoint
     ):
         raise ValueError("confirmed group result is inconsistent")
     if value["local_payload_policy"] != (

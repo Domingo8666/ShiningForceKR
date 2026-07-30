@@ -413,14 +413,18 @@ def main() -> int:
         raise SystemExit("confirmed group Unicode mapping input is missing")
     group = _load_json_object(group_path)
     validate_confirmed_group_extract(group)
+    if group["status"] != "confirmed-group-roundtrip-pass":
+        if args.if_ready:
+            print("Confirmed group Unicode waits for unresolved records")
+            return 0
+        raise SystemExit("confirmed group extraction is incomplete")
     visible = _load_json_object(visible_mapping_path)
     validate_visible_unicode_mapping(visible)
     local_group = _load_json_object(local_group_path)
     local_visible = _load_json_object(local_visible_mapping_path)
     catalog = _load_json_object(catalog_path)
     if (
-        group["status"] != "confirmed-group-roundtrip-pass"
-        or group["target_sha256"] != visible["target_sha256"]
+        group["target_sha256"] != visible["target_sha256"]
         or local_group.get("target_sha256") != group["target_sha256"]
         or local_visible.get("target_sha256") != group["target_sha256"]
         or catalog.get("artifact_kind")
