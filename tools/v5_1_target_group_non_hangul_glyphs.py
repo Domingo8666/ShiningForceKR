@@ -44,7 +44,7 @@ except ImportError:  # direct script execution
 
 
 ARTIFACT_KIND = "sanitized-v5-1-target-group-non-hangul-glyphs"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_target_group_non_hangul_glyphs.json"
 )
@@ -72,6 +72,8 @@ CLASSIFICATION_KEYS = {
     "outside_font_range_distinct_count",
     "unique_exact_distinct_count",
     "unique_exact_occurrence_count",
+    "equivalent_exact_distinct_count",
+    "equivalent_exact_occurrence_count",
     "ambiguous_exact_distinct_count",
     "ambiguous_exact_occurrence_count",
     "unmatched_distinct_count",
@@ -164,9 +166,42 @@ def classify_exact_non_hangul(
                 }
             )
         elif candidates:
-            status = "ambiguous-exact-non-hangul"
-            counts["ambiguous_exact_distinct_count"] += 1
-            counts["ambiguous_exact_occurrence_count"] += occurrence_count
+            normalized = {
+                unicodedata.normalize("NFKC", chr(codepoint))
+                for codepoint in candidates
+            }
+            normalized_character = (
+                next(iter(normalized))
+                if len(normalized) == 1
+                else None
+            )
+            if (
+                isinstance(normalized_character, str)
+                and len(normalized_character) == 1
+                and _eligible_non_hangul(ord(normalized_character))
+            ):
+                status = "equivalent-exact-non-hangul"
+                counts["equivalent_exact_distinct_count"] += 1
+                counts["equivalent_exact_occurrence_count"] += (
+                    occurrence_count
+                )
+                overrides.append(
+                    {
+                        "page": page,
+                        "symbol": symbol,
+                        "codepoint": ord(normalized_character),
+                        "character": normalized_character,
+                        "resolution_source": (
+                            "exact-non-hangul-nfkc-equivalent"
+                        ),
+                    }
+                )
+            else:
+                status = "ambiguous-exact-non-hangul"
+                counts["ambiguous_exact_distinct_count"] += 1
+                counts["ambiguous_exact_occurrence_count"] += (
+                    occurrence_count
+                )
         else:
             status = "unmatched"
             counts["unmatched_distinct_count"] += 1
@@ -214,7 +249,10 @@ def build_target_group_non_hangul_glyphs(
     classification: dict[str, object],
     captured_utc: str,
 ) -> dict[str, object]:
-    exact = int(classification["unique_exact_distinct_count"])
+    exact = (
+        int(classification["unique_exact_distinct_count"])
+        + int(classification["equivalent_exact_distinct_count"])
+    )
     value = {
         "artifact_kind": ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
@@ -233,7 +271,8 @@ def build_target_group_non_hangul_glyphs(
         },
         "exact_match_policy": {
             "pixel_distance": 0,
-            "unique_reference_required": True,
+            "unique_reference_or_nfkc_consensus_required": True,
+            "nfkc_consensus_must_be_single_character": True,
             "non_hangul_reference_only": True,
             "visible_unicode_category_required": True,
         },
@@ -282,7 +321,10 @@ def validate_target_group_non_hangul_glyphs(
             raise ValueError(f"non-Hangul glyph {key} is invalid")
     distinct = int(counts["distinct_glyph_count"])
     occurrences = int(counts["occurrence_count"])
-    exact = int(counts["unique_exact_distinct_count"])
+    exact = (
+        int(counts["unique_exact_distinct_count"])
+        + int(counts["equivalent_exact_distinct_count"])
+    )
     expected_status = (
         "exact-non-hangul-overrides-ready"
         if exact > 0
@@ -292,17 +334,20 @@ def validate_target_group_non_hangul_glyphs(
         counts["in_range_distinct_count"]
         + counts["outside_font_range_distinct_count"] != distinct
         or counts["unique_exact_distinct_count"]
+        + counts["equivalent_exact_distinct_count"]
         + counts["ambiguous_exact_distinct_count"]
         + counts["unmatched_distinct_count"]
         != counts["in_range_distinct_count"]
         or counts["unique_exact_occurrence_count"]
+        + counts["equivalent_exact_occurrence_count"]
         + counts["ambiguous_exact_occurrence_count"]
         + counts["unmatched_occurrence_count"] != occurrences
         or value["status"] != expected_status
         or value["exact_match_policy"]
         != {
             "pixel_distance": 0,
-            "unique_reference_required": True,
+            "unique_reference_or_nfkc_consensus_required": True,
+            "nfkc_consensus_must_be_single_character": True,
             "non_hangul_reference_only": True,
             "visible_unicode_category_required": True,
         }

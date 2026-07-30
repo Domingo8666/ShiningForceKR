@@ -336,13 +336,20 @@ def main() -> int:
         non_hangul_glyphs["classification"][
             "unique_exact_occurrence_count"
         ]
+        + non_hangul_glyphs["classification"][
+            "equivalent_exact_occurrence_count"
+        ]
     )
     applied_exact_non_hangul_occurrences = sum(
         1
         for record in corpus
         for token in record.get("tokens", [])
         if isinstance(token, dict)
-        and token.get("resolution_source") == "exact-non-hangul-bdf"
+        and token.get("resolution_source")
+        in {
+            "exact-non-hangul-bdf",
+            "exact-non-hangul-nfkc-equivalent",
+        }
     )
     if (
         applied_exact_non_hangul_occurrences
