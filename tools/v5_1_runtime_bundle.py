@@ -8,6 +8,9 @@ import json
 from pathlib import Path
 
 try:
+    from .v5_1_decoder_register_trace import (
+        validate_decoder_register_trace,
+    )
     from .v5_1_decoder_stream_resolution import (
         validate_decoder_stream_resolution,
     )
@@ -21,6 +24,7 @@ try:
     from .v5_1_route_capture import validate_route_capture
     from .v5_1_safe_observation import _git, _normalized_remote
 except ImportError:  # direct script execution
+    from v5_1_decoder_register_trace import validate_decoder_register_trace
     from v5_1_decoder_stream_resolution import (
         validate_decoder_stream_resolution,
     )
@@ -39,6 +43,8 @@ DEFAULT_GIT_NAME = "Domingo8666"
 DEFAULT_GIT_EMAIL = "145947995+Domingo8666@users.noreply.github.com"
 
 SAFE_ARTIFACTS = {
+    Path("analysis/device/v5_1_latest_decoder_register_trace.json"):
+        validate_decoder_register_trace,
     Path("analysis/device/v5_1_latest_decoder_stream_resolution.json"):
         validate_decoder_stream_resolution,
     Path("analysis/device/v5_1_latest_runtime_observation.json"):

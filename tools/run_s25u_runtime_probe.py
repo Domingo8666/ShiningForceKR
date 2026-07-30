@@ -101,6 +101,7 @@ RUNTIME_FAILURE_STAGES = {
     "renderer-probe",
     "decoder-stream-resolution",
     "route-capture",
+    "decoder-register-trace",
     "test-patch",
     "test-patch-fixed-count-roundtrip",
     "test-patch-fixed-count-read-range",

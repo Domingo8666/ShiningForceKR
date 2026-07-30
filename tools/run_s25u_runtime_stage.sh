@@ -50,6 +50,13 @@ group_selection_ready() {
   [ "$group_ready" = "yes" ]
 }
 
+decoder_register_trace_needed() {
+  trace_needed="$(
+    python -c 'from pathlib import Path; from tools.v5_1_decoder_register_trace import decoder_register_trace_needed; print("yes" if decoder_register_trace_needed(Path(".")) else "no")' 2>/dev/null || true
+  )"
+  [ "$trace_needed" = "yes" ]
+}
+
 record_stage_failure() {
   python tools/v5_1_runtime_stage_failure.py \
     --stage "$1" \
@@ -106,6 +113,16 @@ else
           fi
         fi
       fi
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ] && decoder_register_trace_needed; then
+    python tools/v5_1_decoder_register_trace.py
+    register_trace_status=$?
+    if [ "$register_trace_status" -ne 0 ]; then
+      stage_status="$register_trace_status"
+      diagnostic_trigger=probe
+      record_stage_failure decoder-register-trace
     fi
   fi
 
