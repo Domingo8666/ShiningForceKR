@@ -35,7 +35,7 @@ def _catalog() -> list[dict[str, object]]:
 def _artifact() -> dict[str, object]:
     return {
         "artifact_kind": "sanitized-v5-1-visible-unicode-mapping",
-        "schema_version": 2,
+        "schema_version": 3,
         "status": "visible-glyph-map-resolved",
         "target_sha256": "1" * 64,
         "captured_utc": "2026-07-30T11:00:00Z",
@@ -48,6 +48,7 @@ def _artifact() -> dict[str, object]:
         "mapping": {
             "decoded_symbol_count": 6,
             "initial_page": 0,
+            "initial_page_candidate_count": 0,
             "implicit_initial_page_used": False,
             "page_select_count": 1,
             "visible_glyph_count": 2,
@@ -74,6 +75,7 @@ class VisibleUnicodeMappingTests(unittest.TestCase):
         )
         self.assertEqual(safe["page_select_count"], 1)
         self.assertEqual(safe["initial_page"], 0)
+        self.assertEqual(safe["initial_page_candidate_count"], 0)
         self.assertFalse(safe["implicit_initial_page_used"])
         self.assertEqual(safe["visible_glyph_count"], 2)
         self.assertEqual(safe["unique_glyph_count"], 2)
@@ -106,8 +108,28 @@ class VisibleUnicodeMappingTests(unittest.TestCase):
         safe, local = map_visible_symbols([0x02, 0x03, 0xC9], catalog)
         self.assertEqual(safe["visible_glyph_count"], 2)
         self.assertEqual(safe["initial_page"], 0)
+        self.assertEqual(safe["initial_page_candidate_count"], 1)
         self.assertTrue(safe["implicit_initial_page_used"])
         self.assertEqual(local["tokens"][0]["characters"], ["가"])
+
+    def test_reports_tied_implicit_initial_page_candidates(self) -> None:
+        catalog = [
+            {
+                "page": page,
+                "symbol": 0x02,
+                "status": "unique",
+                "codepoints": [f"U+{0xAC00 + page:04X}"],
+                "characters": [chr(0xAC00 + page)],
+            }
+            for page in (0, 1)
+        ]
+        safe, local = map_visible_symbols([0x02, 0xC9], catalog)
+        self.assertEqual(safe["initial_page"], 0)
+        self.assertEqual(safe["initial_page_candidate_count"], 2)
+        self.assertEqual(
+            [item["page"] for item in local["initial_page_candidates"]],
+            [0, 1],
+        )
 
     def test_counts_unmatched_glyph_without_guessing(self) -> None:
         safe, _ = map_visible_symbols(

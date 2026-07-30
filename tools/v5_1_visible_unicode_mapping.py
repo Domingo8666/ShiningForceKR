@@ -35,7 +35,7 @@ except ImportError:  # direct script execution
 
 
 ARTIFACT_KIND = "sanitized-v5-1-visible-unicode-mapping"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_visible_unicode_mapping.json"
 )
@@ -70,6 +70,7 @@ RUNTIME_ENTRY_KEYS = {
 MAPPING_KEYS = {
     "decoded_symbol_count",
     "initial_page",
+    "initial_page_candidate_count",
     "implicit_initial_page_used",
     "page_select_count",
     "visible_glyph_count",
@@ -145,6 +146,9 @@ def validate_visible_unicode_mapping(value: dict[str, object]) -> None:
         or mapping["implicit_initial_page_used"]
         is not (mapping["page_select_count"] == 0)
         or mapping["initial_page"] > 243
+        or mapping["initial_page_candidate_count"] > 244
+        or mapping["implicit_initial_page_used"]
+        is not (mapping["initial_page_candidate_count"] > 0)
         or mapping["decoded_symbol_count"] < mapping["visible_glyph_count"]
         or mapping["visible_glyph_count"]
         != mapping["unique_glyph_count"]
@@ -161,7 +165,9 @@ def validate_visible_unicode_mapping(value: dict[str, object]) -> None:
     )
     expected_status = (
         "visible-glyph-map-candidate"
-        if complete and mapping["implicit_initial_page_used"]
+        if complete
+        and mapping["implicit_initial_page_used"]
+        and mapping["initial_page_candidate_count"] == 1
         else "visible-glyph-map-resolved"
         if complete
         else "visible-glyph-map-incomplete"
@@ -183,21 +189,12 @@ def validate_visible_unicode_mapping(value: dict[str, object]) -> None:
         raise ValueError("visible Unicode next checkpoint is inconsistent")
 
 
-def map_visible_symbols(
+def _map_visible_symbols_with_page(
     symbols: list[int],
-    catalog_entries: list[dict[str, object]],
-) -> tuple[dict[str, int], dict[str, object]]:
-    catalog: dict[tuple[int, int], dict[str, object]] = {}
-    for entry in catalog_entries:
-        if not isinstance(entry, dict):
-            raise ValueError("font catalog entry is invalid")
-        page = entry.get("page")
-        symbol = entry.get("symbol")
-        if not isinstance(page, int) or not isinstance(symbol, int):
-            raise ValueError("font catalog coordinate is invalid")
-        catalog[(page, symbol)] = entry
-
-    page = 0
+    catalog: dict[tuple[int, int], dict[str, object]],
+    initial_page: int,
+) -> tuple[dict[str, object], dict[str, object]]:
+    page = initial_page
     initial_page = page
     explicit_page_selected = False
     page_select_count = 0
@@ -283,6 +280,58 @@ def map_visible_symbols(
     return safe, local
 
 
+def map_visible_symbols(
+    symbols: list[int],
+    catalog_entries: list[dict[str, object]],
+) -> tuple[dict[str, object], dict[str, object]]:
+    catalog: dict[tuple[int, int], dict[str, object]] = {}
+    for entry in catalog_entries:
+        if not isinstance(entry, dict):
+            raise ValueError("font catalog entry is invalid")
+        page = entry.get("page")
+        symbol = entry.get("symbol")
+        if not isinstance(page, int) or not isinstance(symbol, int):
+            raise ValueError("font catalog coordinate is invalid")
+        catalog[(page, symbol)] = entry
+
+    if 0x5F in symbols:
+        safe, local = _map_visible_symbols_with_page(symbols, catalog, 0)
+        safe["initial_page_candidate_count"] = 0
+        local["initial_page_candidates"] = []
+        return safe, local
+
+    trials: list[tuple[tuple[int, int, int], dict[str, object], dict[str, object]]] = []
+    for initial_page in range(244):
+        safe, local = _map_visible_symbols_with_page(
+            symbols,
+            catalog,
+            initial_page,
+        )
+        score = (
+            int(safe["unmatched_glyph_count"]),
+            int(safe["ambiguous_glyph_count"]),
+            -int(safe["unique_glyph_count"]),
+        )
+        trials.append((score, safe, local))
+    best_score = min(item[0] for item in trials)
+    best = [item for item in trials if item[0] == best_score]
+    _, selected_safe, selected_local = min(
+        best,
+        key=lambda item: int(item[1]["initial_page"]),
+    )
+    selected_safe["initial_page_candidate_count"] = len(best)
+    selected_local["initial_page_candidates"] = [
+        {
+            "page": int(item[1]["initial_page"]),
+            "unique_glyph_count": int(item[1]["unique_glyph_count"]),
+            "ambiguous_glyph_count": int(item[1]["ambiguous_glyph_count"]),
+            "unmatched_glyph_count": int(item[1]["unmatched_glyph_count"]),
+        }
+        for item in best
+    ]
+    return selected_safe, selected_local
+
+
 def _load_object(path: Path) -> dict[str, object]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -362,7 +411,9 @@ def main() -> int:
     )
     status = (
         "visible-glyph-map-candidate"
-        if complete and safe_mapping["implicit_initial_page_used"]
+        if complete
+        and safe_mapping["implicit_initial_page_used"]
+        and safe_mapping["initial_page_candidate_count"] == 1
         else "visible-glyph-map-resolved"
         if complete
         else "visible-glyph-map-incomplete"
