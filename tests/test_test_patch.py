@@ -162,6 +162,7 @@ def confirmed_selected_group_capture(target_sha256: str) -> dict[str, object]:
             "entry_start_logical_byte": 0x4001,
             "entry_end_logical_byte_inclusive": 0x4002,
             "target_logical_byte": 0x4000,
+            "observed_b_matches_target_candidates": False,
             "target_byte_candidates": [
                 {
                     "entry_ordinal": 0,
@@ -256,18 +257,29 @@ class TestPatchTests(unittest.TestCase):
         self.assertEqual(selected["group_entry_start_bit"], 2)
         self.assertEqual(selected["runtime_encoded_bits"], 1)
 
-    def test_runtime_group_entry_accepts_an_interior_capture_probe(self) -> None:
+    def test_runtime_group_entry_uses_interior_read_as_skip_candidate(self) -> None:
         baseline = bytes(self.baseline)
         digest = sha256_bytes(baseline)
-        with self.assertRaisesRegex(
-            PatchError,
-            "does not confirm the B-selected group entry",
-        ):
-            select_runtime_group_entry(
-                baseline,
-                confirmed_selected_group_capture(digest),
-                confirmed_stream_resolution(digest),
-            )
+        selected = select_runtime_group_entry(
+            baseline,
+            confirmed_selected_group_capture(digest),
+            confirmed_stream_resolution(digest),
+        )
+        self.assertEqual(
+            selected["kind"],
+            "runtime-group-selected-entry-candidate",
+        )
+        self.assertEqual(
+            selected["selection_basis"],
+            "runtime-b-skip-candidate-needs-direct-read",
+        )
+        self.assertEqual(selected["target_file_offset"], 0x8001)
+        self.assertEqual(selected["pointer_address"], 0x4001)
+        self.assertEqual(selected["group_entry_ordinal"], 1)
+        self.assertEqual(
+            selected["intermediate_observed_target_file_offset"],
+            0x8000,
+        )
 
     def test_shared_target_is_rejected(self) -> None:
         self.baseline[0x103:0x106] = bytes.fromhex("02 00 80")

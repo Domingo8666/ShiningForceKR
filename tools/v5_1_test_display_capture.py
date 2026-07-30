@@ -1474,14 +1474,24 @@ def main() -> int:
                 "runtime-group-"
             )
         ):
+            selected_entry_probe = (
+                built_entry.get("kind")
+                == "runtime-group-selected-entry-candidate"
+            )
             logical_access = int(
-                built_entry[
+                built_entry["pointer_address"]
+                if selected_entry_probe
+                else built_entry[
                     "intermediate_observed_target_logical_address"
                 ]
             )
             expected_bank = int(built_entry["pointer_bank"])
             physical_target_byte = int(
-                built_entry["intermediate_observed_target_file_offset"]
+                built_entry["target_file_offset"]
+                if selected_entry_probe
+                else built_entry[
+                    "intermediate_observed_target_file_offset"
+                ]
             )
             instruction_bank = int(
                 built_entry["runtime_instruction_bank"]

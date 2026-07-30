@@ -126,6 +126,15 @@ class TestPhraseTests(unittest.TestCase):
         )
         self.assertEqual(plan["encoding"]["final_selected_page"], 6)
 
+    def test_exact_106_bit_selected_group_phrase_is_deterministic(self) -> None:
+        plan = build_length_preserving_test_phrase_plan(self.patch, 106)
+        self.assertEqual(plan["encoding"]["encoded_bits"], 106)
+        self.assertEqual(
+            plan["encoding"]["encoded_hex"],
+            "ea4a95d4a95d4a95d512d32d4400",
+        )
+        self.assertEqual(plan["encoding"]["final_selected_page"], 6)
+
     def test_exact_200_bit_observed_entry_phrase_is_deterministic(self) -> None:
         plan = build_length_preserving_test_phrase_plan(self.patch, 200)
         self.assertEqual(plan["encoding"]["encoded_bits"], 200)
