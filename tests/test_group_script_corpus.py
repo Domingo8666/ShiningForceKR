@@ -54,7 +54,12 @@ class GroupScriptCorpusTests(unittest.TestCase):
                 },
             ],
             fuzzy_overrides=[
-                {"page": 2, "symbol": 4, "character": "나"},
+                {
+                    "page": 2,
+                    "symbol": 4,
+                    "character": "나",
+                    "resolution_source": "exact-non-hangul-bdf",
+                },
             ],
         )
         self.assertEqual(counts["record_count"], 2)
@@ -72,6 +77,10 @@ class GroupScriptCorpusTests(unittest.TestCase):
             "가⟦CTRL:D0⟧⟦GLYPH:01:03⟧",
         )
         self.assertEqual(corpus[1]["translation_text"], "나")
+        self.assertEqual(
+            corpus[1]["tokens"][0]["resolution_source"],
+            "exact-non-hangul-bdf",
+        )
 
     def test_builds_safe_counts_and_rejects_text_leakage(self) -> None:
         artifact = build_group_script_corpus(

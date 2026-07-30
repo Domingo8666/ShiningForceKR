@@ -405,6 +405,16 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_target_group_non_hangul_glyphs.py --if-ready
+    target_group_non_hangul_glyphs_status=$?
+    if [ "$target_group_non_hangul_glyphs_status" -ne 0 ]; then
+      stage_status="$target_group_non_hangul_glyphs_status"
+      diagnostic_trigger=probe
+      record_stage_failure target-group-non-hangul-glyphs
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_target_group_expanded_corpus.py --if-ready
     target_group_expanded_corpus_status=$?
     if [ "$target_group_expanded_corpus_status" -ne 0 ]; then

@@ -3,10 +3,41 @@ from __future__ import annotations
 import unittest
 
 from tools.patch_io import PatchError
-from tools.v5_1_font_catalog import match_masks, tile_ink_mask
+from tools.v5_1_font_catalog import (
+    _parse_bdf_glyphs,
+    match_masks,
+    tile_ink_mask,
+)
 
 
 class FontCatalogTests(unittest.TestCase):
+    def test_bdf_parser_keeps_only_glyphs_that_fit_eight_pixels(self) -> None:
+        glyphs = _parse_bdf_glyphs(
+            """
+STARTCHAR small
+ENCODING 33
+BBX 1 2 0 0
+BITMAP
+80
+80
+ENDCHAR
+STARTCHAR empty
+ENCODING 32
+BBX 0 0 0 0
+BITMAP
+ENDCHAR
+STARTCHAR wide
+ENCODING 1000
+BBX 9 1 0 0
+BITMAP
+FF80
+ENDCHAR
+""".splitlines()
+        )
+        self.assertEqual(glyphs[33], (0, 0, 0, 0, 0, 0, 0x80, 0x80))
+        self.assertEqual(glyphs[32], (0,) * 8)
+        self.assertNotIn(1000, glyphs)
+
     def test_game_gear_tile_planes_collapse_to_ink_mask(self) -> None:
         tile = bytes(
             value

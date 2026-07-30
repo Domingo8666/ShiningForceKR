@@ -231,6 +231,7 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_target_group_population_decode.json|\
     analysis/device/v5_1_latest_target_group_expanded_corpus.json|\
     analysis/device/v5_1_latest_target_group_expanded_glyphs.json|\
+    analysis/device/v5_1_latest_target_group_non_hangul_glyphs.json|\
     analysis/device/v5_1_latest_target_group_record_quality.json|\
     analysis/device/v5_1_latest_source_script_reference.json|\
     analysis/device/v5_1_latest_source_target_anchor.json|\

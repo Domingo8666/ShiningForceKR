@@ -38,44 +38,83 @@ HANGUL_FIRST = 0xAC00
 HANGUL_LAST = 0xD7A3
 
 
-def parse_bdf_hangul(data: bytes) -> dict[int, tuple[int, ...]]:
-    """Parse 8-pixel-wide Hangul bitmap rows from the verified BDF."""
+def _parse_bdf_glyphs(
+    lines: list[str],
+) -> dict[int, tuple[int, ...]]:
+    """Parse BDF glyphs that fit the game's eight-pixel cell."""
 
-    if len(data) != BDF_SIZE or digest(data) != BDF_SHA256:
-        raise PatchError("Galmuri7 BDF identity mismatch")
-    lines = data.decode("utf-8").splitlines()
     glyphs: dict[int, tuple[int, ...]] = {}
     encoding: int | None = None
+    width: int | None = None
+    height: int | None = None
     bitmap_rows: list[int] | None = None
+    bitmap_supported = True
     for line in lines:
         if line.startswith("ENCODING "):
             encoding = int(line.split()[1])
+        elif line.startswith("BBX "):
+            parts = line.split()
+            width = int(parts[1])
+            height = int(parts[2])
         elif line == "BITMAP":
             bitmap_rows = []
+            bitmap_supported = True
         elif line == "ENDCHAR":
             if (
                 encoding is not None
-                and HANGUL_FIRST <= encoding <= HANGUL_LAST
+                and encoding >= 0
+                and width is not None
+                and height is not None
+                and 0 <= width <= 8
+                and 0 <= height <= 8
                 and bitmap_rows is not None
+                and bitmap_supported
+                and len(bitmap_rows) == height
             ):
                 if encoding in glyphs:
                     raise PatchError(f"duplicate BDF encoding U+{encoding:04X}")
-                if not 1 <= len(bitmap_rows) <= 8 or any(
-                    not 0 <= row <= 0xFF for row in bitmap_rows
-                ):
-                    raise PatchError(
-                        f"unsupported Galmuri7 Hangul bitmap U+{encoding:04X}"
-                    )
                 glyphs[encoding] = tuple(
                     [0] * (8 - len(bitmap_rows)) + bitmap_rows
                 )
             encoding = None
+            width = None
+            height = None
             bitmap_rows = None
+            bitmap_supported = True
         elif bitmap_rows is not None and re.fullmatch(
             r"[0-9A-Fa-f]{2}",
             line,
         ):
             bitmap_rows.append(int(line, 16))
+        elif bitmap_rows is not None and re.fullmatch(
+            r"[0-9A-Fa-f]+",
+            line,
+        ):
+            bitmap_supported = False
+    return glyphs
+
+
+def parse_bdf_glyphs(data: bytes) -> dict[int, tuple[int, ...]]:
+    """Parse every verified Galmuri7 glyph that fits an 8×8 cell."""
+
+    if len(data) != BDF_SIZE or digest(data) != BDF_SHA256:
+        raise PatchError("Galmuri7 BDF identity mismatch")
+    glyphs = _parse_bdf_glyphs(data.decode("utf-8").splitlines())
+    if len(glyphs) < 11_172:
+        raise PatchError(
+            f"unexpected Galmuri7 8x8 glyph count: {len(glyphs)}"
+        )
+    return glyphs
+
+
+def parse_bdf_hangul(data: bytes) -> dict[int, tuple[int, ...]]:
+    """Parse 8-pixel-wide Hangul bitmap rows from the verified BDF."""
+
+    glyphs = {
+        codepoint: mask
+        for codepoint, mask in parse_bdf_glyphs(data).items()
+        if HANGUL_FIRST <= codepoint <= HANGUL_LAST
+    }
     if len(glyphs) != 11_172:
         raise PatchError(
             f"unexpected Galmuri7 Hangul glyph count: {len(glyphs)}"

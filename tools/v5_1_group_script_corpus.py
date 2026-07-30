@@ -177,7 +177,12 @@ def assemble_script_corpus(
                 override = override_index.get((page, symbol))
                 if override is not None:
                     character = str(override["character"])
-                    source = "fuzzy-high-confidence"
+                    source = str(
+                        override.get(
+                            "resolution_source",
+                            "fuzzy-high-confidence",
+                        )
+                    )
                     override_occurrences += 1
                     record_overrides += 1
             if character is None:

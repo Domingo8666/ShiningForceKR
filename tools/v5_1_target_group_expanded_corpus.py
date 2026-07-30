@@ -29,6 +29,11 @@ try:
         PUBLISH_RELATIVE_PATH as EXPANDED_GLYPHS_PATH,
         validate_target_group_expanded_glyphs,
     )
+    from .v5_1_target_group_non_hangul_glyphs import (
+        LOCAL_REPORT_PATH as LOCAL_NON_HANGUL_GLYPHS_PATH,
+        PUBLISH_RELATIVE_PATH as NON_HANGUL_GLYPHS_PATH,
+        validate_target_group_non_hangul_glyphs,
+    )
 except ImportError:  # direct script execution
     from patch_io import sha256_file
     from v5_1_group_script_corpus import assemble_script_corpus
@@ -43,10 +48,15 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as EXPANDED_GLYPHS_PATH,
         validate_target_group_expanded_glyphs,
     )
+    from v5_1_target_group_non_hangul_glyphs import (
+        LOCAL_REPORT_PATH as LOCAL_NON_HANGUL_GLYPHS_PATH,
+        PUBLISH_RELATIVE_PATH as NON_HANGUL_GLYPHS_PATH,
+        validate_target_group_non_hangul_glyphs,
+    )
 
 
 ARTIFACT_KIND = "sanitized-v5-1-target-group-expanded-corpus"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_target_group_expanded_corpus.json"
 )
@@ -63,6 +73,7 @@ TOP_LEVEL_KEYS = {
     "target_sha256",
     "source_population_decode_sha256",
     "source_expanded_glyphs_sha256",
+    "source_non_hangul_glyphs_sha256",
     "local_corpus_sha256",
     "captured_utc",
     "corpus",
@@ -84,6 +95,7 @@ CORPUS_KEYS = {
     "control_token_count",
     "unresolved_glyph_occurrence_count",
     "high_confidence_override_occurrence_count",
+    "exact_non_hangul_override_occurrence_count",
 }
 
 
@@ -107,6 +119,7 @@ def build_target_group_expanded_corpus(
     target_sha256: str,
     source_population_decode_sha256: str,
     source_expanded_glyphs_sha256: str,
+    source_non_hangul_glyphs_sha256: str,
     local_corpus_sha256: str,
     corpus: dict[str, object],
     captured_utc: str,
@@ -125,6 +138,8 @@ def build_target_group_expanded_corpus(
             source_population_decode_sha256,
         "source_expanded_glyphs_sha256":
             source_expanded_glyphs_sha256,
+        "source_non_hangul_glyphs_sha256":
+            source_non_hangul_glyphs_sha256,
         "local_corpus_sha256": local_corpus_sha256,
         "captured_utc": captured_utc,
         "corpus": {
@@ -166,6 +181,7 @@ def validate_target_group_expanded_corpus(
         or not _is_sha256(value["target_sha256"])
         or not _is_sha256(value["source_population_decode_sha256"])
         or not _is_sha256(value["source_expanded_glyphs_sha256"])
+        or not _is_sha256(value["source_non_hangul_glyphs_sha256"])
         or not _is_sha256(value["local_corpus_sha256"])
     ):
         raise ValueError("expanded target corpus policy is invalid")
@@ -230,6 +246,8 @@ def main() -> int:
     local_decode_path = root / LOCAL_DECODE_PATH
     expanded_glyphs_path = root / EXPANDED_GLYPHS_PATH
     local_expanded_glyphs_path = root / LOCAL_EXPANDED_GLYPHS_PATH
+    non_hangul_glyphs_path = root / NON_HANGUL_GLYPHS_PATH
+    local_non_hangul_glyphs_path = root / LOCAL_NON_HANGUL_GLYPHS_PATH
     if not all(
         path.is_file()
         for path in (
@@ -237,6 +255,8 @@ def main() -> int:
             local_decode_path,
             expanded_glyphs_path,
             local_expanded_glyphs_path,
+            non_hangul_glyphs_path,
+            local_non_hangul_glyphs_path,
         )
     ):
         if args.if_ready:
@@ -247,14 +267,25 @@ def main() -> int:
     local_decode = _load_json_object(local_decode_path)
     expanded_glyphs = _load_json_object(expanded_glyphs_path)
     local_expanded_glyphs = _load_json_object(local_expanded_glyphs_path)
+    non_hangul_glyphs = _load_json_object(non_hangul_glyphs_path)
+    local_non_hangul_glyphs = _load_json_object(
+        local_non_hangul_glyphs_path
+    )
     validate_target_group_population_decode(safe_decode)
     validate_target_group_expanded_glyphs(expanded_glyphs)
+    validate_target_group_non_hangul_glyphs(non_hangul_glyphs)
     if (
         local_decode.get("target_sha256") != safe_decode["target_sha256"]
         or expanded_glyphs["target_sha256"] != safe_decode["target_sha256"]
         or expanded_glyphs["source_population_decode_sha256"]
         != sha256_file(safe_decode_path)
         or local_expanded_glyphs.get("target_sha256")
+        != safe_decode["target_sha256"]
+        or non_hangul_glyphs["target_sha256"]
+        != safe_decode["target_sha256"]
+        or non_hangul_glyphs["source_expanded_glyphs_sha256"]
+        != sha256_file(expanded_glyphs_path)
+        or local_non_hangul_glyphs.get("target_sha256")
         != safe_decode["target_sha256"]
     ):
         raise ValueError("expanded target corpus identity disagrees")
@@ -278,9 +309,55 @@ def main() -> int:
     )
     if not isinstance(overrides, list):
         raise ValueError("expanded target corpus glyph overrides are missing")
+    exact_non_hangul_overrides = local_non_hangul_glyphs.get(
+        "analysis", {}
+    ).get("exact_non_hangul_overrides")
+    if not isinstance(exact_non_hangul_overrides, list):
+        raise ValueError(
+            "expanded target corpus exact non-Hangul overrides are missing"
+        )
+    override_keys = {
+        (override.get("page"), override.get("symbol"))
+        for override in overrides
+        if isinstance(override, dict)
+    }
+    if any(
+        (override.get("page"), override.get("symbol")) in override_keys
+        for override in exact_non_hangul_overrides
+        if isinstance(override, dict)
+    ):
+        raise ValueError("expanded target corpus glyph overrides overlap")
+    combined_overrides = [*overrides, *exact_non_hangul_overrides]
     counts, corpus = assemble_script_corpus(
         records=resolved,
-        fuzzy_overrides=overrides,
+        fuzzy_overrides=combined_overrides,
+    )
+    exact_non_hangul_occurrences = int(
+        non_hangul_glyphs["classification"][
+            "unique_exact_occurrence_count"
+        ]
+    )
+    applied_exact_non_hangul_occurrences = sum(
+        1
+        for record in corpus
+        for token in record.get("tokens", [])
+        if isinstance(token, dict)
+        and token.get("resolution_source") == "exact-non-hangul-bdf"
+    )
+    if (
+        applied_exact_non_hangul_occurrences
+        != exact_non_hangul_occurrences
+        or exact_non_hangul_occurrences
+        > counts["high_confidence_override_occurrence_count"]
+    ):
+        raise ValueError(
+            "expanded target corpus exact override count disagrees"
+        )
+    counts["high_confidence_override_occurrence_count"] -= (
+        exact_non_hangul_occurrences
+    )
+    counts["exact_non_hangul_override_occurrence_count"] = (
+        exact_non_hangul_occurrences
     )
     for record in corpus:
         record["aliases"] = aliases_by_id.get(
@@ -309,6 +386,9 @@ def main() -> int:
         target_sha256=str(safe_decode["target_sha256"]),
         source_population_decode_sha256=sha256_file(safe_decode_path),
         source_expanded_glyphs_sha256=sha256_file(expanded_glyphs_path),
+        source_non_hangul_glyphs_sha256=sha256_file(
+            non_hangul_glyphs_path
+        ),
         local_corpus_sha256=local_corpus_sha256,
         corpus=counts,
         captured_utc=captured_utc,

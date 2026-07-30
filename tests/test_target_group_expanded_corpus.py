@@ -19,7 +19,8 @@ class TargetGroupExpandedCorpusTests(unittest.TestCase):
             target_sha256="1" * 64,
             source_population_decode_sha256="2" * 64,
             source_expanded_glyphs_sha256="3" * 64,
-            local_corpus_sha256="4" * 64,
+            source_non_hangul_glyphs_sha256="4" * 64,
+            local_corpus_sha256="5" * 64,
             corpus={
                 "record_count": 625,
                 "complete_unicode_record_count": 300,
@@ -29,6 +30,7 @@ class TargetGroupExpandedCorpusTests(unittest.TestCase):
                 "control_token_count": 700,
                 "unresolved_glyph_occurrence_count": 1104,
                 "high_confidence_override_occurrence_count": 0,
+                "exact_non_hangul_override_occurrence_count": 0,
             },
             captured_utc="2026-07-30T17:00:00Z",
         )
@@ -48,7 +50,8 @@ class TargetGroupExpandedCorpusTests(unittest.TestCase):
             target_sha256="1" * 64,
             source_population_decode_sha256="2" * 64,
             source_expanded_glyphs_sha256="3" * 64,
-            local_corpus_sha256="4" * 64,
+            source_non_hangul_glyphs_sha256="4" * 64,
+            local_corpus_sha256="5" * 64,
             corpus={
                 "record_count": 1,
                 "complete_unicode_record_count": 1,
@@ -58,6 +61,7 @@ class TargetGroupExpandedCorpusTests(unittest.TestCase):
                 "control_token_count": 1,
                 "unresolved_glyph_occurrence_count": 0,
                 "high_confidence_override_occurrence_count": 0,
+                "exact_non_hangul_override_occurrence_count": 0,
             },
             captured_utc="2026-07-30T17:00:00Z",
         )
