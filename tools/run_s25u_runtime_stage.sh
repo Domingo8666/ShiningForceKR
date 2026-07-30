@@ -44,7 +44,7 @@ decoder_selection_ready() {
 
 group_selection_ready() {
   group_ready="$(
-    python -c 'import json; from pathlib import Path; from tools.patch_io import sha256_file; from tools.v5_1_test_display_capture import validate_display_capture; path=Path("analysis/device/v5_1_latest_display_capture.json"); target=Path("build/Final_Conflict_Korean_v5.1.gg"); value=json.loads(path.read_text(encoding="utf-8")); validate_display_capture(value); group=value.get("group_entry"); print("yes" if target.is_file() and value.get("baseline_target_sha256") == sha256_file(target) and isinstance(group, dict) and group.get("prefix_roundtrip_exact") is True and isinstance(group.get("entry_ordinal"), int) else "no")' 2>/dev/null || true
+    python -c 'import json; from pathlib import Path; from tools.patch_io import sha256_file; from tools.v5_1_test_display_capture import validate_display_capture; path=Path("analysis/evidence/v5_1_confirmed_group_capture.json"); target=Path("build/Final_Conflict_Korean_v5.1.gg"); value=json.loads(path.read_text(encoding="utf-8")); validate_display_capture(value); group=value.get("group_entry"); candidates=group.get("target_byte_candidates") if isinstance(group, dict) else None; print("yes" if target.is_file() and value.get("baseline_target_sha256") == sha256_file(target) and isinstance(group, dict) and group.get("prefix_roundtrip_exact") is True and isinstance(candidates, list) and len(candidates) == 1 else "no")' 2>/dev/null || true
   )"
   [ "$group_ready" = "yes" ]
 }
@@ -116,12 +116,23 @@ else
         break
       fi
 
+      rm -f \
+        build/Final_Conflict_Korean_test_phrase.gg \
+        build/Final_Conflict_Korean_test_phrase_overlay.ips \
+        reports/local/v5_1_test_patch_build.json
       python tools/v5_1_test_patch.py \
         --source-rom "$source_rom" \
         --if-ready
       test_build_status=$?
       if [ "$test_build_status" -ne 0 ]; then
         stage_status="$test_build_status"
+        diagnostic_trigger=probe
+        record_stage_failure test-patch
+        break
+      fi
+      if [ ! -f build/Final_Conflict_Korean_test_phrase.gg ] || \
+        [ ! -f reports/local/v5_1_test_patch_build.json ]; then
+        stage_status=1
         diagnostic_trigger=probe
         record_stage_failure test-patch
         break

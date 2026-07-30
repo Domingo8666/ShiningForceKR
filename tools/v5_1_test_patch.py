@@ -92,7 +92,7 @@ DEFAULT_STREAM_RESOLUTION = Path(
     "analysis/device/v5_1_latest_decoder_stream_resolution.json"
 )
 DEFAULT_GROUP_RESOLUTION = Path(
-    "analysis/device/v5_1_latest_display_capture.json"
+    "analysis/evidence/v5_1_confirmed_group_capture.json"
 )
 DEFAULT_TRACE_PLAN = Path("reports/v5_1_emucap_trace_plan.json")
 DEFAULT_OUTPUT_ROM = Path("build/Final_Conflict_Korean_test_phrase.gg")

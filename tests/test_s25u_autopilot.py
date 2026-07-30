@@ -86,6 +86,10 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn("decoder_selection_ready()", RUNTIME_STAGE)
         self.assertIn("group_selection_ready()", RUNTIME_STAGE)
         self.assertIn(
+            "analysis/evidence/v5_1_confirmed_group_capture.json",
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
             "using the confirmed decoder stream",
             RUNTIME_STAGE,
         )
@@ -95,6 +99,21 @@ class S25UAutopilotTests(unittest.TestCase):
             ),
             RUNTIME_STAGE.index("python tools/run_s25u_runtime_probe.py"),
         )
+
+    def test_runtime_stage_cannot_reuse_stale_test_build_outputs(self) -> None:
+        stale_removal = RUNTIME_STAGE.index(
+            "build/Final_Conflict_Korean_test_phrase.gg"
+        )
+        build = RUNTIME_STAGE.index("python tools/v5_1_test_patch.py")
+        missing_output_guard = RUNTIME_STAGE.index(
+            "[ ! -f build/Final_Conflict_Korean_test_phrase.gg ]"
+        )
+        capture = RUNTIME_STAGE.index(
+            "python tools/v5_1_test_display_capture.py"
+        )
+        self.assertLess(stale_removal, build)
+        self.assertLess(build, missing_output_guard)
+        self.assertLess(missing_output_guard, capture)
 
     def test_runtime_stage_records_precise_substage_failures(self) -> None:
         self.assertIn("v5_1_runtime_stage_failure.py", RUNTIME_STAGE)
