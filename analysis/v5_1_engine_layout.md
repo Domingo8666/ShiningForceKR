@@ -42,6 +42,14 @@
 
 244엔트리 매핑과 61개 글꼴 데이터 뱅크의 관계는 런타임의 페이지 선택 규칙을 추적할 때 쓰는 확정 기준입니다. 같은 바이트 값이라도 영어 엔진의 토큰 의미를 한국어 엔진에 그대로 적용하지 않습니다.
 
+고정 커밋의 Galmuri7 BDF를 SHA-256으로 검증한 뒤 각 Game Gear 4bpp
+타일을 8×8 잉크 마스크로 접어 픽셀을 대조했습니다. 7,564개 페이지
+타일 가운데 5,939개가 한글 한 글자와 유일하게 일치하고, 53개는 같은
+8×8 모양을 공유하는 복수 한글 후보, 1,572개는 제어·기호·비한글 또는
+미일치 타일입니다. 유일 일치에서 확인되는 서로 다른 한글은 401자입니다.
+전체 좌표·유니코드 후보·타일 SHA-256 카탈로그는 ROM 바이트를 포함하지
+않는 로컬 분석 JSON으로 생성합니다.
+
 ## 글꼴 페이지 제어의 정적 실행 구조
 
 BPS가 직접 제공하는 확장 코드와 패치된 호출부만 Z80 명령 경계로
@@ -197,4 +205,11 @@ python tools/v5_1_engine.py \
 
 ~~~sh
 python tools/run_mobile_pipeline.py --rom "/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg"
+~~~
+
+한글 글리프 카탈로그는 PC에서 검증된 공개 BDF를 받은 뒤 생성합니다.
+
+~~~sh
+python tools/fetch_galmuri7_bdf.py
+python tools/v5_1_font_catalog.py
 ~~~
