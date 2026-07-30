@@ -50,7 +50,8 @@ PUBLISH_RELATIVE_PATH = Path(
 )
 DECODER_ENTRY = 0x33FA
 EXPECTED_SELECTOR_DE = 2
-TRACE_STEPS = 192
+TRACE_STEPS = 64
+MIN_USEFUL_PARTIAL_STEPS = 8
 ENTRY_TIMEOUT_SECONDS = 30.0
 STATE_KEYS = {
     "pc",
@@ -102,7 +103,10 @@ def validate_decoder_register_trace(trace: dict[str, object]) -> None:
         raise ValueError("unexpected decoder register trace kind")
     if trace["schema_version"] != SCHEMA_VERSION:
         raise ValueError("unexpected decoder register trace schema")
-    if trace["status"] != "decoder-register-trace-captured":
+    if trace["status"] not in {
+        "decoder-register-trace-captured",
+        "decoder-register-trace-partial",
+    }:
         raise ValueError("decoder register trace is incomplete")
     digest = trace["target_sha256"]
     if (
@@ -198,7 +202,13 @@ def decoder_register_trace_needed(root: Path) -> bool:
         if not isinstance(trace, dict):
             return True
         validate_decoder_register_trace(trace)
-        return trace["target_sha256"] != sha256_file(target_path)
+        return (
+            trace["target_sha256"] != sha256_file(target_path)
+            or (
+                trace["status"] == "decoder-register-trace-partial"
+                and int(trace["step_count"]) < MIN_USEFUL_PARTIAL_STEPS
+            )
+        )
     except (OSError, ValueError, json.JSONDecodeError):
         return True
 
@@ -262,6 +272,25 @@ def main() -> int:
     rom = rom_path.read_bytes()
     verify_target_identity(rom)
     target_sha256 = sha256_file(rom_path)
+    states: list[dict[str, int]] = []
+
+    def write_current_trace(status: str) -> Path:
+        trace: dict[str, object] = {
+            "artifact_kind": ARTIFACT_KIND,
+            "schema_version": SCHEMA_VERSION,
+            "target_sha256": target_sha256,
+            "status": status,
+            "captured_utc": datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"
+            ),
+            "decoder_entry": DECODER_ENTRY,
+            "selector_de": EXPECTED_SELECTOR_DE,
+            "step_count": len(states) - 1,
+            "states": states,
+            "translation_build_eligible": False,
+            "next_checkpoint": "resolve-decoder-bc-register-role",
+        }
+        return _write_trace(root, trace)
 
     required = REQUIRED_TOOLS | {
         "set_fast_forward_speed",
@@ -297,30 +326,17 @@ def main() -> int:
             # breakpoint is already absent.  It cannot affect bounded steps.
             pass
 
-        states = [_safe_state(entry_state)]
+        states.append(_safe_state(entry_state))
         for _ in range(TRACE_STEPS):
             _step_instruction_and_wait(client)
             state, _ = _capture_state(client)
             states.append(_safe_state(state))
-        trace: dict[str, object] = {
-            "artifact_kind": ARTIFACT_KIND,
-            "schema_version": SCHEMA_VERSION,
-            "target_sha256": target_sha256,
-            "status": "decoder-register-trace-captured",
-            "captured_utc": datetime.now(timezone.utc).strftime(
-                "%Y-%m-%dT%H:%M:%SZ"
-            ),
-            "decoder_entry": DECODER_ENTRY,
-            "selector_de": EXPECTED_SELECTOR_DE,
-            "step_count": len(states) - 1,
-            "states": states,
-            "translation_build_eligible": False,
-            "next_checkpoint": "resolve-decoder-bc-register-role",
-        }
-        path = _write_trace(root, trace)
+        path = write_current_trace("decoder-register-trace-captured")
         print(f"SFKR decoder register trace: {path}")
         return 0
     except Exception as error:
+        if len(states) - 1 >= MIN_USEFUL_PARTIAL_STEPS:
+            write_current_trace("decoder-register-trace-partial")
         receipt = _runtime_failure_receipt(stage, error, client)
         _write_runtime_failure_receipt(root, receipt)
         raise

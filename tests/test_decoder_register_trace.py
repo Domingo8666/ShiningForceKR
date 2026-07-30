@@ -8,6 +8,7 @@ import unittest
 from tools.patch_io import sha256_file
 from tools.v5_1_decoder_register_trace import (
     ARTIFACT_KIND,
+    MIN_USEFUL_PARTIAL_STEPS,
     PUBLISH_RELATIVE_PATH,
     decoder_register_trace_needed,
     validate_decoder_register_trace,
@@ -67,6 +68,17 @@ class DecoderRegisterTraceTests(unittest.TestCase):
         trace["states"][0]["opcode"] = 0x21
         with self.assertRaisesRegex(ValueError, "state fields"):
             validate_decoder_register_trace(trace)
+
+    def test_useful_partial_trace_is_valid(self) -> None:
+        trace = valid_trace()
+        trace["status"] = "decoder-register-trace-partial"
+        trace["states"] = trace["states"] * 5
+        trace["step_count"] = len(trace["states"]) - 1
+        self.assertGreaterEqual(
+            trace["step_count"],
+            MIN_USEFUL_PARTIAL_STEPS,
+        )
+        validate_decoder_register_trace(trace)
 
     def test_failed_fixed_count_range_requests_one_trace(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
