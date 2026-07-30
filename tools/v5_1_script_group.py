@@ -61,11 +61,13 @@ def resolve_group_entry_with_trees(
     entry_ordinal: int,
     target_logical_byte: int,
 ) -> dict[str, object]:
-    """Resolve the zero-based B-register ordinal selected by the decoder.
+    """Compare the observed B register with entries in one Huffman group.
 
-    The patched routine increments B before its skip loop.  Therefore an entry
-    ordinal of N requires decoding N+1 terminator-delimited strings from the
-    group's byte-aligned pointer, while preserving the bit cursor between them.
+    The patched routine increments B, but the surrounding source-ROM code is
+    not yet statically available. Decode B+1 terminator-delimited strings while
+    preserving the shared bit cursor, then independently locate every decoded
+    entry whose byte range overlaps the confirmed runtime target read. This
+    keeps the observed register value separate from its still-unproven meaning.
     """
 
     if not 0 <= entry_ordinal <= 0xFF:
@@ -105,20 +107,54 @@ def resolve_group_entry_with_trees(
     ):
         raise PatchError("script group prefix no-change roundtrip is not exact")
 
-    selected_symbols = prefix_entries[-1]
-    _, selected_bits = encode_symbol_entries(
-        trees,
-        [selected_symbols],
-        initial_symbol=CANDIDATE_END_SYMBOL,
-        end_symbol=CANDIDATE_END_SYMBOL,
-        max_bits=prefix_bits,
-    )
-    entry_start_bit = prefix_bits - selected_bits
-    entry_end_bit = prefix_bits
+    entry_ranges: list[dict[str, int]] = []
+    consumed_bits = 0
+    for ordinal, symbols in enumerate(prefix_entries):
+        _, encoded_bits = encode_symbol_entries(
+            trees,
+            [symbols],
+            initial_symbol=CANDIDATE_END_SYMBOL,
+            end_symbol=CANDIDATE_END_SYMBOL,
+            max_bits=prefix_bits,
+        )
+        start_bit = consumed_bits
+        end_bit = start_bit + encoded_bits
+        start_byte = group_pointer_address + start_bit // 8
+        end_byte = group_pointer_address + (end_bit - 1) // 8
+        entry_ranges.append(
+            {
+                "entry_ordinal": ordinal,
+                "entry_start_bit": start_bit,
+                "entry_end_bit_exclusive": end_bit,
+                "entry_encoded_bits": encoded_bits,
+                "entry_symbol_count": len(symbols),
+                "entry_start_logical_byte": start_byte,
+                "entry_end_logical_byte_inclusive": end_byte,
+            }
+        )
+        consumed_bits = end_bit
+    if consumed_bits != prefix_bits:
+        raise PatchError("script group entry bit ranges do not cover the prefix")
+
+    selected_range = entry_ranges[-1]
+    selected_bits = selected_range["entry_encoded_bits"]
+    entry_start_bit = selected_range["entry_start_bit"]
+    entry_end_bit = selected_range["entry_end_bit_exclusive"]
     entry_start_byte = group_pointer_address + entry_start_bit // 8
     entry_end_byte = group_pointer_address + (entry_end_bit - 1) // 8
     if entry_end_byte >= SLOT_1_END:
         raise PatchError("selected script group entry crosses the slot boundary")
+    target_byte_candidates = [
+        item
+        for item in entry_ranges
+        if item["entry_start_logical_byte"]
+        <= target_logical_byte
+        <= item["entry_end_logical_byte_inclusive"]
+    ]
+    candidate_ordinals = {
+        item["entry_ordinal"] for item in target_byte_candidates
+    }
+    observed_b_matches_target_candidates = entry_ordinal in candidate_ordinals
 
     return {
         "status": (
@@ -132,7 +168,7 @@ def resolve_group_entry_with_trees(
         "entry_start_bit": entry_start_bit,
         "entry_end_bit_exclusive": entry_end_bit,
         "entry_encoded_bits": selected_bits,
-        "entry_symbol_count": len(selected_symbols),
+        "entry_symbol_count": selected_range["entry_symbol_count"],
         "entry_start_logical_byte": entry_start_byte,
         "entry_end_logical_byte_inclusive": entry_end_byte,
         "target_logical_byte": target_logical_byte,
@@ -140,6 +176,10 @@ def resolve_group_entry_with_trees(
             entry_start_byte <= target_logical_byte <= entry_end_byte
         ),
         "prefix_roundtrip_exact": True,
+        "target_byte_candidates": target_byte_candidates,
+        "observed_b_matches_target_candidates": (
+            observed_b_matches_target_candidates
+        ),
     }
 
 

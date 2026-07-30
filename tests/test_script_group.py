@@ -27,7 +27,7 @@ def tree(previous: int, left: int, right: int) -> ParsedTree:
 
 
 class ScriptGroupTests(unittest.TestCase):
-    def test_b_ordinal_selects_an_unpadded_entry(self) -> None:
+    def test_observed_b_value_matches_an_unpadded_target_entry(self) -> None:
         end = CANDIDATE_END_SYMBOL
         trees = {
             end: tree(end, 0x10, end),
@@ -48,6 +48,13 @@ class ScriptGroupTests(unittest.TestCase):
         self.assertEqual(resolution["entry_end_bit_exclusive"], 3)
         self.assertEqual(resolution["entry_encoded_bits"], 1)
         self.assertTrue(resolution["prefix_roundtrip_exact"])
+        self.assertEqual(
+            [item["entry_ordinal"] for item in resolution["target_byte_candidates"]],
+            [0, 1],
+        )
+        self.assertTrue(
+            resolution["observed_b_matches_target_candidates"]
+        )
 
     def test_target_outside_selected_entry_is_not_resolved(self) -> None:
         end = CANDIDATE_END_SYMBOL
@@ -69,6 +76,10 @@ class ScriptGroupTests(unittest.TestCase):
             "target-outside-selected-entry",
         )
         self.assertFalse(resolution["target_within_entry_bytes"])
+        self.assertEqual(resolution["target_byte_candidates"], [])
+        self.assertFalse(
+            resolution["observed_b_matches_target_candidates"]
+        )
 
     def test_out_of_range_ordinal_fails_closed(self) -> None:
         with self.assertRaisesRegex(PatchError, "ordinal"):

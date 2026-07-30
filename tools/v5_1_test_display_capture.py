@@ -73,8 +73,8 @@ except ImportError:  # direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-test-display-capture"
-SCHEMA_VERSION = 4
-LEGACY_SCHEMA_VERSIONS = {1, 2, 3}
+SCHEMA_VERSION = 5
+LEGACY_SCHEMA_VERSIONS = {1, 2, 3, 4}
 DEFAULT_TEST_ROM = Path("build/Final_Conflict_Korean_test_phrase.gg")
 DEFAULT_BASELINE_ROM = Path("build/Final_Conflict_Korean_v5.1.gg")
 DEFAULT_BUILD_REPORT = Path("reports/local/v5_1_test_patch_build.json")
@@ -152,7 +152,7 @@ ENTRY_SELECTOR_KEYS = ENTRY_SELECTOR_KEYS_V2 | {
     "test_entry_ordinal",
     "ordinals_match",
 }
-GROUP_ENTRY_KEYS = {
+GROUP_ENTRY_KEYS_V4 = {
     "status",
     "entry_ordinal",
     "decoded_prefix_entry_count",
@@ -166,6 +166,19 @@ GROUP_ENTRY_KEYS = {
     "target_logical_byte",
     "target_within_entry_bytes",
     "prefix_roundtrip_exact",
+}
+GROUP_ENTRY_KEYS = GROUP_ENTRY_KEYS_V4 | {
+    "target_byte_candidates",
+    "observed_b_matches_target_candidates",
+}
+TARGET_BYTE_CANDIDATE_KEYS = {
+    "entry_ordinal",
+    "entry_start_bit",
+    "entry_end_bit_exclusive",
+    "entry_encoded_bits",
+    "entry_symbol_count",
+    "entry_start_logical_byte",
+    "entry_end_logical_byte_inclusive",
 }
 CAPTURE_STATUSES = {
     "capture-ready-human-review-required",
@@ -182,7 +195,7 @@ def validate_display_capture(capture: dict[str, object]) -> None:
     schema_version = capture.get("schema_version")
     expected_keys = (
         TOP_LEVEL_KEYS_V4
-        if schema_version == SCHEMA_VERSION
+        if schema_version in {4, SCHEMA_VERSION}
         else (
             TOP_LEVEL_KEYS_WITH_SELECTOR
             if schema_version in {2, 3}
@@ -253,12 +266,12 @@ def validate_display_capture(capture: dict[str, object]) -> None:
     if confirmed != (mapped_bank == target_read["expected_bank"]):
         raise ValueError("target_read confirmation and mapper bank disagree")
 
-    if schema_version in {2, 3, SCHEMA_VERSION}:
+    if schema_version in {2, 3, 4, SCHEMA_VERSION}:
         selector = capture["entry_selector"]
         if selector is not None:
             expected_selector_keys = (
                 ENTRY_SELECTOR_KEYS
-                if schema_version in {3, SCHEMA_VERSION}
+                if schema_version in {3, 4, SCHEMA_VERSION}
                 else ENTRY_SELECTOR_KEYS_V2
             )
             if (
@@ -287,7 +300,7 @@ def validate_display_capture(capture: dict[str, object]) -> None:
             if selectors_match is not expected_match:
                 raise ValueError("entry_selector match evidence is inconsistent")
             ordinals_match = True
-            if schema_version in {3, SCHEMA_VERSION}:
+            if schema_version in {3, 4, SCHEMA_VERSION}:
                 for key in ("baseline_entry_ordinal", "test_entry_ordinal"):
                     value = selector[key]
                     if value is not None and (
@@ -343,12 +356,17 @@ def validate_display_capture(capture: dict[str, object]) -> None:
             if not confirmed:
                 raise ValueError("entry_selector requires a confirmed target read")
 
-    if schema_version == SCHEMA_VERSION:
+    if schema_version in {4, SCHEMA_VERSION}:
         group_entry = capture["group_entry"]
         if group_entry is not None:
+            expected_group_entry_keys = (
+                GROUP_ENTRY_KEYS
+                if schema_version == SCHEMA_VERSION
+                else GROUP_ENTRY_KEYS_V4
+            )
             if (
                 not isinstance(group_entry, dict)
-                or set(group_entry) != GROUP_ENTRY_KEYS
+                or set(group_entry) != expected_group_entry_keys
             ):
                 raise ValueError("group_entry fields do not match")
             if group_entry["status"] not in {
@@ -417,6 +435,73 @@ def validate_display_capture(capture: dict[str, object]) -> None:
                 raise ValueError("group_entry and entry_selector disagree")
             if not confirmed:
                 raise ValueError("group_entry requires a confirmed target read")
+            if schema_version == SCHEMA_VERSION:
+                candidates = group_entry["target_byte_candidates"]
+                if not isinstance(candidates, list):
+                    raise ValueError(
+                        "group_entry target candidates must be a list"
+                    )
+                candidate_ordinals: list[int] = []
+                for candidate in candidates:
+                    if (
+                        not isinstance(candidate, dict)
+                        or set(candidate) != TARGET_BYTE_CANDIDATE_KEYS
+                    ):
+                        raise ValueError(
+                            "group_entry target candidate fields do not match"
+                        )
+                    for key in TARGET_BYTE_CANDIDATE_KEYS:
+                        value = candidate[key]
+                        if (
+                            not isinstance(value, int)
+                            or isinstance(value, bool)
+                            or value < 0
+                        ):
+                            raise ValueError(
+                                f"group_entry target candidate {key} is invalid"
+                            )
+                    if (
+                        not 0 <= candidate["entry_ordinal"] <= 0xFF
+                        or candidate["entry_start_bit"]
+                        >= candidate["entry_end_bit_exclusive"]
+                        or candidate["entry_encoded_bits"]
+                        != candidate["entry_end_bit_exclusive"]
+                        - candidate["entry_start_bit"]
+                        or candidate["entry_symbol_count"] <= 0
+                        or not (
+                            candidate["entry_start_logical_byte"]
+                            <= group_entry["target_logical_byte"]
+                            <= candidate[
+                                "entry_end_logical_byte_inclusive"
+                            ]
+                        )
+                        or (
+                            candidate_ordinals
+                            and candidate["entry_ordinal"]
+                            <= candidate_ordinals[-1]
+                        )
+                    ):
+                        raise ValueError(
+                            "group_entry target candidate is inconsistent"
+                        )
+                    candidate_ordinals.append(candidate["entry_ordinal"])
+                observed_matches = (
+                    group_entry["entry_ordinal"] in candidate_ordinals
+                )
+                if (
+                    not isinstance(
+                        group_entry["observed_b_matches_target_candidates"],
+                        bool,
+                    )
+                    or group_entry[
+                        "observed_b_matches_target_candidates"
+                    ]
+                    is not observed_matches
+                    or observed_matches is not target_within
+                ):
+                    raise ValueError(
+                        "group_entry target candidate match is inconsistent"
+                    )
 
     captures = capture["captures"]
     if not isinstance(captures, list):

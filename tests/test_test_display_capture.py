@@ -145,7 +145,7 @@ class TestDisplayCaptureTests(unittest.TestCase):
         self.assertIsNone(capture["visual_review"]["result"])
         self.assertFalse(capture["translation_build_eligible"])
         validate_display_capture(capture)
-        self.assertEqual(capture["schema_version"], 4)
+        self.assertEqual(capture["schema_version"], 5)
         self.assertIsNone(capture["entry_selector"])
         self.assertIsNone(capture["group_entry"])
 
