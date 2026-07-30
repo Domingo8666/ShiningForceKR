@@ -3,10 +3,10 @@
   "schema_version": 1,
   "status": "font-transfer-source-not-yet-observed",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "source_mapping_sha256": "eabc070c874da9d7ab30e8d54f2c39d48f6ce6555849cdf8cf904781d7c300a3",
+  "source_mapping_sha256": "750a94c0dface820164a85b1c1605af92523c15532c67801aa14aea16c898d2f",
   "source_renderer_trace_sha256": "67790a28021e7a9be2802c3b742c8eab5b627390cfa303781038302c67c90067",
-  "source_initial_trace_sha256": "00a795957d1b722f7e0183d5f8dcdf21cb8697d00c361b487b51202885a89ff9",
-  "captured_utc": "2026-07-30T21:42:13.653609Z",
+  "source_initial_trace_sha256": "1ae5d76b114e47ce50e7471271661882f56ed864f5592d0bc396cc1db5726817",
+  "captured_utc": "2026-07-30T21:57:46.848044Z",
   "runtime_entry": {
     "record_length_bytes": 16,
     "mapped_bank": 8,
