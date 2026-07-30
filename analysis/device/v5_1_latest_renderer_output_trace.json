@@ -1,9 +1,9 @@
 {
   "artifact_kind": "sanitized-s25u-renderer-output-trace",
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "renderer-output-events-not-observed",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "captured_utc": "2026-07-30T10:12:54.019765Z",
+  "captured_utc": "2026-07-30T10:25:52.083969Z",
   "runtime_entry": {
     "physical_start": 133395,
     "logical_start": 18707,
@@ -16,17 +16,17 @@
     "expected_symbol_count": 19,
     "terminator_count": 1,
     "local_roundtrip_bound": true,
-    "candidate_entry_hit_count": 1,
-    "unique_candidate_entry_count": 1
+    "candidate_entry_hit_count": 9,
+    "unique_candidate_entry_count": 5
   },
   "renderer_window": {
-    "bounded_return_windows": 1,
-    "trace_entries_observed": 8,
-    "parsed_instruction_count": 7,
+    "bounded_frame_windows": 1,
+    "trace_entries_observed": 12371,
+    "parsed_instruction_count": 12317,
     "vdp_data_write_count": 0,
-    "vdp_control_write_count": 0,
+    "vdp_control_write_count": 812,
     "vdp_event_line_count": 0,
-    "unique_output_pattern_count": 0
+    "unique_output_pattern_count": 14
   },
   "consumer_chain_confirmed": false,
   "local_payload_policy": "symbols-opcodes-values-and-raw-trace-local-only",
