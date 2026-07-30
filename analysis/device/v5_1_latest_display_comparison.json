@@ -8,10 +8,106 @@
     "logical_start": 18707,
     "mapped_bank": 8
   },
-  "frame_comparisons": [],
-  "post_advance_comparison": null,
-  "result": "comparison-unavailable",
-  "automatic_rejected_physical_starts": [],
+  "frame_comparisons": [
+    {
+      "frame_after_hit": 1,
+      "width": 160,
+      "height": 144,
+      "total_pixels": 23040,
+      "changed_pixels": 0,
+      "difference_bounds": null,
+      "baseline_pixel_sha256": "8fbe10738701bab5792b825d0fcfda1baea84fee715874096f32abbd60114007",
+      "test_pixel_sha256": "8fbe10738701bab5792b825d0fcfda1baea84fee715874096f32abbd60114007",
+      "baseline_technical_marker_matches": 0,
+      "test_technical_marker_matches": 0,
+      "new_technical_marker_matches": 0,
+      "baseline_png_sha256": "93ccdb1d3fc723412d2acecd1e8ec1738e8755b4d248ba6f980c9a304a2ce4a5",
+      "test_png_sha256": "93ccdb1d3fc723412d2acecd1e8ec1738e8755b4d248ba6f980c9a304a2ce4a5"
+    },
+    {
+      "frame_after_hit": 8,
+      "width": 160,
+      "height": 144,
+      "total_pixels": 23040,
+      "changed_pixels": 63,
+      "difference_bounds": {
+        "left": 8,
+        "top": 97,
+        "right_exclusive": 23,
+        "bottom_exclusive": 120
+      },
+      "baseline_pixel_sha256": "55ef89ad908d2346e6bee24f2a6e2bec73ab4187918e4168e6bf9574d1d9e726",
+      "test_pixel_sha256": "040f5e03788033ca666c1a74e5bd94019d14e4272944b3a148d9be2b85ca2679",
+      "baseline_technical_marker_matches": 0,
+      "test_technical_marker_matches": 0,
+      "new_technical_marker_matches": 0,
+      "baseline_png_sha256": "460f5d86f0aa48fc14dd4d613b783042b12421f4503ed4fecb604a636858e97f",
+      "test_png_sha256": "e3b45ef0bb299f1221ec1f036bc8a213eebe66bcbee3aa22522e1c4324a1bd58"
+    },
+    {
+      "frame_after_hit": 30,
+      "width": 160,
+      "height": 144,
+      "total_pixels": 23040,
+      "changed_pixels": 169,
+      "difference_bounds": {
+        "left": 8,
+        "top": 97,
+        "right_exclusive": 41,
+        "bottom_exclusive": 120
+      },
+      "baseline_pixel_sha256": "690dbc77c04b3302bdb849aa0ac67c4e463df0d22bf67e1a9fda190e7a0610ed",
+      "test_pixel_sha256": "040f5e03788033ca666c1a74e5bd94019d14e4272944b3a148d9be2b85ca2679",
+      "baseline_technical_marker_matches": 0,
+      "test_technical_marker_matches": 0,
+      "new_technical_marker_matches": 0,
+      "baseline_png_sha256": "c7cb341c40431722270336ce2f7d9a7ed2fa6a4f598c9a4fd2506bd5b87ddc20",
+      "test_png_sha256": "e3b45ef0bb299f1221ec1f036bc8a213eebe66bcbee3aa22522e1c4324a1bd58"
+    },
+    {
+      "frame_after_hit": 90,
+      "width": 160,
+      "height": 144,
+      "total_pixels": 23040,
+      "changed_pixels": 369,
+      "difference_bounds": {
+        "left": 8,
+        "top": 97,
+        "right_exclusive": 73,
+        "bottom_exclusive": 136
+      },
+      "baseline_pixel_sha256": "a6c618723f89f27c329f1afe3b5e9ddf49d67dea8e3f84c546d070b29a9bd69d",
+      "test_pixel_sha256": "040f5e03788033ca666c1a74e5bd94019d14e4272944b3a148d9be2b85ca2679",
+      "baseline_technical_marker_matches": 0,
+      "test_technical_marker_matches": 0,
+      "new_technical_marker_matches": 0,
+      "baseline_png_sha256": "7ee21beb6a6b6abee46205d884b984276881bfaba6428c4cf4ab71c6329811a9",
+      "test_png_sha256": "e3b45ef0bb299f1221ec1f036bc8a213eebe66bcbee3aa22522e1c4324a1bd58"
+    }
+  ],
+  "post_advance_comparison": {
+    "width": 160,
+    "height": 144,
+    "total_pixels": 23040,
+    "changed_pixels": 12095,
+    "difference_bounds": {
+      "left": 0,
+      "top": 0,
+      "right_exclusive": 160,
+      "bottom_exclusive": 144
+    },
+    "baseline_pixel_sha256": "ea4fa3598805eeabd227c537d4425b191b4af5a4b9879911059b384dfdbd13ba",
+    "test_pixel_sha256": "1bb9555e3c1ca77472504800d1565085e0aed089303f202ea4f54161b774b945",
+    "baseline_technical_marker_matches": 0,
+    "test_technical_marker_matches": 1,
+    "new_technical_marker_matches": 1,
+    "baseline_png_sha256": "0d7294005257f149b8f19de061fb684cb99e93236c461c304225ef4eacd4d9ef",
+    "test_png_sha256": "c1fff0a4b56c39c5a952da5c12640744c083a6182198cb0af1f01238b9785627"
+  },
+  "result": "technical-marker-absent-auto-rejected",
+  "automatic_rejected_physical_starts": [
+    133395
+  ],
   "translation_build_eligible": false,
-  "next_checkpoint": "human-review-unpaired-capture"
+  "next_checkpoint": "try-next-runtime-observed-stream"
 }
