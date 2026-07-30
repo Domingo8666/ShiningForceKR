@@ -323,6 +323,16 @@ else
       record_stage_failure visible-unicode-mapping
     fi
   fi
+
+  if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_initial_font_page_trace.py --if-ready
+    initial_font_page_status=$?
+    if [ "$initial_font_page_status" -ne 0 ]; then
+      stage_status="$initial_font_page_status"
+      diagnostic_trigger=probe
+      record_stage_failure initial-font-page-trace
+    fi
+  fi
 fi
 
 python tools/v5_1_runtime_diagnostic.py \

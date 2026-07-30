@@ -221,6 +221,7 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_visible_script_roundtrip.json|\
     analysis/device/v5_1_latest_renderer_output_trace.json|\
     analysis/device/v5_1_latest_visible_unicode_mapping.json|\
+    analysis/device/v5_1_latest_initial_font_page_trace.json|\
     analysis/device/v5_1_latest_progress_preview.json|\
     analysis/device/v5_1_latest_progress_preview.png)
       return 0

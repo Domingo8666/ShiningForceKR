@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 try:
+    from .patch_io import sha256_file
     from .v5_1_decoder_register_trace import (
         validate_decoder_register_trace,
     )
@@ -33,6 +34,10 @@ try:
         PUBLISH_RELATIVE_PATH as VISIBLE_UNICODE_MAPPING_RELATIVE_PATH,
         validate_visible_unicode_mapping,
     )
+    from .v5_1_initial_font_page_trace import (
+        PUBLISH_RELATIVE_PATH as INITIAL_FONT_PAGE_TRACE_RELATIVE_PATH,
+        validate_initial_font_page_trace,
+    )
     from .v5_1_progress_preview import (
         PUBLISH_IMAGE_RELATIVE_PATH,
         PUBLISH_RECEIPT_RELATIVE_PATH,
@@ -50,6 +55,7 @@ try:
     from .v5_1_route_capture import validate_route_capture
     from .v5_1_safe_observation import _git, _normalized_remote
 except ImportError:  # direct script execution
+    from patch_io import sha256_file
     from v5_1_decoder_register_trace import validate_decoder_register_trace
     from v5_1_decoder_stream_resolution import (
         validate_decoder_stream_resolution,
@@ -72,6 +78,10 @@ except ImportError:  # direct script execution
     from v5_1_visible_unicode_mapping import (
         PUBLISH_RELATIVE_PATH as VISIBLE_UNICODE_MAPPING_RELATIVE_PATH,
         validate_visible_unicode_mapping,
+    )
+    from v5_1_initial_font_page_trace import (
+        PUBLISH_RELATIVE_PATH as INITIAL_FONT_PAGE_TRACE_RELATIVE_PATH,
+        validate_initial_font_page_trace,
     )
     from v5_1_progress_preview import (
         PUBLISH_IMAGE_RELATIVE_PATH,
@@ -123,6 +133,8 @@ SAFE_ARTIFACTS = {
         validate_renderer_output_trace,
     VISIBLE_UNICODE_MAPPING_RELATIVE_PATH:
         validate_visible_unicode_mapping,
+    INITIAL_FONT_PAGE_TRACE_RELATIVE_PATH:
+        validate_initial_font_page_trace,
     PUBLISH_RECEIPT_RELATIVE_PATH: validate_progress_preview,
 }
 SAFE_BINARY_ARTIFACTS = {
@@ -358,6 +370,29 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             or renderer_output_trace["consumer_chain_confirmed"] is not True
         ):
             artifacts.pop(VISIBLE_UNICODE_MAPPING_RELATIVE_PATH)
+    visible_unicode_mapping = artifacts.get(
+        VISIBLE_UNICODE_MAPPING_RELATIVE_PATH
+    )
+    initial_font_page_trace = artifacts.get(
+        INITIAL_FONT_PAGE_TRACE_RELATIVE_PATH
+    )
+    if initial_font_page_trace is not None:
+        if (
+            visible_unicode_mapping is None
+            or visible_unicode_mapping["next_checkpoint"]
+            != "confirm-runtime-initial-font-page"
+            or initial_font_page_trace["target_sha256"]
+            != visible_unicode_mapping["target_sha256"]
+            or initial_font_page_trace["runtime_entry"]
+            != visible_unicode_mapping["runtime_entry"]
+            or initial_font_page_trace["candidate_page_count_before"]
+            != visible_unicode_mapping["mapping"][
+                "initial_page_candidate_count"
+            ]
+            or initial_font_page_trace["source_mapping_sha256"]
+            != sha256_file(root / VISIBLE_UNICODE_MAPPING_RELATIVE_PATH)
+        ):
+            artifacts.pop(INITIAL_FONT_PAGE_TRACE_RELATIVE_PATH)
     return artifacts
 
 
