@@ -44,7 +44,7 @@ decoder_selection_ready() {
 
 group_selection_ready() {
   group_ready="$(
-    python -c 'import json; from pathlib import Path; from tools.patch_io import sha256_file; from tools.v5_1_test_display_capture import validate_display_capture; path=Path("analysis/evidence/v5_1_confirmed_group_capture.json"); target=Path("build/Final_Conflict_Korean_v5.1.gg"); value=json.loads(path.read_text(encoding="utf-8")); validate_display_capture(value); group=value.get("group_entry"); candidates=group.get("target_byte_candidates") if isinstance(group, dict) else None; print("yes" if target.is_file() and value.get("baseline_target_sha256") == sha256_file(target) and isinstance(group, dict) and group.get("prefix_roundtrip_exact") is True and isinstance(candidates, list) and len(candidates) == 1 else "no")' 2>/dev/null || true
+    python -c 'import json; from pathlib import Path; from tools.patch_io import sha256_file; from tools.v5_1_test_display_capture import validate_display_capture; path=Path("analysis/evidence/v5_1_confirmed_group_capture.json"); target=Path("build/Final_Conflict_Korean_v5.1.gg"); value=json.loads(path.read_text(encoding="utf-8")); validate_display_capture(value); group=value.get("group_entry"); print("yes" if target.is_file() and value.get("baseline_target_sha256") == sha256_file(target) and isinstance(group, dict) and group.get("status") == "resolved" and group.get("prefix_roundtrip_exact") is True else "no")' 2>/dev/null || true
   )"
   [ "$group_ready" = "yes" ]
 }

@@ -259,27 +259,15 @@ class TestPatchTests(unittest.TestCase):
     def test_runtime_group_entry_accepts_an_interior_capture_probe(self) -> None:
         baseline = bytes(self.baseline)
         digest = sha256_bytes(baseline)
-        selected = select_runtime_group_entry(
-            baseline,
-            confirmed_selected_group_capture(digest),
-            confirmed_stream_resolution(digest),
-        )
-        self.assertEqual(
-            selected["kind"],
-            "runtime-group-target-candidate",
-        )
-        self.assertEqual(
-            selected["selection_basis"],
-            "unique-runtime-target-byte-candidate",
-        )
-        self.assertEqual(selected["target_file_offset"], 0x8000)
-        self.assertEqual(selected["pointer_address"], 0x4000)
-        self.assertEqual(selected["group_entry_ordinal"], 0)
-        self.assertEqual(selected["runtime_encoded_bits"], 8)
-        self.assertEqual(
-            selected["intermediate_observed_target_file_offset"],
-            0x8000,
-        )
+        with self.assertRaisesRegex(
+            PatchError,
+            "does not confirm the B-selected group entry",
+        ):
+            select_runtime_group_entry(
+                baseline,
+                confirmed_selected_group_capture(digest),
+                confirmed_stream_resolution(digest),
+            )
 
     def test_shared_target_is_rejected(self) -> None:
         self.baseline[0x103:0x106] = bytes.fromhex("02 00 80")

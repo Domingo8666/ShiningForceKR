@@ -48,7 +48,6 @@ try:
     )
     from .v5_1_test_phrase import (
         build_length_preserving_test_phrase_plan,
-        build_test_phrase_plan,
     )
 except ImportError:  # direct script execution
     from analyze_v5_1 import EXPECTED_SOURCE_SHA256, EXPECTED_SOURCE_SIZE
@@ -80,7 +79,6 @@ except ImportError:  # direct script execution
     )
     from v5_1_test_phrase import (
         build_length_preserving_test_phrase_plan,
-        build_test_phrase_plan,
     )
 
 
@@ -306,20 +304,20 @@ def select_runtime_group_entry(
     candidates = group.get("target_byte_candidates")
     if isinstance(candidates, list):
         if (
-            len(candidates) != 1
+            group.get("status") != "resolved"
+            or group.get("observed_b_matches_target_candidates") is not True
+            or len(candidates) != 1
             or not isinstance(candidates[0], dict)
-            or int(group["target_logical_byte"]) != observed_target_logical
+            or int(candidates[0]["entry_ordinal"]) != int(group["entry_ordinal"])
         ):
             raise PatchError(
-                "runtime target read does not select one group entry"
+                "runtime read does not confirm the B-selected group entry"
             )
-        selected_range = candidates[0]
-        selection_basis = "unique-runtime-target-byte-candidate"
-        kind = "runtime-group-target-candidate"
-    else:
-        selected_range = group
-        selection_basis = "legacy-b-selected-entry"
-        kind = "runtime-group-entry"
+    elif group.get("status") != "resolved":
+        raise PatchError("runtime read is outside the B-selected group entry")
+    selected_range = group
+    selection_basis = "runtime-b-and-target-agree"
+    kind = "runtime-group-entry"
 
     entry_start_bit = int(selected_range["entry_start_bit"])
     entry_end_bit = int(selected_range["entry_end_bit_exclusive"])
@@ -566,12 +564,7 @@ def build_test_patch(
     if str(runtime_entry["kind"]).startswith("runtime-group-"):
         original_symbols = [None] * int(runtime_entry["runtime_symbol_count"])
         original_bits = int(runtime_entry["runtime_encoded_bits"])
-        phrase_plan = build_length_preserving_test_phrase_plan(
-            patch,
-            original_bits,
-        )
     else:
-        phrase_plan = build_test_phrase_plan(patch)
         original_symbols, original_bits = decode_symbols(
             baseline,
             known,
@@ -602,34 +595,31 @@ def build_test_patch(
             target_offset,
             list(runtime_entry["all_target_offsets"]),
         )
+    if original_bits != int(runtime_entry["runtime_encoded_bits"]):
+        raise PatchError("runtime and rebuilt entry bit lengths disagree")
+    phrase_plan = build_length_preserving_test_phrase_plan(
+        patch,
+        original_bits,
+    )
     encoding = phrase_plan["encoding"]
     assert isinstance(encoding, dict)
     replacement = bytes.fromhex(str(encoding["encoded_hex"]))
     replacement_bits = int(encoding["encoded_bits"])
-    expected_write = (
-        plan_unpadded_entry_prefix_write(
-            baseline,
-            group_physical_start=int(
-                runtime_entry["group_physical_start"]
-            ),
-            entry_start_bit=int(runtime_entry["group_entry_start_bit"]),
-            original_bits=original_bits,
-            replacement=replacement,
-            replacement_bits=replacement_bits,
-        )
-        if str(runtime_entry["kind"]).startswith("runtime-group-")
-        else plan_in_place_write(
-            baseline,
-            target_offset=target_offset,
-            original_bits=original_bits,
-            replacement=replacement,
-            replacement_bits=replacement_bits,
-            next_target_offset=(
-                None
-                if runtime_entry["next_target_file_offset"] is None
-                else int(runtime_entry["next_target_file_offset"])
-            ),
-        )
+    expected_write = plan_unpadded_entry_prefix_write(
+        baseline,
+        group_physical_start=(
+            int(runtime_entry["group_physical_start"])
+            if str(runtime_entry["kind"]).startswith("runtime-group-")
+            else target_offset
+        ),
+        entry_start_bit=(
+            int(runtime_entry["group_entry_start_bit"])
+            if str(runtime_entry["kind"]).startswith("runtime-group-")
+            else 0
+        ),
+        original_bits=original_bits,
+        replacement=replacement,
+        replacement_bits=replacement_bits,
     )
     validated = validate_expected_writes(baseline, [expected_write])
     target, audit = apply_expected_writes(baseline, validated)
@@ -667,8 +657,6 @@ def build_test_patch(
             ),
             "technical_tail_policy": (
                 "exact-entry-length"
-                if str(runtime_entry["kind"]).startswith("runtime-group-")
-                else "byte-aligned-entry"
             ),
         },
         "expected_write_audit": audit,
@@ -786,6 +774,7 @@ def main() -> int:
             == "sanitized-s25u-test-display-capture"
             and candidate.get("schema_version") in {4, 5}
             and isinstance(candidate.get("group_entry"), dict)
+            and candidate["group_entry"].get("status") == "resolved"
             and candidate["group_entry"].get("prefix_roundtrip_exact") is True
         ):
             group_resolution = candidate
