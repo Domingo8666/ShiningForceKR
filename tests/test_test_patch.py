@@ -5,7 +5,9 @@ import unittest
 from tools.patch_io import PatchError, sha256_bytes
 from tools.v5_1_test_patch import (
     plan_in_place_write,
+    plan_unpadded_entry_prefix_write,
     select_runtime_entry,
+    select_runtime_group_entry,
     select_runtime_stream,
 )
 
@@ -116,6 +118,35 @@ def confirmed_stream_resolution(target_sha256: str) -> dict[str, object]:
     }
 
 
+def confirmed_group_capture(target_sha256: str) -> dict[str, object]:
+    return {
+        "artifact_kind": "sanitized-s25u-test-display-capture",
+        "schema_version": 4,
+        "baseline_target_sha256": target_sha256,
+        "target_read": {
+            "expected_bank": 2,
+        },
+        "entry_selector": {
+            "status": "resolved",
+            "baseline_entry_ordinal": 0,
+            "pointer_address": 0x4000,
+        },
+        "group_entry": {
+            "status": "resolved",
+            "entry_ordinal": 0,
+            "group_pointer_address": 0x4000,
+            "entry_start_bit": 2,
+            "entry_end_bit_exclusive": 3,
+            "entry_encoded_bits": 1,
+            "entry_symbol_count": 1,
+            "entry_start_logical_byte": 0x4000,
+            "entry_end_logical_byte_inclusive": 0x4000,
+            "target_logical_byte": 0x4000,
+            "prefix_roundtrip_exact": True,
+        },
+    }
+
+
 class TestPatchTests(unittest.TestCase):
     def setUp(self) -> None:
         self.baseline = bytearray(b"\xFF" * 0x10000)
@@ -179,6 +210,20 @@ class TestPatchTests(unittest.TestCase):
         self.assertEqual(selected["target_file_offset"], 0x8000)
         self.assertEqual(selected["next_target_file_offset"], 0x8010)
         self.assertEqual(selected["runtime_instruction_pc"], 0x3406)
+
+    def test_runtime_group_entry_replaces_intermediate_read_candidate(self) -> None:
+        baseline = bytes(self.baseline)
+        digest = sha256_bytes(baseline)
+        selected = select_runtime_group_entry(
+            baseline,
+            confirmed_group_capture(digest),
+            confirmed_stream_resolution(digest),
+        )
+        self.assertEqual(selected["kind"], "runtime-group-entry")
+        self.assertEqual(selected["target_file_offset"], 0x8000)
+        self.assertEqual(selected["pointer_address"], 0x4000)
+        self.assertEqual(selected["group_entry_start_bit"], 2)
+        self.assertEqual(selected["runtime_encoded_bits"], 1)
 
     def test_shared_target_is_rejected(self) -> None:
         self.baseline[0x103:0x106] = bytes.fromhex("02 00 80")
@@ -257,6 +302,41 @@ class TestPatchTests(unittest.TestCase):
                 replacement=bytes.fromhex("EA B9 8F CF 10"),
                 replacement_bits=39,
                 next_target_offset=20,
+            )
+
+    def test_unpadded_entry_prefix_write_preserves_boundary_bits(self) -> None:
+        baseline = bytes([0xAA, 0x55])
+        planned = plan_unpadded_entry_prefix_write(
+            baseline,
+            group_physical_start=0,
+            entry_start_bit=2,
+            original_bits=10,
+            replacement=b"\xF0",
+            replacement_bits=4,
+        )
+        self.assertEqual(planned.offset, 0)
+        self.assertEqual(planned.before, b"\xAA")
+        self.assertEqual(planned.after, b"\xBE")
+        self.assertEqual(planned.allowed_end_exclusive, 1)
+
+    def test_unpadded_entry_prefix_write_fails_closed(self) -> None:
+        with self.assertRaisesRegex(PatchError, "group entry budget"):
+            plan_unpadded_entry_prefix_write(
+                b"\x00\x00",
+                group_physical_start=0,
+                entry_start_bit=0,
+                original_bits=3,
+                replacement=b"\xF0",
+                replacement_bits=4,
+            )
+        with self.assertRaisesRegex(PatchError, "outside the ROM"):
+            plan_unpadded_entry_prefix_write(
+                b"\x00",
+                group_physical_start=1,
+                entry_start_bit=0,
+                original_bits=1,
+                replacement=b"\x00",
+                replacement_bits=1,
             )
 
 

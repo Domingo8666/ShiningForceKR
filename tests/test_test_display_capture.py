@@ -235,6 +235,34 @@ class TestDisplayCaptureTests(unittest.TestCase):
         self.assertFalse(selector["ordinals_match"])
         self.assertIsNone(selector["entry_index"])
 
+    def test_decoder_entry_selector_treats_next_pointer_as_an_anchor(self) -> None:
+        baseline = bytearray(0x5000)
+        baseline[0x3FEA:0x3FEC] = (0x43DE).to_bytes(2, "little")
+        baseline[0x3FEC:0x3FEE] = (0x4863).to_bytes(2, "little")
+        local = {
+            "entry_selector_hit": {
+                "registers": {
+                    "de": 2,
+                    "bc": 0x9300,
+                }
+            }
+        }
+        selector = _build_entry_selector_observation(
+            baseline_local=local,
+            test_local=local,
+            baseline_rom=bytes(baseline),
+            target_read={
+                "slot": 1,
+                "logical_access": 0x49E0,
+                "instruction_bank": 0,
+                "instruction_pc": 0x3406,
+            },
+        )
+        self.assertEqual(selector["status"], "resolved")
+        self.assertEqual(selector["pointer_address"], 0x43DE)
+        self.assertEqual(selector["next_pointer_address"], 0x4863)
+        self.assertEqual(selector["target_offset_within_entry"], 0x602)
+
     def test_static_selector_finds_the_block_that_bounds_the_target(self) -> None:
         baseline = bytearray(0x5000)
         pointers = (0x401E, 0x43DE, 0x4863, 0x5044)

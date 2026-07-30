@@ -85,6 +85,9 @@ DEFAULT_RESOLUTION = Path(
 DEFAULT_STREAM_RESOLUTION = Path(
     "analysis/device/v5_1_latest_decoder_stream_resolution.json"
 )
+DEFAULT_GROUP_RESOLUTION = Path(
+    "analysis/device/v5_1_latest_display_capture.json"
+)
 DEFAULT_TRACE_PLAN = Path("reports/v5_1_emucap_trace_plan.json")
 DEFAULT_OUTPUT_ROM = Path("build/Final_Conflict_Korean_test_phrase.gg")
 DEFAULT_OUTPUT_IPS = Path(
@@ -264,6 +267,96 @@ def select_runtime_stream(
     }
 
 
+def select_runtime_group_entry(
+    baseline: bytes,
+    capture: dict[str, object],
+    stream_resolution: dict[str, object],
+) -> dict[str, object]:
+    """Promote the B-selected unpadded entry, not an intermediate byte read."""
+
+    stream = select_runtime_stream(baseline, stream_resolution)
+    if (
+        capture.get("artifact_kind")
+        != "sanitized-s25u-test-display-capture"
+        or capture.get("schema_version") not in {4, 5}
+        or capture.get("baseline_target_sha256") != sha256_bytes(baseline)
+    ):
+        raise PatchError("runtime group resolution identity mismatch")
+    selector = capture.get("entry_selector")
+    group = capture.get("group_entry")
+    if (
+        not isinstance(selector, dict)
+        or selector.get("status") != "resolved"
+        or not isinstance(group, dict)
+        or group.get("prefix_roundtrip_exact") is not True
+        or selector.get("baseline_entry_ordinal") != group.get("entry_ordinal")
+        or selector.get("pointer_address") != group.get("group_pointer_address")
+        or stream["pointer_bank"] != capture["target_read"]["expected_bank"]
+        or stream["pointer_address"] != group.get("target_logical_byte")
+    ):
+        raise PatchError("runtime group resolution evidence is inconsistent")
+
+    pointer_address = int(group["group_pointer_address"])
+    entry_start_bit = int(group["entry_start_bit"])
+    entry_end_bit = int(group["entry_end_bit_exclusive"])
+    entry_bits = int(group["entry_encoded_bits"])
+    entry_ordinal = int(group["entry_ordinal"])
+    mapped_bank = int(stream["pointer_bank"])
+    if (
+        not 0x4000 <= pointer_address < 0x8000
+        or not 0 <= entry_ordinal <= 0xFF
+        or entry_start_bit < 0
+        or entry_end_bit <= entry_start_bit
+        or entry_bits != entry_end_bit - entry_start_bit
+    ):
+        raise PatchError("runtime group entry boundaries are invalid")
+
+    group_physical_start = (
+        mapped_bank * 0x4000 + (pointer_address - 0x4000)
+    )
+    expected_intermediate_target = (
+        group_physical_start
+        + (int(group["target_logical_byte"]) - pointer_address)
+    )
+    if expected_intermediate_target != int(stream["target_file_offset"]):
+        raise PatchError("runtime stream does not belong to the resolved group")
+    target_file_offset = group_physical_start + entry_start_bit // 8
+    target_logical_address = pointer_address + entry_start_bit // 8
+    if (
+        target_file_offset < 0
+        or target_file_offset >= len(baseline)
+        or target_logical_address != int(group["entry_start_logical_byte"])
+        or pointer_address
+        + (entry_end_bit - 1) // 8
+        != int(group["entry_end_logical_byte_inclusive"])
+    ):
+        raise PatchError("runtime group entry byte boundaries disagree")
+
+    return {
+        "kind": "runtime-group-entry",
+        "target_file_offset": target_file_offset,
+        "pointer_bank": mapped_bank,
+        "pointer_address": target_logical_address,
+        "group_pointer_address": pointer_address,
+        "group_physical_start": group_physical_start,
+        "group_entry_ordinal": entry_ordinal,
+        "group_entry_start_bit": entry_start_bit,
+        "group_entry_end_bit_exclusive": entry_end_bit,
+        "group_entry_start_bit_in_byte": entry_start_bit & 7,
+        "target_alias_count": 1,
+        "next_target_file_offset": None,
+        "runtime_instruction_bank": int(stream["runtime_instruction_bank"]),
+        "runtime_instruction_pc": int(stream["runtime_instruction_pc"]),
+        "runtime_operand_kind": str(stream["runtime_operand_kind"]),
+        "runtime_symbol_count": int(group["entry_symbol_count"]),
+        "runtime_encoded_bits": entry_bits,
+        "intermediate_observed_target_file_offset": int(
+            stream["target_file_offset"]
+        ),
+        "all_target_offsets": [target_file_offset],
+    }
+
+
 def _bits_equal(left: bytes, right: bytes, bits: int) -> bool:
     return all(
         ((left[index >> 3] >> (7 - (index & 7))) & 1)
@@ -339,6 +432,59 @@ def plan_in_place_write(
     )
 
 
+def plan_unpadded_entry_prefix_write(
+    baseline: bytes,
+    *,
+    group_physical_start: int,
+    entry_start_bit: int,
+    original_bits: int,
+    replacement: bytes,
+    replacement_bits: int,
+) -> ExpectedWrite:
+    """Replace a selected entry prefix at its exact non-byte-aligned bit."""
+
+    if original_bits <= 0 or replacement_bits <= 0:
+        raise PatchError("entry bit lengths must be positive")
+    if replacement_bits > original_bits:
+        raise PatchError("test phrase exceeds the verified group entry budget")
+    if len(replacement) * 8 < replacement_bits:
+        raise PatchError("replacement byte string is shorter than its bit count")
+    absolute_start_bit = group_physical_start * 8 + entry_start_bit
+    absolute_end_bit = absolute_start_bit + replacement_bits
+    write_start = absolute_start_bit // 8
+    write_end = (absolute_end_bit + 7) // 8
+    if (
+        group_physical_start < 0
+        or entry_start_bit < 0
+        or write_start < 0
+        or write_end > len(baseline)
+    ):
+        raise PatchError("group entry prefix write is outside the ROM")
+    after = bytearray(baseline[write_start:write_end])
+    bit_offset = absolute_start_bit - write_start * 8
+    for index in range(replacement_bits):
+        value = (replacement[index >> 3] >> (7 - (index & 7))) & 1
+        target_index = bit_offset + index
+        byte_index = target_index >> 3
+        mask = 1 << (7 - (target_index & 7))
+        if value:
+            after[byte_index] |= mask
+        else:
+            after[byte_index] &= ~mask
+    return ExpectedWrite(
+        writer="v5_1_test_phrase",
+        purpose=(
+            "replace the exact bit-aligned prefix of one runtime-selected "
+            "continuous Huffman entry"
+        ),
+        offset=write_start,
+        before=baseline[write_start:write_end],
+        after=bytes(after),
+        allowed_start=write_start,
+        allowed_end_exclusive=write_end,
+    )
+
+
 def build_test_patch(
     source: bytes,
     patch: bytes,
@@ -346,6 +492,7 @@ def build_test_patch(
     trace_plan: dict[str, object],
     *,
     stream_resolution: dict[str, object] | None = None,
+    group_resolution: dict[str, object] | None = None,
 ) -> tuple[bytes, bytes, dict[str, object]]:
     if (
         len(source) != EXPECTED_SOURCE_SIZE
@@ -357,12 +504,20 @@ def build_test_patch(
     baseline = apply_bps(source, patch)
     verify_target_identity(baseline)
     runtime_entry = (
-        select_runtime_stream(baseline, stream_resolution)
-        if stream_resolution is not None
-        else select_runtime_entry(
+        select_runtime_group_entry(
+            baseline,
+            group_resolution,
+            stream_resolution,
+        )
+        if group_resolution is not None and stream_resolution is not None
+        else (
+            select_runtime_stream(baseline, stream_resolution)
+            if stream_resolution is not None
+            else select_runtime_entry(
             baseline,
             resolution,
             trace_plan,
+        )
         )
     )
 
@@ -375,51 +530,68 @@ def build_test_patch(
         KO_VECTOR_ENTRIES,
     )
     target_offset = int(runtime_entry["target_file_offset"])
-    original_symbols, original_bits = decode_symbols(
-        baseline,
-        known,
-        trees,
-        target_offset,
-        initial_symbol=CANDIDATE_END_SYMBOL,
-        end_symbol=CANDIDATE_END_SYMBOL,
-        max_symbols=MAX_ENTRY_SYMBOLS,
-        max_bytes=MAX_ENTRY_BYTES,
-    )
-    original_encoded, reencoded_bits = encode_symbols(
-        trees,
-        original_symbols,
-        initial_symbol=CANDIDATE_END_SYMBOL,
-        end_symbol=CANDIDATE_END_SYMBOL,
-        max_bits=MAX_ENTRY_BYTES * 8,
-    )
-    if reencoded_bits != original_bits or not _bits_equal(
-        baseline[target_offset:],
-        original_encoded,
-        original_bits,
-    ):
-        raise PatchError("selected entry no-change roundtrip is not exact")
+    if runtime_entry["kind"] == "runtime-group-entry":
+        original_symbols = [None] * int(runtime_entry["runtime_symbol_count"])
+        original_bits = int(runtime_entry["runtime_encoded_bits"])
+    else:
+        original_symbols, original_bits = decode_symbols(
+            baseline,
+            known,
+            trees,
+            target_offset,
+            initial_symbol=CANDIDATE_END_SYMBOL,
+            end_symbol=CANDIDATE_END_SYMBOL,
+            max_symbols=MAX_ENTRY_SYMBOLS,
+            max_bytes=MAX_ENTRY_BYTES,
+        )
+        original_encoded, reencoded_bits = encode_symbols(
+            trees,
+            original_symbols,
+            initial_symbol=CANDIDATE_END_SYMBOL,
+            end_symbol=CANDIDATE_END_SYMBOL,
+            max_bits=MAX_ENTRY_BYTES * 8,
+        )
+        if reencoded_bits != original_bits or not _bits_equal(
+            baseline[target_offset:],
+            original_encoded,
+            original_bits,
+        ):
+            raise PatchError("selected entry no-change roundtrip is not exact")
 
-    _check_nearby_preceding_entries(
-        baseline,
-        trees,
-        target_offset,
-        list(runtime_entry["all_target_offsets"]),
-    )
+        _check_nearby_preceding_entries(
+            baseline,
+            trees,
+            target_offset,
+            list(runtime_entry["all_target_offsets"]),
+        )
     encoding = phrase_plan["encoding"]
     assert isinstance(encoding, dict)
     replacement = bytes.fromhex(str(encoding["encoded_hex"]))
     replacement_bits = int(encoding["encoded_bits"])
-    expected_write = plan_in_place_write(
-        baseline,
-        target_offset=target_offset,
-        original_bits=original_bits,
-        replacement=replacement,
-        replacement_bits=replacement_bits,
-        next_target_offset=(
-            None
-            if runtime_entry["next_target_file_offset"] is None
-            else int(runtime_entry["next_target_file_offset"])
-        ),
+    expected_write = (
+        plan_unpadded_entry_prefix_write(
+            baseline,
+            group_physical_start=int(
+                runtime_entry["group_physical_start"]
+            ),
+            entry_start_bit=int(runtime_entry["group_entry_start_bit"]),
+            original_bits=original_bits,
+            replacement=replacement,
+            replacement_bits=replacement_bits,
+        )
+        if runtime_entry["kind"] == "runtime-group-entry"
+        else plan_in_place_write(
+            baseline,
+            target_offset=target_offset,
+            original_bits=original_bits,
+            replacement=replacement,
+            replacement_bits=replacement_bits,
+            next_target_offset=(
+                None
+                if runtime_entry["next_target_file_offset"] is None
+                else int(runtime_entry["next_target_file_offset"])
+            ),
+        )
     )
     validated = validate_expected_writes(baseline, [expected_write])
     target, audit = apply_expected_writes(baseline, validated)
@@ -450,6 +622,16 @@ def build_test_patch(
             "encoded_bits": replacement_bits,
             "encoded_bytes": len(replacement),
             "encoded_sha256": sha256_bytes(replacement),
+            "bit_start_in_first_byte": (
+                int(runtime_entry["group_entry_start_bit_in_byte"])
+                if runtime_entry["kind"] == "runtime-group-entry"
+                else 0
+            ),
+            "technical_tail_policy": (
+                "preserve-original-tail-after-early-terminator"
+                if runtime_entry["kind"] == "runtime-group-entry"
+                else "byte-aligned-entry"
+            ),
         },
         "expected_write_audit": audit,
         "overlay": {
@@ -533,6 +715,11 @@ def main() -> int:
         type=Path,
         default=DEFAULT_STREAM_RESOLUTION,
     )
+    parser.add_argument(
+        "--group-resolution",
+        type=Path,
+        default=DEFAULT_GROUP_RESOLUTION,
+    )
     parser.add_argument("--trace-plan", type=Path, default=DEFAULT_TRACE_PLAN)
     parser.add_argument("--output-rom", type=Path, default=DEFAULT_OUTPUT_ROM)
     parser.add_argument("--output-ips", type=Path, default=DEFAULT_OUTPUT_IPS)
@@ -546,12 +733,24 @@ def main() -> int:
 
     resolution_path = _absolute(root, args.resolution)
     stream_resolution_path = _absolute(root, args.stream_resolution)
+    group_resolution_path = _absolute(root, args.group_resolution)
     stream_resolution: dict[str, object] | None = None
+    group_resolution: dict[str, object] | None = None
     if stream_resolution_path.exists():
         candidate = _read_json(stream_resolution_path)
         validate_decoder_stream_resolution(candidate)
         if candidate["consumer_evidence_confirmed"] is True:
             stream_resolution = candidate
+    if group_resolution_path.exists():
+        candidate = _read_json(group_resolution_path)
+        if (
+            candidate.get("artifact_kind")
+            == "sanitized-s25u-test-display-capture"
+            and candidate.get("schema_version") in {4, 5}
+            and isinstance(candidate.get("group_entry"), dict)
+            and candidate["group_entry"].get("prefix_roundtrip_exact") is True
+        ):
+            group_resolution = candidate
     if stream_resolution is None and not resolution_path.exists():
         if args.if_ready:
             print("Test patch not built: runtime consumer resolution is absent.")
@@ -589,6 +788,7 @@ def main() -> int:
         resolution,
         _read_json(_absolute(root, args.trace_plan)),
         stream_resolution=stream_resolution,
+        group_resolution=group_resolution,
     )
     _write_outputs(
         output_rom,

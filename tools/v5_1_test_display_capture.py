@@ -343,8 +343,11 @@ def validate_display_capture(capture: dict[str, object]) -> None:
                     + selector["target_offset_within_entry"]
                     != target_read["logical_access"]
                     or selector["pointer_address"] > target_read["logical_access"]
-                    or selector["next_pointer_address"]
-                    <= target_read["logical_access"]
+                    or (
+                        schema_version == 4
+                        and selector["next_pointer_address"]
+                        <= target_read["logical_access"]
+                    )
                     or selector["pointer_bounds_target"] is not True
                 ):
                     raise ValueError("entry_selector evidence is inconsistent")
@@ -1071,7 +1074,8 @@ def _build_entry_selector_observation(
         "little",
     )
     if not (
-        0x4000 <= pointer_address <= expected_address < next_pointer_address <= 0x7FFF
+        0x4000 <= pointer_address <= expected_address <= 0x7FFF
+        and 0 <= next_pointer_address <= 0xFFFF
     ):
         return unresolved
     return {
@@ -1460,17 +1464,35 @@ def main() -> int:
             )
         selected = streams[selected_index]
         assert isinstance(selected, dict)
-        logical_access = int(selected["logical_start"])
-        expected_bank = int(selected["mapped_bank"])
+        built_entry = build_report.get("runtime_entry")
+        if (
+            isinstance(built_entry, dict)
+            and built_entry.get("kind") == "runtime-group-entry"
+        ):
+            logical_access = int(built_entry["pointer_address"])
+            expected_bank = int(built_entry["pointer_bank"])
+            physical_target_byte = int(
+                built_entry["target_file_offset"]
+            )
+            instruction_bank = int(
+                built_entry["runtime_instruction_bank"]
+            )
+            instruction_pc = int(built_entry["runtime_instruction_pc"])
+        else:
+            logical_access = int(selected["logical_start"])
+            expected_bank = int(selected["mapped_bank"])
+            physical_target_byte = int(selected["physical_start"])
+            instruction_bank = int(selected["instruction_bank"])
+            instruction_pc = int(selected["instruction_pc"])
         resolution = {
             "target_read": {
                 "slot": logical_access // 0x4000,
                 "logical_access": logical_access,
-                "physical_target_byte": int(selected["physical_start"]),
-                "instruction_bank": int(selected["instruction_bank"]),
-                "instruction_pc": int(selected["instruction_pc"]),
-                "pc_after": int(selected["instruction_pc"]) + 1,
-                "physical_pc_after": int(selected["instruction_pc"]) + 1,
+                "physical_target_byte": physical_target_byte,
+                "instruction_bank": instruction_bank,
+                "instruction_pc": instruction_pc,
+                "pc_after": instruction_pc + 1,
+                "physical_pc_after": instruction_pc + 1,
                 "expected_bank": expected_bank,
                 "mapped_bank": expected_bank,
             }
@@ -1490,10 +1512,38 @@ def main() -> int:
             )
 
     baseline_rom = baseline_rom_path.read_bytes()
-    expected_selector_offset = _static_entry_selector_offset(
-        baseline_rom,
-        int(resolution["target_read"]["logical_access"]),
-    )
+    built_entry = build_report.get("runtime_entry")
+    if (
+        isinstance(built_entry, dict)
+        and built_entry.get("kind") == "runtime-group-entry"
+    ):
+        group_pointer_address = int(
+            built_entry["group_pointer_address"]
+        )
+        exact_selector_offsets = [
+            offset
+            for offset in range(0, 0x18, 2)
+            if int.from_bytes(
+                baseline_rom[
+                    LOOKUP_TABLE_BASE
+                    + offset : LOOKUP_TABLE_BASE
+                    + offset
+                    + 2
+                ],
+                "little",
+            )
+            == group_pointer_address
+        ]
+        if len(exact_selector_offsets) != 1:
+            raise PatchError(
+                "runtime group pointer does not select one lookup anchor"
+            )
+        expected_selector_offset = exact_selector_offsets[0]
+    else:
+        expected_selector_offset = _static_entry_selector_offset(
+            baseline_rom,
+            int(resolution["target_read"]["logical_access"]),
+        )
     _CURRENT_FAILURE_STAGE = "baseline-display-capture"
     (
         baseline_emulator_version,
