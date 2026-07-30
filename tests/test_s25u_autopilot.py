@@ -172,6 +172,17 @@ class S25UAutopilotTests(unittest.TestCase):
         ):
             self.assertIn(f"record_stage_failure {stage}", RUNTIME_STAGE)
 
+    def test_runtime_stage_prepares_the_verified_local_font_catalog(self) -> None:
+        self.assertIn("visible_font_catalog_ready()", RUNTIME_STAGE)
+        self.assertIn("tools/fetch_galmuri7_bdf.py --force", RUNTIME_STAGE)
+        self.assertIn("python tools/v5_1_font_catalog.py", RUNTIME_STAGE)
+        self.assertLess(
+            RUNTIME_STAGE.index("prepare_visible_font_catalog"),
+            RUNTIME_STAGE.index(
+                "python tools/v5_1_visible_unicode_mapping.py --if-ready"
+            ),
+        )
+
     def test_manager_logs_include_launcher_details(self) -> None:
         self.assertIn("tail -n 40 \"$private_log\"", MANAGER)
         self.assertIn("tail -n 80 \"$launcher_log\"", MANAGER)

@@ -73,6 +73,19 @@ run_display_capture() {
   fi
 }
 
+visible_font_catalog_ready() {
+  python -c 'import json; from pathlib import Path; path=Path("analysis/local/v5_1_font_catalog.json"); value=json.loads(path.read_text(encoding="utf-8")); print("yes" if value.get("artifact_kind") == "local-v5-1-galmuri7-font-catalog" and value.get("status") == "verified-static-local-analysis" and isinstance(value.get("entries"), list) and bool(value["entries"]) else "no")' 2>/dev/null || true
+}
+
+prepare_visible_font_catalog() {
+  if [ "$(visible_font_catalog_ready)" = "yes" ]; then
+    return 0
+  fi
+  python tools/fetch_galmuri7_bdf.py --force &&
+    python tools/v5_1_font_catalog.py &&
+    [ "$(visible_font_catalog_ready)" = "yes" ]
+}
+
 record_stage_failure() {
   python tools/v5_1_runtime_stage_failure.py \
     --stage "$1" \
@@ -285,6 +298,19 @@ else
       stage_status="$renderer_output_trace_status"
       diagnostic_trigger=probe
       record_stage_failure renderer-output-trace
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
+    if python -c 'import json; from pathlib import Path; from tools.v5_1_renderer_output_trace import validate_renderer_output_trace; path=Path("analysis/device/v5_1_latest_renderer_output_trace.json"); value=json.loads(path.read_text(encoding="utf-8")); validate_renderer_output_trace(value); print("yes" if value.get("consumer_chain_confirmed") is True else "no")' 2>/dev/null |
+      grep -qx yes; then
+      prepare_visible_font_catalog
+      font_catalog_status=$?
+      if [ "$font_catalog_status" -ne 0 ]; then
+        stage_status="$font_catalog_status"
+        diagnostic_trigger=probe
+        record_stage_failure visible-unicode-mapping
+      fi
     fi
   fi
 
