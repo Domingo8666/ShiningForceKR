@@ -823,6 +823,39 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    first_context_translation_approval_output="$(
+      python tools/v5_1_first_context_translation_approval.py --if-ready 2>&1
+    )"
+    first_context_translation_approval_status=$?
+    printf '%s\n' "$first_context_translation_approval_output"
+    if [ "$first_context_translation_approval_status" -ne 0 ]; then
+      stage_status="$first_context_translation_approval_status"
+      diagnostic_trigger=probe
+      first_context_translation_approval_failure_stage=first-context-translation-approval
+      case "$first_context_translation_approval_output" in
+        *"translation approval identity"*)
+          first_context_translation_approval_failure_stage=first-context-approval-identity
+          ;;
+        *"translation approval row"*|\
+        *"translation approval target"*|\
+        *"translation line count"*|\
+        *"contains no Hangul"*)
+          first_context_translation_approval_failure_stage=first-context-approval-payload
+          ;;
+        *"translation approval input is missing"*)
+          first_context_translation_approval_failure_stage=first-context-approval-input
+          ;;
+        *"translation approval fields do not match"*|\
+        *"translation approval counts do not match"*|\
+        *"translation approval result is inconsistent"*)
+          first_context_translation_approval_failure_stage=first-context-approval-validation
+          ;;
+      esac
+      record_stage_failure "$first_context_translation_approval_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then

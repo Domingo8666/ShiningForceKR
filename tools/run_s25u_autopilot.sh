@@ -244,6 +244,7 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_runtime_context_glyph_review.json|\
     analysis/device/v5_1_latest_runtime_context_glyph_preservation.json|\
     analysis/device/v5_1_latest_first_context_translation_review.json|\
+    analysis/device/v5_1_latest_first_context_translation_approval.json|\
     analysis/device/v5_1_latest_group_context_resolution.json|\
     analysis/device/v5_1_latest_group_runtime_context.json|\
     analysis/device/v5_1_latest_group_source_delta.json|\
