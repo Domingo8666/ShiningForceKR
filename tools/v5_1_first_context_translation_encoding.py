@@ -1727,16 +1727,24 @@ def solve_exact_length_row_multi_page_visual_symbols(
     def page_routes(
         previous: int,
     ) -> tuple[tuple[int, tuple[int, ...], int, int], ...]:
+        """Enumerate bit-distinct invisible routes to each render page.
+
+        Exact-length rows cannot discard a longer page-select path merely
+        because a shorter path reaches the same Huffman context.  The extra
+        bits are invisible on screen and may be exactly what preserves the
+        source record boundary.  Bridge transitions that have the same bit
+        cost and next context remain equivalent and are collapsed.
+        """
+
         heap: list[tuple[int, tuple[int, ...], int]] = [(0, (), previous)]
-        best_context = {previous: 0}
+        seen_contexts = {(0, previous)}
         best_target: dict[
-            tuple[int, int], tuple[int, tuple[int, ...], int, int]
+            tuple[int, int, int], tuple[int, tuple[int, ...], int, int]
         ] = {}
         while heap:
             bits, path, current = heappop(heap)
-            if bits != best_context.get(current):
-                continue
-            for candidate_page, token in all_page_tokens:
+            for candidate_page in candidate_pages:
+                token = tuple(page_select_symbols(candidate_page))
                 encoded = transition(current, token)
                 if encoded is None:
                     continue
@@ -1752,16 +1760,30 @@ def solve_exact_length_row_multi_page_visual_symbols(
                         candidate_page,
                         next_previous,
                     )
-                    key = (candidate_page, next_previous)
+                    key = (total_bits, candidate_page, next_previous)
                     current_target = best_target.get(key)
                     if current_target is None or target < current_target:
                         best_target[key] = target
-                if total_bits >= best_context.get(
-                    next_previous, target_bits + 1
-                ):
+
+            unique_bridges: dict[
+                tuple[int, int], tuple[int, ...]
+            ] = {}
+            for _, token in all_page_tokens:
+                encoded = transition(current, token)
+                if encoded is None:
                     continue
-                best_context[next_previous] = total_bits
-                heappush(heap, (total_bits, candidate_path, next_previous))
+                unique_bridges.setdefault(encoded, token)
+            for (added_bits, next_previous), token in sorted(
+                unique_bridges.items()
+            ):
+                total_bits = bits + added_bits
+                if total_bits >= target_bits:
+                    continue
+                state = (total_bits, next_previous)
+                if state in seen_contexts:
+                    continue
+                seen_contexts.add(state)
+                heappush(heap, (total_bits, path + token, next_previous))
         return tuple(
             sorted(
                 best_target.values(),
@@ -1868,7 +1890,14 @@ def solve_exact_length_row_multi_page_visual_symbols(
                             symbol
                             for symbol in glyph_symbols
                             if not used_mask
-                            & (1 << (route_page * 0x100 + symbol))
+                            & (
+                                1
+                                << (
+                                    page_priority[route_page] * capacity
+                                    + symbol
+                                    - FONT_GLYPH_FIRST_SYMBOL
+                                )
+                            )
                             and symbol in lengths.get(route_previous, {})
                         ),
                         key=lambda symbol: (
@@ -1891,10 +1920,15 @@ def solve_exact_length_row_multi_page_visual_symbols(
                 next_used_mask = used_mask
                 if assigned_coordinate < 0:
                     coordinate = route_page * 0x100 + symbol
+                    slot_index = (
+                        page_priority[route_page] * capacity
+                        + symbol
+                        - FONT_GLYPH_FIRST_SYMBOL
+                    )
                     mutable_assignments = list(assignments_by_visual)
                     mutable_assignments[visual_id] = coordinate
                     next_assignments = tuple(mutable_assignments)
-                    next_used_mask |= 1 << coordinate
+                    next_used_mask |= 1 << slot_index
                 suffix = search_visible(
                     symbol,
                     route_page,
