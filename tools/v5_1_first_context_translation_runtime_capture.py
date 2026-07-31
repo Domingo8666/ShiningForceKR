@@ -330,10 +330,8 @@ def main() -> int:
             if (
                 existing["test_target_sha256"]
                 == build["test_target_sha256"]
-                and existing["first_context_translation_test_build_sha256"]
-                == sha256_file(paths["build"])
-                and existing["source_runtime_sequence_sha256"]
-                == sha256_file(paths["source_sequence"])
+                and existing["baseline_target_sha256"]
+                == build["baseline_target_sha256"]
                 and existing["local_capture_sha256"]
                 == sha256_file(local_path)
             ):
