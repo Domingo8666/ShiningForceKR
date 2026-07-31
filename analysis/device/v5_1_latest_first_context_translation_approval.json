@@ -4,15 +4,15 @@
   "status": "first-context-translation-human-approved",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "review_batch_sha256": "8eba1e7f4f380c6aa7a3eb2f649719b1fadb3b6ebb33de588387acdd5c3ee47a",
-  "local_approval_sha256": "3481eb7dfe9fef33ae37f824fbac5e67dda3c46e85a5fff42649181e9e555ea6",
-  "captured_utc": "2026-07-31T14:29:39.563962Z",
+  "local_approval_sha256": "a55883efbc7927275618d941e4ccd381fedc02e4cf2a6e29bfd7e92967090f2f",
+  "captured_utc": "2026-07-31T15:53:10.211258Z",
   "approval": {
     "context_entry_count": 5,
     "approved_entry_count": 5,
     "nonempty_target_entry_count": 5,
-    "target_character_count": 61,
-    "hangul_syllable_count": 40,
-    "unique_hangul_syllable_count": 35
+    "target_character_count": 59,
+    "hangul_syllable_count": 39,
+    "unique_hangul_syllable_count": 34
   },
   "human_approval_recorded": true,
   "human_approval_scope": "first-context-entry-batch",
