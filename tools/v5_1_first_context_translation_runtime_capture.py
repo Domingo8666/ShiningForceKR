@@ -348,16 +348,11 @@ def select_target_runtime_sequence(
         raise ValueError("first context captured screen sequence is invalid")
     selected_observations = []
     selected_screens = []
-    expected_ordinal = CONFIRMED_ORDINAL
     for observation, screenshot in zip(observations, screenshots):
-        if (
-            observation.get("selector") != CONFIRMED_SELECTOR
-            or observation.get("ordinal") != expected_ordinal
-        ):
+        if observation.get("selector") != CONFIRMED_SELECTOR:
             continue
         selected_observations.append(observation)
         selected_screens.append(screenshot)
-        expected_ordinal += 1
         if len(selected_observations) == expected_entry_count:
             break
     return selected_observations, selected_screens

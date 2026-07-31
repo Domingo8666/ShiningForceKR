@@ -134,6 +134,22 @@ class FirstContextTranslationRuntimeCaptureTests(unittest.TestCase):
             ["screen-0.png", "screen-2.png", "screen-3.png"],
         )
 
+    def test_keeps_same_selector_screens_for_separate_sequence_validation(
+        self,
+    ) -> None:
+        observations = [
+            {"selector": CONFIRMED_SELECTOR, "ordinal": CONFIRMED_ORDINAL},
+            {"selector": CONFIRMED_SELECTOR, "ordinal": CONFIRMED_ORDINAL + 7},
+        ]
+        screens = [{"file": "anchor.png"}, {"file": "later.png"}]
+        selected_observations, selected_screens = select_target_runtime_sequence(
+            observations=observations,
+            screenshots=screens,
+            expected_entry_count=2,
+        )
+        self.assertEqual(len(selected_observations), 2)
+        self.assertEqual(len(selected_screens), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
