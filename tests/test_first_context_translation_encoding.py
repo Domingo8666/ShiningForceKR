@@ -16,10 +16,12 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     build_first_context_translation_encoding_failure,
     build_runtime_codec_constraints,
     build_row_visuals,
+    build_single_page_symbol_rows,
     build_symbol_rows,
     exact_length_row_symbols,
     select_row_font_pages,
     solve_bounded_length_row_visual_symbols,
+    solve_bounded_length_row_multi_page_visual_symbols,
     solve_exact_length_row_visual_symbols,
     solve_row_visual_symbols,
     validate_first_context_translation_encoding,
@@ -85,6 +87,57 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
 
         self.assertEqual(pages, (240, 241, 242, 243, 238))
 
+    def test_records_the_render_page_for_multi_page_assignments(self) -> None:
+        targets = [
+            {"review_index": index, "target_text": "가"}
+            for index in range(1, 6)
+        ]
+        constraints = [
+            {
+                "initial_context": 0xC9,
+                "original_encoded_bits": 8,
+                "original_record_length_bytes": 1,
+            }
+            for _ in targets
+        ]
+        with (
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_row_visual_symbols",
+                return_value=[0x03],
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "exact_length_row_symbols",
+                return_value=([0x5F, 0x11, 0x02, 0x03, 0xC9], 0),
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_bounded_length_row_visual_symbols",
+                side_effect=ValueError("force multi-page search"),
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_bounded_length_row_multi_page_visual_symbols",
+                return_value=(
+                    [0x5F, 0x10, 0x11, 0x03, 0xC9],
+                    0,
+                    [0x03],
+                    [238],
+                ),
+            ),
+        ):
+            _, _, assignments = build_single_page_symbol_rows(
+                trees={},
+                target_rows=targets,
+                preserved_by_row=[[] for _ in targets],
+                runtime_constraints=constraints,
+                pages=ROW_FONT_PAGES,
+            )
+        self.assertEqual(assignments[-1], [
+            {"visual": "text:가", "page": 238, "symbol": 0x03}
+        ])
+
     def test_jointly_searches_a_bounded_visual_assignment(self) -> None:
         trees = {
             0xC9: tree(0xC9, 0x5F, 0xC9),
@@ -140,6 +193,36 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(
             symbols,
             [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x11, 0x02, 0x04, 0xC9],
+        )
+
+    def test_switches_font_pages_between_bounded_visible_glyphs(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x10),
+            0x10: tree(0x10, 0x11, 0x10),
+            0x11: tree(0x11, 0x02, 0x04),
+            0x02: tree(0x02, 0x03, 0x02),
+            0x03: tree(0x03, 0x5F, 0x03),
+            0x04: tree(0x04, 0xC9, 0x04),
+        }
+        (
+            symbols,
+            padding_count,
+            assignments,
+            assignment_pages,
+        ) = solve_bounded_length_row_multi_page_visual_symbols(
+            trees=trees,
+            initial_context=0xC9,
+            maximum_bits=9,
+            pages=(240, 239),
+            visuals=["text:가", "text:나"],
+        )
+        self.assertEqual(padding_count, 1)
+        self.assertEqual(assignments, [0x03, 0x04])
+        self.assertEqual(assignment_pages, [240, 239])
+        self.assertEqual(
+            symbols,
+            [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x10, 0x11, 0x04, 0xC9],
         )
 
     def test_jointly_searches_a_non_greedy_exact_length_assignment(self) -> None:

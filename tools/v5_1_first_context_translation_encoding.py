@@ -1042,6 +1042,176 @@ def solve_bounded_length_row_visual_symbols(
     raise ValueError("first context visual row exceeds its Huffman capacity")
 
 
+def solve_bounded_length_row_multi_page_visual_symbols(
+    *,
+    trees: dict[int, object],
+    initial_context: int,
+    maximum_bits: int,
+    pages: tuple[int, ...],
+    visuals: list[str],
+) -> tuple[list[int], int, list[int], list[int]]:
+    """Search a bounded row while permitting visible glyph page changes.
+
+    Every returned assignment includes the page that must contain its tile.
+    Control-only bridge pages may be selected transiently, but only pages that
+    actually render a visible glyph are returned for font writes.
+    """
+
+    if (
+        not 0 <= initial_context <= 0xFF
+        or not 1 <= maximum_bits <= 0x7FFF
+        or not visuals
+        or not pages
+    ):
+        raise ValueError("first context multi-page row inputs are invalid")
+    candidate_pages = tuple(dict.fromkeys(pages))
+    if any(not 0 <= page < FONT_PAGE_COUNT for page in candidate_pages):
+        raise ValueError("first context multi-page row page is invalid")
+    capacity = FONT_GLYPH_LAST_SYMBOL - FONT_GLYPH_FIRST_SYMBOL + 1
+    if len(visuals) > capacity:
+        raise ValueError("first context visual row exceeds glyph search capacity")
+
+    lengths = _code_lengths(trees)
+    all_page_tokens = tuple(
+        (page, tuple(page_select_symbols(page)))
+        for page in range(FONT_PAGE_COUNT)
+    )
+    candidate_page_set = set(candidate_pages)
+    glyph_symbols = tuple(
+        range(FONT_GLYPH_FIRST_SYMBOL, FONT_GLYPH_LAST_SYMBOL + 1)
+    )
+
+    def transition(
+        previous: int,
+        symbols: tuple[int, ...],
+    ) -> tuple[int, int] | None:
+        bits = 0
+        for symbol in symbols:
+            code_length = lengths.get(previous, {}).get(symbol)
+            if code_length is None:
+                return None
+            bits += code_length
+            previous = symbol
+        return bits, previous
+
+    @lru_cache(maxsize=None)
+    def page_routes(
+        previous: int,
+    ) -> tuple[tuple[int, tuple[int, ...], int, int], ...]:
+        queue: list[tuple[int, tuple[int, ...], int]] = [(0, (), previous)]
+        best_context = {previous: 0}
+        best_target: dict[int, tuple[int, tuple[int, ...], int, int]] = {}
+        while queue:
+            bits, path, current = heappop(queue)
+            if bits != best_context.get(current):
+                continue
+            for candidate_page, token in all_page_tokens:
+                encoded = transition(current, token)
+                if encoded is None:
+                    continue
+                added_bits, next_previous = encoded
+                total_bits = bits + added_bits
+                if total_bits >= maximum_bits:
+                    continue
+                candidate_path = path + token
+                if candidate_page in candidate_page_set:
+                    target = (
+                        total_bits,
+                        candidate_path,
+                        candidate_page,
+                        next_previous,
+                    )
+                    if target < best_target.get(
+                        next_previous,
+                        (maximum_bits + 1, (), FONT_PAGE_COUNT, 0x100),
+                    ):
+                        best_target[next_previous] = target
+                if total_bits >= best_context.get(
+                    next_previous, maximum_bits + 1
+                ):
+                    continue
+                best_context[next_previous] = total_bits
+                heappush(
+                    queue,
+                    (total_bits, candidate_path, next_previous),
+                )
+        return tuple(sorted(best_target.values()))
+
+    best_visible_bits: dict[tuple[int, int, int, int], int] = {}
+
+    @lru_cache(maxsize=None)
+    def search_visible(
+        previous: int,
+        current_page: int,
+        used_mask: int,
+        depth: int,
+        bits: int,
+    ) -> tuple[
+        tuple[int, ...], tuple[int, ...], tuple[int, ...]
+    ] | None:
+        state = (previous, current_page, used_mask, depth)
+        if bits >= best_visible_bits.get(state, maximum_bits + 1):
+            return None
+        best_visible_bits[state] = bits
+        if depth == len(visuals):
+            end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
+            if end_length is not None and bits + end_length <= maximum_bits:
+                return (CANDIDATE_END_SYMBOL,), (), ()
+            return None
+        routes: list[tuple[int, tuple[int, ...], int, int]] = []
+        if current_page >= 0:
+            routes.append((0, (), current_page, previous))
+        routes.extend(page_routes(previous))
+        for route_bits, route_symbols, route_page, route_previous in routes:
+            candidates = sorted(
+                (
+                    symbol
+                    for symbol in glyph_symbols
+                    if not used_mask
+                    & (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL))
+                    and symbol in lengths.get(route_previous, {})
+                ),
+                key=lambda symbol: (
+                    CANDIDATE_END_SYMBOL not in lengths.get(symbol, {}),
+                    -len(set(lengths.get(symbol, {})) & set(glyph_symbols)),
+                    symbol,
+                ),
+            )
+            for symbol in candidates:
+                added_bits = lengths[route_previous][symbol]
+                next_bits = bits + route_bits + added_bits
+                if next_bits >= maximum_bits:
+                    continue
+                suffix = search_visible(
+                    symbol,
+                    route_page,
+                    used_mask | (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL)),
+                    depth + 1,
+                    next_bits,
+                )
+                if suffix is None:
+                    continue
+                suffix_symbols, suffix_assignments, suffix_pages = suffix
+                return (
+                    route_symbols + (symbol,) + suffix_symbols,
+                    (symbol,) + suffix_assignments,
+                    (route_page,) + suffix_pages,
+                )
+        return None
+
+    result = search_visible(initial_context, -1, 0, 0, 0)
+    if result is None:
+        raise ValueError("first context visual row exceeds multi-page capacity")
+    symbols, assignments, assignment_pages = result
+    page_control_symbol = page_select_symbols(candidate_pages[0])[0]
+    return (
+        list(symbols),
+        sum(symbol == page_control_symbol for symbol in symbols) - 1,
+        list(assignments),
+        list(assignment_pages),
+    )
+
+
 def solve_exact_length_row_visual_symbols(
     *,
     trees: dict[int, object],
@@ -1259,9 +1429,34 @@ def select_row_font_pages(
             used_pages.add(page)
             break
         else:
-            raise ValueError(
-                "first context row has no usable font page Huffman route"
+            if constraint is None:
+                raise ValueError(
+                    "first context row has no usable font page Huffman route"
+                )
+            available_pages = tuple(
+                page
+                for page in range(FONT_PAGE_COUNT - 1, -1, -1)
+                if page not in used_pages
             )
+            (
+                _,
+                _,
+                _,
+                assignment_pages,
+            ) = solve_bounded_length_row_multi_page_visual_symbols(
+                trees=trees,
+                initial_context=int(constraint["initial_context"]),
+                maximum_bits=(
+                    int(constraint["original_record_length_bytes"]) * 8
+                ),
+                pages=available_pages,
+                visuals=visuals,
+            )
+            selected_pages = tuple(dict.fromkeys(assignment_pages))
+            if not selected_pages:
+                raise ValueError("first context multi-page row is empty")
+            pages.append(selected_pages[0])
+            used_pages.update(selected_pages)
     return tuple(pages)
 
 
@@ -1307,6 +1502,7 @@ def build_single_page_symbol_rows(
             initial_context = CANDIDATE_END_SYMBOL
             target_bits = 0
             storage_capacity_bits = 0
+            assignment_pages = [page] * len(assignments)
         elif expected_index <= len(PROVEN_ROW_FONT_PAGES):
             assignments = solve_row_visual_symbols(
                 trees=trees,
@@ -1325,23 +1521,53 @@ def build_single_page_symbol_rows(
                 page=page,
                 assignments=assignments,
             )
+            assignment_pages = [page] * len(assignments)
         else:
             initial_context = int(constraint["initial_context"])
             target_bits = int(constraint["original_encoded_bits"])
             storage_capacity_bits = (
                 int(constraint["original_record_length_bytes"]) * 8
             )
-            (
-                symbols,
-                padding_count,
-                assignments,
-            ) = solve_bounded_length_row_visual_symbols(
-                trees=trees,
-                initial_context=initial_context,
-                maximum_bits=storage_capacity_bits,
-                page=page,
-                visuals=visuals,
-            )
+            try:
+                (
+                    symbols,
+                    padding_count,
+                    assignments,
+                ) = solve_bounded_length_row_visual_symbols(
+                    trees=trees,
+                    initial_context=initial_context,
+                    maximum_bits=storage_capacity_bits,
+                    page=page,
+                    visuals=visuals,
+                )
+                assignment_pages = [page] * len(assignments)
+            except ValueError:
+                available_pages = tuple(
+                    candidate_page
+                    for candidate_page in range(
+                        FONT_PAGE_COUNT - 1, -1, -1
+                    )
+                    if candidate_page not in set(
+                        pages[: len(PROVEN_ROW_FONT_PAGES)]
+                    )
+                )
+                (
+                    symbols,
+                    padding_count,
+                    assignments,
+                    assignment_pages,
+                ) = solve_bounded_length_row_multi_page_visual_symbols(
+                    trees=trees,
+                    initial_context=initial_context,
+                    maximum_bits=storage_capacity_bits,
+                    pages=available_pages,
+                    visuals=visuals,
+                )
+        if (
+            len(assignments) != len(visuals)
+            or len(assignment_pages) != len(visuals)
+        ):
+            raise ValueError("first context visual assignment count disagrees")
         rows.append(
             {
                 "review_index": expected_index,
@@ -1361,8 +1587,10 @@ def build_single_page_symbol_rows(
         )
         assignments_by_row.append(
             [
-                {"visual": visual, "symbol": symbol}
-                for visual, symbol in zip(visuals, assignments)
+                {"visual": visual, "page": assignment_page, "symbol": symbol}
+                for visual, assignment_page, symbol in zip(
+                    visuals, assignment_pages, assignments
+                )
             ]
         )
     visible_count = sum(len(visuals) for visuals in visual_rows)
@@ -1742,18 +1970,21 @@ def _main() -> int:
         runtime_constraints=runtime_constraints,
         pages=selected_row_font_pages,
     )
-    custom_pages = set(selected_row_font_pages)
+    custom_pages = {
+        int(assignment["page"])
+        for assignments in assignments_by_row
+        for assignment in assignments
+    }
     ACTIVE_FAILURE_CATEGORY = "font-input"
     writes = []
     all_assignments = []
-    for row_index, (page, assignments) in enumerate(
-        zip(selected_row_font_pages, assignments_by_row),
-        start=1,
-    ):
+    for row_index, assignments in enumerate(assignments_by_row, start=1):
         for assignment in assignments:
             visual = assignment["visual"]
+            page = assignment["page"]
             symbol = assignment["symbol"]
             assert isinstance(visual, str)
+            assert isinstance(page, int)
             assert isinstance(symbol, int)
             if visual.startswith("text:"):
                 after = character_tiles.get(visual)
@@ -1788,7 +2019,8 @@ def _main() -> int:
                 writes.append(
                     ExpectedWrite(
                         writer=(
-                            f"first-context-row-{row_index}-font-{symbol:02x}"
+                            f"first-context-row-{row_index}-font-"
+                            f"{page:02x}-{symbol:02x}"
                         ),
                         purpose="first-context-technical-test-only",
                         offset=start,
