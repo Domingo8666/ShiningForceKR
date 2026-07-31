@@ -44,7 +44,6 @@ try:
         PUBLISH_RELATIVE_PATH as DISPLAY_CAPTURE_PATH,
         _continue_until_breakpoint,
         _parse_screenshot,
-        _set_unlimited_fast_forward,
         _write_bytes_atomic,
         validate_display_capture,
     )
@@ -78,7 +77,6 @@ except ImportError:  # pragma: no cover - direct script execution
         PUBLISH_RELATIVE_PATH as DISPLAY_CAPTURE_PATH,
         _continue_until_breakpoint,
         _parse_screenshot,
-        _set_unlimited_fast_forward,
         _write_bytes_atomic,
         validate_display_capture,
     )
@@ -480,8 +478,6 @@ def capture_runtime_sequence(
 ) -> tuple[list[dict[str, object]], int, dict[str, object]]:
     client = McpStdioClient(_default_command())
     breakpoint_armed = False
-    fast_forward_enabled = False
-    fast_forward_available = True
     local: dict[str, object] = {
         "rom": str(rom_path),
         "hits": [],
@@ -518,22 +514,6 @@ def capture_runtime_sequence(
         )
         breakpoint_armed = False
 
-    def set_fast_forward(enabled: bool) -> None:
-        nonlocal fast_forward_available, fast_forward_enabled
-        if not enabled:
-            if fast_forward_enabled:
-                _set_unlimited_fast_forward(client, False)
-                fast_forward_enabled = False
-            return
-        if not fast_forward_available:
-            return
-        try:
-            _set_unlimited_fast_forward(client, True)
-            fast_forward_enabled = True
-        except RuntimeError:
-            fast_forward_available = False
-            fast_forward_enabled = False
-
     try:
         tools = client.initialize()
         missing = sorted(REQUIRED_TOOLS - tools)
@@ -560,11 +540,9 @@ def capture_runtime_sequence(
             raise RuntimeError(
                 "runtime sequence attract schedule must be passive"
             )
-        set_fast_forward(True)
-        anchor_timeout = (
-            ATTRACT_CAPTURE_TIMEOUT_SECONDS
-            if fast_forward_enabled
-            else 240.0
+        anchor_timeout = max(
+            ATTRACT_CAPTURE_TIMEOUT_SECONDS,
+            240.0,
         )
         for _ in range(MAX_REJECTED_TARGET_HITS):
             status = _continue_until_breakpoint(
@@ -593,7 +571,6 @@ def capture_runtime_sequence(
                 break
             _step_instruction_and_wait(client)
             arm_breakpoint()
-        set_fast_forward(False)
         if anchor_state is None:
             raise RuntimeError(
                 "runtime sequence confirmed anchor was not reached"
@@ -620,7 +597,6 @@ def capture_runtime_sequence(
         ):
             advance_attempt_count += 1
             arm_breakpoint()
-            set_fast_forward(True)
             client.call(
                 "controller_button",
                 {
@@ -630,7 +606,6 @@ def capture_runtime_sequence(
                 },
             )
             status = _continue_until_breakpoint(client, 4.0)
-            set_fast_forward(False)
             if status.get("at_breakpoint") is not True:
                 disarm_breakpoint()
                 continue
@@ -678,11 +653,6 @@ def capture_runtime_sequence(
         )
         raise
     finally:
-        if fast_forward_enabled:
-            try:
-                set_fast_forward(False)
-            except RuntimeError:
-                pass
         if breakpoint_armed:
             try:
                 client.call(
