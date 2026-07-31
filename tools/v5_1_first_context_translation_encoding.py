@@ -216,7 +216,7 @@ SAFE_FIELDS = {
     "translation_build_eligible",
     "next_checkpoint",
 }
-FAILURE_FIELDS = {
+FAILURE_FIELDS_V1 = {
     "artifact_kind",
     "schema_version",
     "status",
@@ -230,6 +230,11 @@ FAILURE_FIELDS = {
     "captured_utc",
     "source_and_target_text_local_only",
     "next_checkpoint",
+}
+FAILURE_FIELDS = FAILURE_FIELDS_V1 | {
+    "target_encoded_bit_count",
+    "bounded_candidate_bit_count",
+    "bounded_candidate_relation",
 }
 FAILURE_CATEGORIES = {
     "identity",
@@ -278,10 +283,18 @@ FAILURE_DETAILS = {
 
 
 class RowRouteError(ValueError):
-    def __init__(self, required: int, maximum: int) -> None:
+    def __init__(
+        self,
+        required: int,
+        maximum: int,
+        target_bits: int = 0,
+        candidate_bits: int = 0,
+    ) -> None:
         super().__init__("first context row has no usable Huffman route")
         self.required = required
         self.maximum = maximum
+        self.target_bits = target_bits
+        self.candidate_bits = candidate_bits
 
 
 def _is_sha256(value: object) -> bool:
@@ -312,6 +325,8 @@ def build_first_context_translation_encoding_failure(
     captured_utc: str,
     required_visible_symbol_count: int = 0,
     maximum_routable_visible_symbol_count: int = 0,
+    target_encoded_bit_count: int = 0,
+    bounded_candidate_bit_count: int = 0,
     failure_step: str = "input",
     failure_kind: str = "ValueError",
     failure_row_index: int = 0,
@@ -320,7 +335,7 @@ def build_first_context_translation_encoding_failure(
     value: dict[str, object] = {
         "artifact_kind":
             "sanitized-v5-1-first-context-translation-encoding-failure",
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "first-context-translation-encoding-failed",
         "category": category,
         "failure_step": failure_step,
@@ -330,6 +345,17 @@ def build_first_context_translation_encoding_failure(
         "required_visible_symbol_count": required_visible_symbol_count,
         "maximum_routable_visible_symbol_count":
             maximum_routable_visible_symbol_count,
+        "target_encoded_bit_count": target_encoded_bit_count,
+        "bounded_candidate_bit_count": bounded_candidate_bit_count,
+        "bounded_candidate_relation": (
+            "none"
+            if bounded_candidate_bit_count == 0
+            else "shorter"
+            if bounded_candidate_bit_count < target_encoded_bit_count
+            else "equal"
+            if bounded_candidate_bit_count == target_encoded_bit_count
+            else "longer"
+        ),
         "captured_utc": captured_utc,
         "source_and_target_text_local_only": True,
         "next_checkpoint": f"repair-first-context-{category}",
@@ -341,14 +367,19 @@ def build_first_context_translation_encoding_failure(
 def validate_first_context_translation_encoding_failure(
     value: dict[str, object],
 ) -> None:
-    if set(value) != FAILURE_FIELDS:
+    fields = set(value)
+    schema_version = value.get("schema_version")
+    if not (
+        (schema_version == 1 and fields == FAILURE_FIELDS_V1)
+        or (schema_version == 2 and fields == FAILURE_FIELDS)
+    ):
         raise ValueError(
             "first context translation encoding failure fields do not match"
         )
     if (
         value["artifact_kind"]
         != "sanitized-v5-1-first-context-translation-encoding-failure"
-        or value["schema_version"] != 1
+        or schema_version not in {1, 2}
         or value["status"] != "first-context-translation-encoding-failed"
         or value["category"] not in FAILURE_CATEGORIES
         or value["failure_step"] not in FAILURE_STEPS
@@ -373,6 +404,32 @@ def validate_first_context_translation_encoding_failure(
         raise ValueError(
             "first context translation encoding failure is inconsistent"
         )
+    if schema_version == 2:
+        target_bits = value["target_encoded_bit_count"]
+        candidate_bits = value["bounded_candidate_bit_count"]
+        relation = value["bounded_candidate_relation"]
+        if (
+            not isinstance(target_bits, int)
+            or isinstance(target_bits, bool)
+            or not 0 <= target_bits <= 0x7FFF
+            or not isinstance(candidate_bits, int)
+            or isinstance(candidate_bits, bool)
+            or not 0 <= candidate_bits <= 0x7FFF
+            or relation
+            != (
+                "none"
+                if candidate_bits == 0
+                else "shorter"
+                if candidate_bits < target_bits
+                else "equal"
+                if candidate_bits == target_bits
+                else "longer"
+            )
+        ):
+            raise ValueError(
+                "first context translation encoding failure bit diagnostics "
+                "are inconsistent"
+            )
 
 
 def classify_encoding_failure(error: BaseException) -> str:
@@ -2010,6 +2067,55 @@ def solve_exact_length_row_multi_page_visual_symbols(
     )
 
 
+def diagnose_bounded_candidate_bit_count(
+    *,
+    trees: dict[int, object],
+    initial_context: int,
+    target_bits: int,
+    pages: tuple[int, ...],
+    visuals: list[str],
+) -> int:
+    """Return one safe aggregate route length without exposing its symbols.
+
+    The exact solver can fail because every renderable route is shorter than,
+    longer than, or merely bit-incongruent with the source record.  A bounded
+    route length distinguishes those cases on the private runtime host while
+    keeping text, symbols, page coordinates, and encoded bytes out of the
+    published failure report.
+    """
+
+    if not pages:
+        return 0
+    limits = tuple(
+        dict.fromkeys(
+            (
+                target_bits,
+                min(0x7FFF, max(target_bits + 512, target_bits * 2)),
+            )
+        )
+    )
+    for maximum_bits in limits:
+        try:
+            symbols, _, _, _ = solve_bounded_length_row_multi_page_visual_symbols(
+                trees=trees,
+                initial_context=initial_context,
+                maximum_bits=maximum_bits,
+                pages=pages,
+                visuals=visuals,
+            )
+            _, encoded_bits = encode_symbols(
+                trees,
+                symbols,
+                initial_symbol=initial_context,
+                end_symbol=CANDIDATE_END_SYMBOL,
+                max_bits=maximum_bits,
+            )
+        except (PatchError, ValueError):
+            continue
+        return encoded_bits
+    return 0
+
+
 def select_row_font_pages(
     *,
     trees: dict[int, object],
@@ -2096,7 +2202,28 @@ def select_row_font_pages(
             used_pages.add(page)
             break
         else:
-            raise RowRouteError(len(visuals), 0)
+            target_bits = (
+                int(constraint["original_encoded_bits"])
+                if constraint is not None
+                else 0
+            )
+            candidate_bits = (
+                diagnose_bounded_candidate_bit_count(
+                    trees=trees,
+                    initial_context=int(constraint["initial_context"]),
+                    target_bits=target_bits,
+                    pages=tuple(failed_pages),
+                    visuals=visuals,
+                )
+                if constraint is not None
+                else 0
+            )
+            raise RowRouteError(
+                len(visuals),
+                0,
+                target_bits=target_bits,
+                candidate_bits=candidate_bits,
+            )
     return tuple(pages)
 
 
@@ -2881,15 +3008,21 @@ def main() -> int:
             category = ACTIVE_FAILURE_CATEGORY
         required_visible_symbol_count = 0
         maximum_routable_visible_symbol_count = 0
+        target_encoded_bit_count = 0
+        bounded_candidate_bit_count = 0
         if isinstance(error, RowRouteError):
             required_visible_symbol_count = error.required
             maximum_routable_visible_symbol_count = error.maximum
+            target_encoded_bit_count = error.target_bits
+            bounded_candidate_bit_count = error.candidate_bits
         failure = build_first_context_translation_encoding_failure(
             category=category,
             captured_utc=captured_utc,
             required_visible_symbol_count=required_visible_symbol_count,
             maximum_routable_visible_symbol_count=
                 maximum_routable_visible_symbol_count,
+            target_encoded_bit_count=target_encoded_bit_count,
+            bounded_candidate_bit_count=bounded_candidate_bit_count,
             failure_step=ACTIVE_FAILURE_STEP,
             failure_kind=type(error).__name__,
             failure_row_index=ACTIVE_FAILURE_ROW_INDEX,

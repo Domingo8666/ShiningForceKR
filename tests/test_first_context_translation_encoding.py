@@ -9,6 +9,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
+    RowRouteError,
     ROW_FONT_PAGES,
     bounded_length_row_symbols,
     build_character_assignments,
@@ -243,6 +244,45 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             )
 
         self.assertEqual(pages, ((240, 89, 243, 242),))
+
+    def test_reports_a_safe_bounded_bit_candidate_after_exact_failure(self) -> None:
+        with (
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_exact_length_row_visual_symbols",
+                side_effect=ValueError("single page is not exact"),
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_exact_length_row_multi_page_visual_symbols",
+                side_effect=ValueError("page group is not exact"),
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "diagnose_bounded_candidate_bit_count",
+                return_value=137,
+            ) as diagnostic,
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "FONT_PAGE_COUNT",
+                8,
+            ),
+            self.assertRaises(RowRouteError) as caught,
+        ):
+            select_row_font_pages(
+                trees={},
+                target_rows=[{"target_text": "가"}],
+                preserved_by_row=[[]],
+                runtime_constraints=[{
+                    "initial_context": 0xC9,
+                    "original_encoded_bits": 150,
+                    "original_record_length_bytes": 19,
+                }],
+            )
+
+        self.assertEqual(caught.exception.target_bits, 150)
+        self.assertEqual(caught.exception.candidate_bits, 137)
+        diagnostic.assert_called_once()
 
     def test_records_exact_multi_page_assignments(self) -> None:
         with patch(
@@ -753,8 +793,19 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(failure["failure_detail"], "none")
         self.assertEqual(failure["required_visible_symbol_count"], 0)
         self.assertEqual(failure["maximum_routable_visible_symbol_count"], 0)
+        self.assertEqual(failure["target_encoded_bit_count"], 0)
+        self.assertEqual(failure["bounded_candidate_bit_count"], 0)
+        self.assertEqual(failure["bounded_candidate_relation"], "none")
         self.assertNotIn("error", failure)
         unsafe = deepcopy(failure)
         unsafe["category"] = "private-detail"
         with self.assertRaisesRegex(ValueError, "inconsistent"):
             validate_first_context_translation_encoding_failure(unsafe)
+
+        bounded = build_first_context_translation_encoding_failure(
+            category="row-route",
+            captured_utc=STAMP,
+            target_encoded_bit_count=150,
+            bounded_candidate_bit_count=137,
+        )
+        self.assertEqual(bounded["bounded_candidate_relation"], "shorter")
