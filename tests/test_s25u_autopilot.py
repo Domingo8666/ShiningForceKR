@@ -151,8 +151,13 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn('if [ "$runtime_timeout" -lt 300 ]', SCRIPT)
         self.assertIn('timeout -k 30s "$runtime_timeout"', SCRIPT)
         self.assertIn(
-            "runtime stage produced no synchronized result; "
-            "keeping commit eligible for retry",
+            "runtime stage failed after publishing diagnostics; "
+            "keeping commit $post_head eligible for retry",
+            SCRIPT,
+        )
+        self.assertIn('if [ "$stage_status" -eq 0 ]', SCRIPT)
+        self.assertNotIn(
+            '"$stage_status" -eq 0 ] || [ "$post_head" != "$input_head"',
             SCRIPT,
         )
 

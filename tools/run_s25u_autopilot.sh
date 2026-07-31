@@ -387,10 +387,10 @@ run_current_head() {
     post_head="$(git rev-parse HEAD)"
     remote_head="$(git rev-parse origin/main)"
     if [ "$post_head" = "$remote_head" ]; then
-      if [ "$stage_status" -eq 0 ] || [ "$post_head" != "$input_head" ]; then
+      if [ "$stage_status" -eq 0 ]; then
         record_processed_head "$post_head"
       else
-        log "runtime stage produced no synchronized result; keeping commit eligible for retry"
+        log "runtime stage failed after publishing diagnostics; keeping commit $post_head eligible for retry"
       fi
     else
       log "runtime result is not synchronized with origin/main"
