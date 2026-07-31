@@ -1081,11 +1081,91 @@ def solve_bounded_length_row_visual_symbols(
                     )
         return None
 
+    def fast_reselected_visible(
+        previous: int,
+        bits: int,
+    ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+        """Build a bounded route with an inert page reset between glyphs.
+
+        Once the same page is selected again, every following glyph starts
+        from the page's low-nibble Huffman context.  That makes the visible
+        assignments independent except for their tile slots, so a cheapest
+        distinct-slot selection avoids the exponential used-mask search for
+        the common roomy group-capacity case.
+        """
+
+        visible_count = len(visuals)
+        last_candidates = sorted(
+            (
+                symbol
+                for symbol in glyph_symbols
+                if symbol in lengths.get(previous, {})
+                and CANDIDATE_END_SYMBOL in lengths.get(symbol, {})
+            ),
+            key=lambda symbol: (
+                lengths[previous][symbol]
+                + lengths[symbol][CANDIDATE_END_SYMBOL],
+                symbol,
+            ),
+        )
+        for last_symbol in last_candidates:
+            intermediate_candidates = []
+            for symbol in glyph_symbols:
+                if symbol == last_symbol or symbol not in lengths.get(previous, {}):
+                    continue
+                reselection = shortest_page_reselection(symbol)
+                if reselection is None:
+                    continue
+                reselection_bits, reselection_symbols = reselection
+                intermediate_candidates.append(
+                    (
+                        lengths[previous][symbol] + reselection_bits,
+                        symbol,
+                        reselection_symbols,
+                    )
+                )
+            intermediate_candidates.sort()
+            selected_intermediates = intermediate_candidates[
+                : max(0, visible_count - 1)
+            ]
+            if len(selected_intermediates) != visible_count - 1:
+                continue
+            visible_bits = sum(
+                candidate[0] for candidate in selected_intermediates
+            )
+            visible_bits += lengths[previous][last_symbol]
+            visible_bits += lengths[last_symbol][CANDIDATE_END_SYMBOL]
+            if bits + visible_bits > maximum_bits:
+                continue
+            symbols = []
+            assignments = []
+            for _, symbol, reselection_symbols in selected_intermediates:
+                symbols.append(symbol)
+                assignments.append(symbol)
+                symbols.extend(reselection_symbols)
+            symbols.extend((last_symbol, CANDIDATE_END_SYMBOL))
+            assignments.append(last_symbol)
+            return tuple(symbols), tuple(assignments)
+        return None
+
     while queue:
         prefix_state = queue.popleft()
         prefix_bits, prefix_previous = prefix_state
         selected = transition(prefix_previous, page_token)
         if selected is not None and prefix_bits + selected[0] < maximum_bits:
+            fast_suffix = fast_reselected_visible(
+                selected[1],
+                prefix_bits + selected[0],
+            )
+            if fast_suffix is not None:
+                prefix = prefix_paths[prefix_state]
+                visible_symbols, visible_assignments = fast_suffix
+                symbols = list(prefix + page_token + visible_symbols)
+                return (
+                    symbols,
+                    sum(symbol == page_token[0] for symbol in symbols) - 1,
+                    list(visible_assignments),
+                )
             visible_suffix = search_visible(
                 selected[1],
                 0,
