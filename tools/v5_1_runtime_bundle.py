@@ -1515,11 +1515,19 @@ def publish_runtime_bundle(root: Path) -> dict[str, object]:
     }
     porcelain = _git(root, "status", "--porcelain").stdout.splitlines()
     changed_paths = {_porcelain_path(line) for line in porcelain}
+    deleted_safe_paths = {
+        _porcelain_path(line)
+        for line in porcelain
+        if "D" in line[:2] and _porcelain_path(line) in allowed
+    }
 
     selected = sorted(
-        str(relative).replace("\\", "/")
-        for relative in set(artifacts) | binaries
-        if str(relative).replace("\\", "/") in changed_paths
+        {
+            str(relative).replace("\\", "/")
+            for relative in set(artifacts) | binaries
+            if str(relative).replace("\\", "/") in changed_paths
+        }
+        | deleted_safe_paths
     )
     if selected:
         if not _git(root, "config", "user.name").stdout.strip():
