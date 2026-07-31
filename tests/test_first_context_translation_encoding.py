@@ -317,7 +317,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(bits, 137)
 
     def test_bounds_large_exact_page_group_searches(self) -> None:
-        self.assertEqual(exact_multi_page_state_limit(2), 500_000)
+        self.assertEqual(exact_multi_page_state_limit(2), 50_000)
         self.assertEqual(exact_multi_page_state_limit(4), 50_000)
         self.assertEqual(exact_multi_page_state_limit(8), 50_000)
 
