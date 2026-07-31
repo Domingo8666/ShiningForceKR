@@ -292,6 +292,8 @@ def _write_review(
     translations: list[str],
     screenshots: list[dict[str, object]],
 ) -> None:
+    global ACTIVE_CAPTURE_FAILURE_STAGE
+    ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-review-count"
     if len(translations) != len(screenshots) or len(translations) < 4:
         raise ValueError("first context review screen count disagrees")
     if any(not translation for translation in translations):
@@ -302,8 +304,14 @@ def _write_review(
         zip(translations, screenshots),
         start=1,
     ):
-        path = Path(str(screenshot["file"])).resolve()
-        relative = path.relative_to(root.resolve()).as_posix()
+        ACTIVE_CAPTURE_FAILURE_STAGE = (
+            "first-context-runtime-capture-review-path"
+        )
+        path = Path(str(screenshot["file"]))
+        try:
+            relative = path.relative_to(root).as_posix()
+        except ValueError:
+            relative = path.resolve().relative_to(root.resolve()).as_posix()
         cards.append(
             "<article><h2>대사 "
             f"{index}/{total}</h2><p class=\"expected\">"
@@ -331,6 +339,9 @@ img{width:100%;height:auto;image-rendering:pixelated;border-radius:8px}
 </main></body></html>
 """
     review_path = root / LOCAL_REVIEW_PATH
+    ACTIVE_CAPTURE_FAILURE_STAGE = (
+        "first-context-runtime-capture-review-file-write"
+    )
     review_path.parent.mkdir(parents=True, exist_ok=True)
     review_path.write_text(document, encoding="utf-8")
 
