@@ -1,0 +1,32 @@
+{
+  "artifact_kind": "sanitized-v5-1-first-context-record-reinsertion",
+  "schema_version": 1,
+  "status": "first-context-record-reinsertion-plan-blocked",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "review_batch_sha256": "57ccb526e4ad19b5095479f877b537330b27a693bd15c8311391299b8590eec4",
+  "first_context_translation_encoding_sha256": "ed51f441273cd1ac1d2e2b1db84c25473202989b26dcd07af43094dff0ad9148",
+  "local_reinsertion_sha256": "01bdd0d7d1e9d0943f592bafc0a71f6d7195c6e86a866741b2711fbef184080d",
+  "captured_utc": "2026-07-31T09:05:03.067060Z",
+  "capacity": {
+    "context_entry_count": 4,
+    "distinct_target_record_count": 4,
+    "in_place_fit_entry_count": 4,
+    "overflow_entry_count": 0,
+    "shared_alias_entry_count": 4,
+    "original_payload_byte_count": 92,
+    "encoded_payload_byte_count": 46,
+    "available_payload_bit_count": 736,
+    "encoded_payload_bit_count": 364,
+    "total_slack_byte_count": 46,
+    "minimum_slack_byte_count": 2,
+    "maximum_slack_byte_count": 27
+  },
+  "target_records_distinct": true,
+  "in_place_storage_confirmed": true,
+  "shared_alias_impact_clear": false,
+  "record_storage_capacity_confirmed": false,
+  "runtime_layout_confirmed": false,
+  "source_and_target_text_local_only": true,
+  "translation_build_eligible": false,
+  "next_checkpoint": "repair-first-context-record-reinsertion-plan"
+}
