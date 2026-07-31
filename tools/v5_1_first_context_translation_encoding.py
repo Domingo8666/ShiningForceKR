@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 from collections import deque
 from datetime import datetime, timezone
+from functools import lru_cache
 import json
 from pathlib import Path
 
@@ -781,6 +782,145 @@ def exact_length_row_symbols(
     raise ValueError("first context row has no exact-length Huffman route")
 
 
+def solve_exact_length_row_visual_symbols(
+    *,
+    trees: dict[int, object],
+    initial_context: int,
+    target_bits: int,
+    page: int,
+    visuals: list[str],
+) -> tuple[list[int], int, list[int]]:
+    if (
+        not 0 <= initial_context <= 0xFF
+        or not 1 <= target_bits <= 0x7FFF
+        or not visuals
+    ):
+        raise ValueError("first context exact-length visual inputs are invalid")
+    capacity = FONT_GLYPH_LAST_SYMBOL - FONT_GLYPH_FIRST_SYMBOL + 1
+    if len(visuals) > capacity:
+        raise ValueError("first context visual row exceeds one font page")
+
+    # Keep the already proven fast path.  If its first valid glyph assignment
+    # misses the original record length, jointly search the other assignments
+    # and invisible page-select prefixes instead of rejecting the whole page.
+    try:
+        assignments = solve_row_visual_symbols(
+            trees=trees,
+            page=page,
+            visuals=visuals,
+        )
+        symbols, padding_count = exact_length_row_symbols(
+            trees=trees,
+            initial_context=initial_context,
+            target_bits=target_bits,
+            page=page,
+            assignments=assignments,
+        )
+        return symbols, padding_count, assignments
+    except ValueError:
+        pass
+
+    lengths = _code_lengths(trees)
+
+    def transition(
+        previous: int,
+        symbols: tuple[int, ...],
+    ) -> tuple[int, int] | None:
+        bits = 0
+        for symbol in symbols:
+            code_length = lengths.get(previous, {}).get(symbol)
+            if code_length is None:
+                return None
+            bits += code_length
+            previous = symbol
+        return bits, previous
+
+    page_token = tuple(page_select_symbols(page))
+    prefix_tokens = [
+        tuple(page_select_symbols(candidate_page))
+        for candidate_page in range(FONT_PAGE_COUNT)
+    ]
+    glyph_symbols = tuple(
+        range(FONT_GLYPH_FIRST_SYMBOL, FONT_GLYPH_LAST_SYMBOL + 1)
+    )
+
+    queue = deque([(0, initial_context)])
+    prefix_paths: dict[tuple[int, int], tuple[int, ...]] = {
+        (0, initial_context): ()
+    }
+
+    @lru_cache(maxsize=None)
+    def search_visible(
+        previous: int,
+        used_mask: int,
+        depth: int,
+        bits: int,
+    ) -> tuple[int, ...] | None:
+        if depth == len(visuals):
+            end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
+            if end_length is not None and bits + end_length == target_bits:
+                return (CANDIDATE_END_SYMBOL,)
+            return None
+        candidates = sorted(
+            (
+                symbol
+                for symbol in glyph_symbols
+                if not used_mask
+                & (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL))
+                and symbol in lengths.get(previous, {})
+            ),
+            key=lambda symbol: (
+                CANDIDATE_END_SYMBOL not in lengths.get(symbol, {}),
+                -len(set(lengths.get(symbol, {})) & set(glyph_symbols)),
+                symbol,
+            ),
+        )
+        for symbol in candidates:
+            added_bits = lengths[previous][symbol]
+            if bits + added_bits >= target_bits:
+                continue
+            suffix = search_visible(
+                symbol,
+                used_mask | (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL)),
+                depth + 1,
+                bits + added_bits,
+            )
+            if suffix is not None:
+                return (symbol,) + suffix
+        return None
+
+    while queue:
+        prefix_state = queue.popleft()
+        prefix_bits, prefix_previous = prefix_state
+        selected = transition(prefix_previous, page_token)
+        if selected is not None and prefix_bits + selected[0] < target_bits:
+            visible_suffix = search_visible(
+                selected[1],
+                0,
+                0,
+                prefix_bits + selected[0],
+            )
+            if visible_suffix is not None:
+                prefix = prefix_paths[prefix_state]
+                assignments = list(visible_suffix[:-1])
+                return (
+                    list(prefix + page_token + visible_suffix),
+                    len(prefix) // 3,
+                    assignments,
+                )
+
+        for token in prefix_tokens:
+            encoded = transition(prefix_previous, token)
+            if encoded is None or prefix_bits + encoded[0] >= target_bits:
+                continue
+            candidate = (prefix_bits + encoded[0], encoded[1])
+            if candidate in prefix_paths:
+                continue
+            prefix_paths[candidate] = prefix_paths[prefix_state] + token
+            queue.append(candidate)
+    raise ValueError("first context visual row has no exact-length Huffman route")
+
+
 def select_row_font_pages(
     *,
     trees: dict[int, object],
@@ -809,18 +949,19 @@ def select_row_font_pages(
             if page in used_pages:
                 continue
             try:
-                assignments = solve_row_visual_symbols(
-                    trees=trees,
-                    page=page,
-                    visuals=visuals,
-                )
-                if constraint is not None:
-                    exact_length_row_symbols(
+                if constraint is None:
+                    solve_row_visual_symbols(
+                        trees=trees,
+                        page=page,
+                        visuals=visuals,
+                    )
+                else:
+                    solve_exact_length_row_visual_symbols(
                         trees=trees,
                         initial_context=int(constraint["initial_context"]),
                         target_bits=int(constraint["original_encoded_bits"]),
                         page=page,
-                        assignments=assignments,
+                        visuals=visuals,
                     )
             except ValueError:
                 continue
@@ -863,19 +1004,24 @@ def build_single_page_symbol_rows(
         zip(target_rows, visual_rows, pages, constraints),
         start=1,
     ):
-        assignments = solve_row_visual_symbols(
-            trees=trees,
-            page=page,
-            visuals=visuals,
-        )
         if constraint is None:
+            assignments = solve_row_visual_symbols(
+                trees=trees,
+                page=page,
+                visuals=visuals,
+            )
             symbols = page_select_symbols(page)
             symbols.extend(assignments)
             symbols.append(CANDIDATE_END_SYMBOL)
             padding_count = 0
             initial_context = CANDIDATE_END_SYMBOL
             target_bits = 0
-        else:
+        elif expected_index <= len(PROVEN_ROW_FONT_PAGES):
+            assignments = solve_row_visual_symbols(
+                trees=trees,
+                page=page,
+                visuals=visuals,
+            )
             initial_context = int(constraint["initial_context"])
             target_bits = int(constraint["original_encoded_bits"])
             symbols, padding_count = exact_length_row_symbols(
@@ -884,6 +1030,20 @@ def build_single_page_symbol_rows(
                 target_bits=target_bits,
                 page=page,
                 assignments=assignments,
+            )
+        else:
+            initial_context = int(constraint["initial_context"])
+            target_bits = int(constraint["original_encoded_bits"])
+            (
+                symbols,
+                padding_count,
+                assignments,
+            ) = solve_exact_length_row_visual_symbols(
+                trees=trees,
+                initial_context=initial_context,
+                target_bits=target_bits,
+                page=page,
+                visuals=visuals,
             )
         rows.append(
             {
