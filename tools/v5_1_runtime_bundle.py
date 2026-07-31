@@ -152,6 +152,11 @@ try:
         as RUNTIME_CONTEXT_GLYPH_PRESERVATION_RELATIVE_PATH,
         validate_runtime_context_glyph_preservation,
     )
+    from .v5_1_first_context_translation_review import (
+        PUBLISH_RELATIVE_PATH
+        as FIRST_CONTEXT_TRANSLATION_REVIEW_RELATIVE_PATH,
+        validate_first_context_translation_review,
+    )
     from .v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -327,6 +332,11 @@ except ImportError:  # direct script execution
         as RUNTIME_CONTEXT_GLYPH_PRESERVATION_RELATIVE_PATH,
         validate_runtime_context_glyph_preservation,
     )
+    from v5_1_first_context_translation_review import (
+        PUBLISH_RELATIVE_PATH
+        as FIRST_CONTEXT_TRANSLATION_REVIEW_RELATIVE_PATH,
+        validate_first_context_translation_review,
+    )
     from v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -448,6 +458,8 @@ SAFE_ARTIFACTS = {
         validate_runtime_context_glyph_review,
     RUNTIME_CONTEXT_GLYPH_PRESERVATION_RELATIVE_PATH:
         validate_runtime_context_glyph_preservation,
+    FIRST_CONTEXT_TRANSLATION_REVIEW_RELATIVE_PATH:
+        validate_first_context_translation_review,
     GROUP_TEXT_CANDIDATE_RELATIVE_PATH:
         validate_group_text_candidate_resolution,
     UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH:
@@ -1106,6 +1118,30 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != sha256_file(root / RUNTIME_CONTEXT_GLYPH_REVIEW_RELATIVE_PATH)
         ):
             artifacts.pop(RUNTIME_CONTEXT_GLYPH_PRESERVATION_RELATIVE_PATH)
+    first_context_translation_review = artifacts.get(
+        FIRST_CONTEXT_TRANSLATION_REVIEW_RELATIVE_PATH
+    )
+    if first_context_translation_review is not None:
+        if (
+            SOURCE_TARGET_RUNTIME_CONTEXT_RELATIVE_PATH not in artifacts
+            or RUNTIME_CONTEXT_GLYPH_PRESERVATION_RELATIVE_PATH
+            not in artifacts
+            or first_context_translation_review["target_sha256"]
+            != runtime_context_glyph_preservation["target_sha256"]
+            or first_context_translation_review[
+                "source_target_runtime_context_sha256"
+            ]
+            != sha256_file(
+                root / SOURCE_TARGET_RUNTIME_CONTEXT_RELATIVE_PATH
+            )
+            or first_context_translation_review[
+                "runtime_context_glyph_preservation_sha256"
+            ]
+            != sha256_file(
+                root / RUNTIME_CONTEXT_GLYPH_PRESERVATION_RELATIVE_PATH
+            )
+        ):
+            artifacts.pop(FIRST_CONTEXT_TRANSLATION_REVIEW_RELATIVE_PATH)
     group_context_resolution = artifacts.get(
         GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH
     )

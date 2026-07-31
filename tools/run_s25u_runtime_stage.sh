@@ -787,6 +787,42 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    first_context_translation_review_output="$(
+      python tools/v5_1_first_context_translation_review.py --if-ready 2>&1
+    )"
+    first_context_translation_review_status=$?
+    printf '%s\n' "$first_context_translation_review_output"
+    if [ "$first_context_translation_review_status" -ne 0 ]; then
+      stage_status="$first_context_translation_review_status"
+      diagnostic_trigger=probe
+      first_context_translation_review_failure_stage=first-context-translation-review
+      case "$first_context_translation_review_output" in
+        *"first context translation review identity"*)
+          first_context_translation_review_failure_stage=first-context-review-identity
+          ;;
+        *"first context translation review row"*|\
+        *"first context translation review mapping"*|\
+        *"first context translation review source"*|\
+        *"first context translation review speaker"*|\
+        *"first context translation review lines"*)
+          first_context_translation_review_failure_stage=first-context-review-mapping
+          ;;
+        *"first context translation review local rows"*|\
+        *"first context translation review input is missing"*)
+          first_context_translation_review_failure_stage=first-context-review-input
+          ;;
+        *"first context translation review fields do not match"*|\
+        *"first context translation review counts do not match"*|\
+        *"first context translation review result is inconsistent"*|\
+        *"first context translation review aggregates disagree"*)
+          first_context_translation_review_failure_stage=first-context-review-validation
+          ;;
+      esac
+      record_stage_failure "$first_context_translation_review_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then
