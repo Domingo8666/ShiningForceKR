@@ -102,7 +102,9 @@ LOCAL_EVIDENCE_DIR = Path(
     "evidence/local/v5_1_source_target_runtime_sequence"
 )
 POST_ANCHOR_ENTRY_GOAL = 4
-POST_ANCHOR_ATTEMPT_LIMIT = 8
+# The S25U run captured two consecutive entries in eight button attempts.
+# Keep enough bounded headroom to reach all four post-anchor entries.
+POST_ANCHOR_ATTEMPT_LIMIT = 20
 POST_DECODE_CAPTURE_FRAMES = 180
 VECTOR_READ_TIMEOUT_SECONDS = 4.0
 VECTOR_LOGICAL_RANGES = ((0x4100, 0x42FF), (0x8100, 0x82FF))

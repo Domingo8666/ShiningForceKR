@@ -8,6 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.v5_1_source_target_runtime_sequence import (  # noqa: E402
+    POST_ANCHOR_ATTEMPT_LIMIT,
     REQUIRED_TOOLS,
     build_source_target_runtime_sequence,
     summarize_runtime_sequence,
@@ -33,6 +34,21 @@ def _observation(
 class SourceTargetRuntimeSequenceTests(unittest.TestCase):
     def test_runtime_context_capture_requires_trace_log(self) -> None:
         self.assertIn("set_trace_log", REQUIRED_TOOLS)
+
+    def test_accepts_measured_s25u_attempt_headroom(self) -> None:
+        counts, _, _ = summarize_runtime_sequence(
+            [_observation(2, 147, "1")],
+            advance_attempt_count=POST_ANCHOR_ATTEMPT_LIMIT,
+        )
+        self.assertEqual(
+            counts["advance_attempt_count"],
+            POST_ANCHOR_ATTEMPT_LIMIT,
+        )
+        with self.assertRaisesRegex(ValueError, "advance attempts"):
+            summarize_runtime_sequence(
+                [_observation(2, 147, "1")],
+                advance_attempt_count=POST_ANCHOR_ATTEMPT_LIMIT + 1,
+            )
 
     def test_accepts_three_consecutive_post_anchor_entries(self) -> None:
         observations = [
