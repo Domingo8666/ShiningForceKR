@@ -15,7 +15,7 @@
     "unique_hangul_syllable_count": 35
   },
   "human_approval_recorded": true,
-  "human_approval_scope": "first-context-four-entry-batch",
+  "human_approval_scope": "first-context-entry-batch",
   "approval_authority": "human-user-explicit",
   "hancharacter_contract_mode": "translator_declared",
   "hancharacter_claim_scope": "translator-declared-rendering-consistency-only",

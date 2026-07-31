@@ -4,7 +4,7 @@
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
   "exit_code": 1,
-  "attempt_utc": "2026-07-31T14:48:44Z",
+  "attempt_utc": "2026-07-31T14:50:29Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -20,7 +20,7 @@
   "runtime_observation_present": true,
   "runtime_failure": {
     "schema_version": 1,
-    "failure_stage": "first-context-capacity-font-plan",
+    "failure_stage": "first-context-translation-encoding",
     "failure_kind": "runtime-error",
     "mcp_method": null
   },
