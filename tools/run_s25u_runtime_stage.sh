@@ -932,6 +932,42 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    first_context_record_reinsertion_output="$(
+      python tools/v5_1_first_context_record_reinsertion.py --if-ready 2>&1
+    )"
+    first_context_record_reinsertion_status=$?
+    printf '%s\n' "$first_context_record_reinsertion_output"
+    if [ "$first_context_record_reinsertion_status" -ne 0 ]; then
+      stage_status="$first_context_record_reinsertion_status"
+      diagnostic_trigger=probe
+      first_context_record_reinsertion_failure_stage=first-context-record-reinsertion
+      case "$first_context_record_reinsertion_output" in
+        *"reinsertion identity"*)
+          first_context_record_reinsertion_failure_stage=first-context-reinsertion-identity
+          ;;
+        *"row count"*|\
+        *"projection"*|\
+        *"context row"*|\
+        *"target record"*|\
+        *"record fields"*|\
+        *"record bounds"*)
+          first_context_record_reinsertion_failure_stage=first-context-reinsertion-record
+          ;;
+        *"reinsertion input is missing"*|\
+        *"reinsertion rows are missing"*)
+          first_context_record_reinsertion_failure_stage=first-context-reinsertion-input
+          ;;
+        *"reinsertion fields do not match"*|\
+        *"reinsertion counts do not match"*|\
+        *"reinsertion result is inconsistent"*)
+          first_context_record_reinsertion_failure_stage=first-context-reinsertion-validation
+          ;;
+      esac
+      record_stage_failure "$first_context_record_reinsertion_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then
