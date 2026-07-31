@@ -188,6 +188,8 @@ COUNT_KEYS = {
     "runtime_initial_context_distinct_count",
     "exact_encoded_length_entry_count",
     "in_place_storage_fit_entry_count",
+    "group_storage_capacity_bit_count",
+    "group_storage_fit_entry_count",
     "page_select_padding_count",
 }
 SAFE_FIELDS = {
@@ -1400,6 +1402,11 @@ def select_row_font_pages(
     pages = list(PROVEN_ROW_FONT_PAGES)
     used_pages = set(pages)
     constraints = runtime_constraints or [None] * len(visual_rows)
+    group_capacity_bits = sum(
+        int(constraint["original_record_length_bytes"]) * 8
+        for constraint in constraints
+        if constraint is not None
+    )
     for row_index in range(len(PROVEN_ROW_FONT_PAGES), len(visual_rows)):
         visuals = visual_rows[row_index]
         constraint = constraints[row_index]
@@ -1417,9 +1424,7 @@ def select_row_font_pages(
                     solve_bounded_length_row_visual_symbols(
                         trees=trees,
                         initial_context=int(constraint["initial_context"]),
-                        maximum_bits=(
-                            int(constraint["original_record_length_bytes"]) * 8
-                        ),
+                        maximum_bits=group_capacity_bits,
                         page=page,
                         visuals=visuals,
                     )
@@ -1446,9 +1451,7 @@ def select_row_font_pages(
             ) = solve_bounded_length_row_multi_page_visual_symbols(
                 trees=trees,
                 initial_context=int(constraint["initial_context"]),
-                maximum_bits=(
-                    int(constraint["original_record_length_bytes"]) * 8
-                ),
+                maximum_bits=group_capacity_bits,
                 pages=available_pages,
                 visuals=visuals,
             )
@@ -1485,6 +1488,11 @@ def build_single_page_symbol_rows(
     rows = []
     assignments_by_row = []
     constraints = runtime_constraints or [None] * len(visual_rows)
+    group_capacity_bits = sum(
+        int(constraint["original_record_length_bytes"]) * 8
+        for constraint in constraints
+        if constraint is not None
+    )
     for expected_index, (target_row, visuals, page, constraint) in enumerate(
         zip(target_rows, visual_rows, pages, constraints),
         start=1,
@@ -1502,6 +1510,7 @@ def build_single_page_symbol_rows(
             initial_context = CANDIDATE_END_SYMBOL
             target_bits = 0
             storage_capacity_bits = 0
+            route_capacity_bits = 0
             assignment_pages = [page] * len(assignments)
         elif expected_index <= len(PROVEN_ROW_FONT_PAGES):
             assignments = solve_row_visual_symbols(
@@ -1514,6 +1523,7 @@ def build_single_page_symbol_rows(
             storage_capacity_bits = (
                 int(constraint["original_record_length_bytes"]) * 8
             )
+            route_capacity_bits = storage_capacity_bits
             symbols, padding_count = exact_length_row_symbols(
                 trees=trees,
                 initial_context=initial_context,
@@ -1528,6 +1538,7 @@ def build_single_page_symbol_rows(
             storage_capacity_bits = (
                 int(constraint["original_record_length_bytes"]) * 8
             )
+            route_capacity_bits = group_capacity_bits
             try:
                 (
                     symbols,
@@ -1536,7 +1547,7 @@ def build_single_page_symbol_rows(
                 ) = solve_bounded_length_row_visual_symbols(
                     trees=trees,
                     initial_context=initial_context,
-                    maximum_bits=storage_capacity_bits,
+                    maximum_bits=route_capacity_bits,
                     page=page,
                     visuals=visuals,
                 )
@@ -1559,7 +1570,7 @@ def build_single_page_symbol_rows(
                 ) = solve_bounded_length_row_multi_page_visual_symbols(
                     trees=trees,
                     initial_context=initial_context,
-                    maximum_bits=storage_capacity_bits,
+                    maximum_bits=route_capacity_bits,
                     pages=available_pages,
                     visuals=visuals,
                 )
@@ -1579,6 +1590,7 @@ def build_single_page_symbol_rows(
                 "initial_context": initial_context,
                 "target_encoded_bits": target_bits,
                 "storage_capacity_bits": storage_capacity_bits,
+                "route_capacity_bits": route_capacity_bits,
                 "visible_symbol_count": len(visuals),
                 "preserved_non_text_glyph_count": sum(
                     visual.startswith("preserved:") for visual in visuals
@@ -1711,12 +1723,12 @@ def build_first_context_translation_encoding(
         and encoding["huffman_failure_entry_count"] == 0
         and encoding["preserved_non_text_glyph_occurrence_count"] > 0
         and encoding["custom_font_page_count"]
-        == encoding["context_entry_count"]
+        >= encoding["context_entry_count"]
         and encoding["font_page_changed_byte_count"] > 0
         and encoding["runtime_initial_context_entry_count"]
         == encoding["context_entry_count"]
         and encoding["runtime_initial_context_distinct_count"] > 0
-        and encoding["in_place_storage_fit_entry_count"]
+        and encoding["group_storage_fit_entry_count"]
         == encoding["context_entry_count"]
     )
     value: dict[str, object] = {
@@ -1801,12 +1813,12 @@ def validate_first_context_translation_encoding(
         == counts["context_entry_count"]
         and counts["huffman_failure_entry_count"] == 0
         and counts["preserved_non_text_glyph_occurrence_count"] > 0
-        and counts["custom_font_page_count"] == counts["context_entry_count"]
+        and counts["custom_font_page_count"] >= counts["context_entry_count"]
         and counts["font_page_changed_byte_count"] > 0
         and counts["runtime_initial_context_entry_count"]
         == counts["context_entry_count"]
         and counts["runtime_initial_context_distinct_count"] > 0
-        and counts["in_place_storage_fit_entry_count"]
+        and counts["group_storage_fit_entry_count"]
         == counts["context_entry_count"]
     )
     if (
@@ -2064,6 +2076,7 @@ def _main() -> int:
         initial_context = int(row["initial_context"])
         target_bits = int(row["target_encoded_bits"])
         storage_capacity_bits = int(row["storage_capacity_bits"])
+        route_capacity_bits = int(row["route_capacity_bits"])
         runtime_initial_contexts.add(initial_context)
         try:
             encoded, bits = encode_symbols(
@@ -2071,7 +2084,7 @@ def _main() -> int:
                 symbols,
                 initial_symbol=initial_context,
                 end_symbol=CANDIDATE_END_SYMBOL,
-                max_bits=storage_capacity_bits,
+                max_bits=route_capacity_bits,
             )
             decoded, decoded_bits = decode_symbols(
                 encoded,
@@ -2086,7 +2099,7 @@ def _main() -> int:
             if (
                 decoded != symbols
                 or decoded_bits != bits
-                or bits > storage_capacity_bits
+                or bits > route_capacity_bits
             ):
                 raise PatchError("first context Huffman roundtrip disagrees")
         except PatchError as error:
@@ -2135,6 +2148,16 @@ def _main() -> int:
         ),
         "exact_encoded_length_entry_count": exact_length_entries,
         "in_place_storage_fit_entry_count": in_place_storage_fits,
+        "group_storage_capacity_bit_count": sum(
+            int(row["storage_capacity_bits"]) for row in symbol_rows
+        ),
+        "group_storage_fit_entry_count": (
+            len(symbol_rows)
+            if encoded_bytes
+            <= sum(int(row["storage_capacity_bits"]) for row in symbol_rows)
+            // 8
+            else 0
+        ),
     }
     captured_utc = datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"

@@ -433,6 +433,8 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             "runtime_initial_context_distinct_count": 1,
             "exact_encoded_length_entry_count": 5,
             "in_place_storage_fit_entry_count": 5,
+            "group_storage_capacity_bit_count": 400,
+            "group_storage_fit_entry_count": 5,
             "page_select_padding_count": 8,
         }
         safe = build_first_context_translation_encoding(
