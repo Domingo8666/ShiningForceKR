@@ -3,7 +3,7 @@
   "schema_version": 1,
   "status": "first-context-translation-encoding-failed",
   "category": "row-route",
-  "captured_utc": "2026-07-31T15:53:31.859653Z",
+  "captured_utc": "2026-07-31T16:04:23.404254Z",
   "source_and_target_text_local_only": true,
   "next_checkpoint": "repair-first-context-row-route"
 }
