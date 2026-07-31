@@ -1724,6 +1724,20 @@ def solve_exact_length_row_multi_page_visual_symbols(
         return bits, previous
 
     @lru_cache(maxsize=None)
+    def unique_bridge_transitions(
+        previous: int,
+    ) -> tuple[tuple[int, int, tuple[int, ...]], ...]:
+        unique: dict[tuple[int, int], tuple[int, ...]] = {}
+        for _, token in all_page_tokens:
+            encoded = transition(previous, token)
+            if encoded is not None:
+                unique.setdefault(encoded, token)
+        return tuple(
+            (added_bits, next_previous, token)
+            for (added_bits, next_previous), token in sorted(unique.items())
+        )
+
+    @lru_cache(maxsize=None)
     def page_routes(
         previous: int,
     ) -> tuple[tuple[int, tuple[int, ...], int, int], ...]:
@@ -1765,16 +1779,8 @@ def solve_exact_length_row_multi_page_visual_symbols(
                     if current_target is None or target < current_target:
                         best_target[key] = target
 
-            unique_bridges: dict[
-                tuple[int, int], tuple[int, ...]
-            ] = {}
-            for _, token in all_page_tokens:
-                encoded = transition(current, token)
-                if encoded is None:
-                    continue
-                unique_bridges.setdefault(encoded, token)
-            for (added_bits, next_previous), token in sorted(
-                unique_bridges.items()
+            for added_bits, next_previous, token in (
+                unique_bridge_transitions(current)
             ):
                 total_bits = bits + added_bits
                 if total_bits >= target_bits:
