@@ -273,7 +273,7 @@ is_safe_artifact() {
 }
 
 publish_pending_safe_artifacts() {
-  changed="$(git status --porcelain --untracked-files=no)"
+  changed="$(git status --porcelain --untracked-files=all)"
   if [ -z "$changed" ]; then
     return 0
   fi
