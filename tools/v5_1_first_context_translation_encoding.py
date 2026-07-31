@@ -2225,6 +2225,26 @@ def select_row_font_pages(
             used_pages.add(page)
             break
         else:
+            if constraint is not None:
+                storage_capacity_bits = (
+                    int(constraint["original_record_length_bytes"]) * 8
+                )
+                for page in failed_pages:
+                    try:
+                        solve_bounded_length_row_visual_symbols(
+                            trees=trees,
+                            initial_context=int(constraint["initial_context"]),
+                            maximum_bits=storage_capacity_bits,
+                            page=page,
+                            visuals=visuals,
+                        )
+                    except ValueError:
+                        continue
+                    pages.append(page)
+                    used_pages.add(page)
+                    break
+                if len(pages) == row_index + 1:
+                    continue
             target_bits = (
                 int(constraint["original_encoded_bits"])
                 if constraint is not None
@@ -2323,32 +2343,63 @@ def build_single_page_symbol_rows(
             )
             if len(row_pages) == 1:
                 page = row_pages[0]
-                (
-                    symbols,
-                    padding_count,
-                    assignments,
-                ) = solve_exact_length_row_visual_symbols(
-                    trees=trees,
-                    initial_context=initial_context,
-                    target_bits=target_bits,
-                    page=page,
-                    visuals=visuals,
-                )
+                try:
+                    (
+                        symbols,
+                        padding_count,
+                        assignments,
+                    ) = solve_exact_length_row_visual_symbols(
+                        trees=trees,
+                        initial_context=initial_context,
+                        target_bits=target_bits,
+                        page=page,
+                        visuals=visuals,
+                    )
+                except ValueError:
+                    ACTIVE_FAILURE_DETAIL = "solve-bounded-record-row"
+                    route_capacity_bits = storage_capacity_bits
+                    (
+                        symbols,
+                        padding_count,
+                        assignments,
+                    ) = solve_bounded_length_row_visual_symbols(
+                        trees=trees,
+                        initial_context=initial_context,
+                        maximum_bits=storage_capacity_bits,
+                        page=page,
+                        visuals=visuals,
+                    )
                 assignment_pages = [page] * len(assignments)
             else:
                 ACTIVE_FAILURE_DETAIL = "solve-exact-multi-page-row"
-                (
-                    symbols,
-                    padding_count,
-                    assignments,
-                    assignment_pages,
-                ) = solve_exact_length_row_multi_page_visual_symbols(
-                    trees=trees,
-                    initial_context=initial_context,
-                    target_bits=target_bits,
-                    pages=row_pages,
-                    visuals=visuals,
-                )
+                try:
+                    (
+                        symbols,
+                        padding_count,
+                        assignments,
+                        assignment_pages,
+                    ) = solve_exact_length_row_multi_page_visual_symbols(
+                        trees=trees,
+                        initial_context=initial_context,
+                        target_bits=target_bits,
+                        pages=row_pages,
+                        visuals=visuals,
+                    )
+                except ValueError:
+                    ACTIVE_FAILURE_DETAIL = "solve-bounded-record-multi-page-row"
+                    route_capacity_bits = storage_capacity_bits
+                    (
+                        symbols,
+                        padding_count,
+                        assignments,
+                        assignment_pages,
+                    ) = solve_bounded_length_row_multi_page_visual_symbols(
+                        trees=trees,
+                        initial_context=initial_context,
+                        maximum_bits=storage_capacity_bits,
+                        pages=row_pages,
+                        visuals=visuals,
+                    )
         ACTIVE_FAILURE_DETAIL = "validate-row-assignments"
         if (
             len(assignments) != len(visuals)
@@ -2504,7 +2555,7 @@ def build_first_context_translation_encoding(
         and encoding["runtime_initial_context_entry_count"]
         == encoding["context_entry_count"]
         and encoding["runtime_initial_context_distinct_count"] > 0
-        and encoding["exact_encoded_length_entry_count"]
+        and encoding["in_place_storage_fit_entry_count"]
         == encoding["context_entry_count"]
         and encoding["group_storage_fit_entry_count"]
         == encoding["context_entry_count"]
@@ -2596,7 +2647,7 @@ def validate_first_context_translation_encoding(
         and counts["runtime_initial_context_entry_count"]
         == counts["context_entry_count"]
         and counts["runtime_initial_context_distinct_count"] > 0
-        and counts["exact_encoded_length_entry_count"]
+        and counts["in_place_storage_fit_entry_count"]
         == counts["context_entry_count"]
         and counts["group_storage_fit_entry_count"]
         == counts["context_entry_count"]

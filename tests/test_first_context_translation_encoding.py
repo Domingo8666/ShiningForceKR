@@ -99,7 +99,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             {"visual": "text:가", "page": 240, "symbol": 0x03}
         ])
 
-    def test_rejects_a_nonexact_runtime_row(self) -> None:
+    def test_falls_back_to_a_record_bounded_runtime_row(self) -> None:
         target = [{"review_index": 1, "target_text": "가"}]
         constraints = [{
             "initial_context": 0xC9,
@@ -118,16 +118,25 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 return_value=([0x5F, 0x11, 0x02, 0x03, 0xC9], 0, [0x03]),
             ) as bounded_solver,
         ):
-            with self.assertRaisesRegex(ValueError, "exact route unavailable"):
-                build_single_page_symbol_rows(
-                    trees={},
-                    target_rows=target,
-                    preserved_by_row=[[]],
-                    runtime_constraints=constraints,
-                    pages=(240,),
-                )
+            _, rows, assignments = build_single_page_symbol_rows(
+                trees={},
+                target_rows=target,
+                preserved_by_row=[[]],
+                runtime_constraints=constraints,
+                pages=(240,),
+            )
 
-        bounded_solver.assert_not_called()
+        bounded_solver.assert_called_once_with(
+            trees={},
+            initial_context=0xC9,
+            maximum_bits=8,
+            page=240,
+            visuals=["text:가"],
+        )
+        self.assertEqual(rows[0]["route_capacity_bits"], 8)
+        self.assertEqual(assignments[0], [
+            {"visual": "text:가", "page": 240, "symbol": 0x03}
+        ])
 
     def test_searches_past_an_unusable_extra_row_page(self) -> None:
         targets = [{"target_text": "가"} for _ in range(5)]
@@ -272,6 +281,11 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             ) as diagnostic,
             patch(
                 "tools.v5_1_first_context_translation_encoding."
+                "solve_bounded_length_row_visual_symbols",
+                side_effect=ValueError("record capacity unavailable"),
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
                 "FONT_PAGE_COUNT",
                 8,
             ),
@@ -291,6 +305,38 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(caught.exception.target_bits, 150)
         self.assertEqual(caught.exception.candidate_bits, 137)
         diagnostic.assert_called_once()
+
+    def test_selects_a_record_bounded_page_after_exact_failure(self) -> None:
+        with (
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_exact_length_row_visual_symbols",
+                side_effect=ValueError("single page is not exact"),
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_exact_length_row_multi_page_visual_symbols",
+                side_effect=ValueError("page group is not exact"),
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_bounded_length_row_visual_symbols",
+                return_value=([0x5F, 0x11, 0x02, 0x03, 0xC9], 0, [0x03]),
+            ) as bounded_solver,
+        ):
+            pages = select_row_font_pages(
+                trees={},
+                target_rows=[{"target_text": "가"}],
+                preserved_by_row=[[]],
+                runtime_constraints=[{
+                    "initial_context": 0xC9,
+                    "original_encoded_bits": 4,
+                    "original_record_length_bytes": 2,
+                }],
+            )
+
+        self.assertEqual(pages, (240,))
+        self.assertEqual(bounded_solver.call_args.kwargs["maximum_bits"], 16)
 
     def test_diagnoses_candidate_bits_with_fast_single_page_routes(self) -> None:
         def solve_bounded(*, page, **kwargs):
@@ -817,6 +863,21 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertTrue(safe["reviewed_non_text_glyph_visuals_preserved"])
         self.assertFalse(safe["original_non_text_glyph_coordinates_reused"])
         self.assertFalse(safe["translation_build_eligible"])
+        bounded = deepcopy(counts)
+        bounded["exact_encoded_length_entry_count"] = 1
+        bounded_safe = build_first_context_translation_encoding(
+            target_sha256=SHA_A,
+            review_batch_sha256=SHA_B,
+            first_context_translation_capacity_sha256=SHA_C,
+            runtime_context_glyph_preservation_sha256=SHA_D,
+            local_encoding_sha256=SHA_A,
+            combined_font_overlay_sha256=SHA_B,
+            encoding=bounded,
+            captured_utc=STAMP,
+        )
+        self.assertEqual(
+            bounded_safe["status"], "first-context-translation-encoding-ready"
+        )
         unsafe = deepcopy(safe)
         unsafe["encoded_bytes"] = "private"
         with self.assertRaisesRegex(ValueError, "fields do not match"):

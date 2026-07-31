@@ -95,10 +95,10 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
             verification=non_exact,
             captured_utc=STAMP,
         )
-        self.assertFalse(non_exact_safe["static_translation_build_confirmed"])
+        self.assertTrue(non_exact_safe["static_translation_build_confirmed"])
         self.assertEqual(
             non_exact_safe["status"],
-            "first-context-translation-static-build-incomplete",
+            "first-context-translation-static-build-ready",
         )
         unsafe = deepcopy(safe)
         unsafe["record_offsets"] = [1, 2, 3, 4]

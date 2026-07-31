@@ -324,8 +324,6 @@ def build_first_context_record_reinsertion(
         and distinct
         and fits
         and aliases_clear
-        and capacity["exact_encoded_length_entry_count"]
-        == capacity["context_entry_count"]
     )
     value: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
@@ -415,8 +413,6 @@ def validate_first_context_record_reinsertion(
         and distinct
         and fits
         and aliases_clear
-        and capacity["exact_encoded_length_entry_count"]
-        == capacity["context_entry_count"]
     )
     if (
         value["status"]
