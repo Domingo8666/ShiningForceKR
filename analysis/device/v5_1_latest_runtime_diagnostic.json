@@ -4,7 +4,7 @@
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
   "exit_code": 1,
-  "attempt_utc": "2026-07-31T13:32:22Z",
+  "attempt_utc": "2026-07-31T13:41:24Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -20,9 +20,9 @@
   "runtime_observation_present": true,
   "runtime_failure": {
     "schema_version": 1,
-    "failure_stage": "source-target-runtime-sequence",
-    "failure_kind": "runtime-huffman-read-unparsed",
-    "mcp_method": "debug_get_status"
+    "failure_stage": "context-glyph-preservation-classification",
+    "failure_kind": "runtime-error",
+    "mcp_method": null
   },
   "next_checkpoint": "repair-runtime-command"
 }
