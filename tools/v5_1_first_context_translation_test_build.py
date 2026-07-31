@@ -317,8 +317,6 @@ def build_first_context_translation_test_build(
         and verification["font_glyph_verified_count"]
         == verification["font_glyph_assignment_count"]
         and verification["changed_byte_count"] > 0
-        and verification["encoded_length_exact_count"]
-        == verification["context_entry_count"]
     )
     value: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
@@ -404,8 +402,6 @@ def validate_first_context_translation_test_build(
         and verification["font_glyph_verified_count"]
         == verification["font_glyph_assignment_count"]
         and verification["changed_byte_count"] > 0
-        and verification["encoded_length_exact_count"]
-        == verification["context_entry_count"]
     )
     if (
         value["status"]

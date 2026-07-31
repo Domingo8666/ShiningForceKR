@@ -205,7 +205,7 @@ def build_reinsertion_rows(
             or not 0 <= payload_start <= payload_end <= len(target)
             or len(payload) != encoded_bytes
             or not 1 <= encoded_bits <= encoded_bytes * 8
-            or encoded_bits != original_encoded_bits
+            or encoded_bytes > original_length
         ):
             raise ValueError("first context reinsertion record bounds disagree")
         rows.append(
@@ -324,10 +324,6 @@ def build_first_context_record_reinsertion(
         and distinct
         and fits
         and aliases_clear
-        and capacity["exact_encoded_length_entry_count"]
-        == capacity["context_entry_count"]
-        and capacity["original_encoded_bit_count"]
-        == capacity["encoded_payload_bit_count"]
     )
     value: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
@@ -417,10 +413,6 @@ def validate_first_context_record_reinsertion(
         and distinct
         and fits
         and aliases_clear
-        and capacity["exact_encoded_length_entry_count"]
-        == capacity["context_entry_count"]
-        and capacity["original_encoded_bit_count"]
-        == capacity["encoded_payload_bit_count"]
     )
     if (
         value["status"]

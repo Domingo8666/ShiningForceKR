@@ -84,6 +84,18 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
         )
         self.assertTrue(safe["static_translation_build_confirmed"])
         self.assertFalse(safe["translation_build_eligible"])
+        non_exact = deepcopy(verification)
+        non_exact["encoded_length_exact_count"] = 3
+        non_exact_safe = build_first_context_translation_test_build(
+            baseline_target_sha256=SHA_A,
+            test_target_sha256=SHA_B,
+            test_overlay_sha256=SHA_C,
+            first_context_record_reinsertion_sha256=SHA_D,
+            local_build_sha256=SHA_E,
+            verification=non_exact,
+            captured_utc=STAMP,
+        )
+        self.assertTrue(non_exact_safe["static_translation_build_confirmed"])
         unsafe = deepcopy(safe)
         unsafe["record_offsets"] = [1, 2, 3, 4]
         with self.assertRaisesRegex(ValueError, "fields do not match"):

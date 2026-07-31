@@ -83,6 +83,27 @@ class FirstContextRecordReinsertionTests(unittest.TestCase):
         self.assertEqual(counts["duplicate_alias_reference_count"], 0)
         self.assertEqual(counts["selected_alias_missing_entry_count"], 0)
 
+    def test_accepts_a_non_exact_bit_length_that_fits_the_record(self) -> None:
+        target, contexts, projections, encodings = self._rows()
+        encodings[-1]["encoded_bits"] = 19
+        rows = build_reinsertion_rows(
+            target=bytes(target),
+            context_rows=contexts,
+            projection_pairs=projections,
+            encoding_rows=encodings,
+        )
+        counts = summarize_reinsertion_rows(rows)
+        safe = build_first_context_record_reinsertion(
+            target_sha256=SHA_A,
+            review_batch_sha256=SHA_B,
+            first_context_translation_encoding_sha256=SHA_C,
+            local_reinsertion_sha256=SHA_D,
+            capacity=counts,
+            captured_utc=STAMP,
+        )
+        self.assertEqual(counts["exact_encoded_length_entry_count"], 3)
+        self.assertTrue(safe["record_storage_capacity_confirmed"])
+
     def test_accepts_disjoint_shared_aliases(self) -> None:
         target, contexts, projections, encodings = self._rows()
         for index, projection in enumerate(projections, start=1):

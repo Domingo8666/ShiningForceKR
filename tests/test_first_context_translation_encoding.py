@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
 
 from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     ROW_FONT_PAGES,
+    bounded_length_row_symbols,
     build_character_assignments,
     build_first_context_translation_encoding,
     build_first_context_translation_encoding_failure,
@@ -55,20 +56,28 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
     def test_searches_past_an_unusable_extra_row_page(self) -> None:
         targets = [{"target_text": "가"} for _ in range(5)]
         constraints = [
-            {"initial_context": 0xC9, "original_encoded_bits": 8}
+            {
+                "initial_context": 0xC9,
+                "original_encoded_bits": 8,
+                "original_record_length_bytes": 1,
+            }
             for _ in range(5)
         ]
 
-        def solve(*, trees, initial_context, target_bits, page, visuals):
-            del trees, initial_context, target_bits
+        def solve(*, trees, page, visuals):
+            del trees
             if page == 239:
                 raise ValueError("unusable route")
-            return [0x02], 0, [0x02] * len(visuals)
+            return [0x02] * len(visuals)
 
         with patch(
             "tools.v5_1_first_context_translation_encoding."
-            "solve_exact_length_row_visual_symbols",
+            "solve_row_visual_symbols",
             side_effect=solve,
+        ), patch(
+            "tools.v5_1_first_context_translation_encoding."
+            "bounded_length_row_symbols",
+            return_value=([0x02], 0),
         ):
             pages = select_row_font_pages(
                 trees={},
@@ -138,6 +147,24 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(padding_count, 1)
         self.assertEqual(symbols[:3], [0x5F, 0x02, 0x02])
         self.assertEqual(symbols[-1], 0xC9)
+
+    def test_accepts_a_shorter_route_within_the_original_record(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x5F),
+            0x11: tree(0x11, 0x02, 0x11),
+            0x02: tree(0x02, 0x03, 0x04),
+            0x03: tree(0x03, 0xC9, 0x03),
+        }
+        symbols, padding_count = bounded_length_row_symbols(
+            trees=trees,
+            initial_context=0xC9,
+            maximum_bits=8,
+            page=240,
+            assignments=[0x03],
+        )
+        self.assertEqual(padding_count, 0)
+        self.assertEqual(symbols, [0x5F, 0x11, 0x02, 0x03, 0xC9])
 
     def test_builds_two_page_symbols_and_preserves_insertions(self) -> None:
         targets = [
@@ -268,6 +295,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             "runtime_initial_context_entry_count": 5,
             "runtime_initial_context_distinct_count": 1,
             "exact_encoded_length_entry_count": 5,
+            "in_place_storage_fit_entry_count": 5,
             "page_select_padding_count": 8,
         }
         safe = build_first_context_translation_encoding(

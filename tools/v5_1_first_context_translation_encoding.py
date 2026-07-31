@@ -186,6 +186,7 @@ COUNT_KEYS = {
     "runtime_initial_context_entry_count",
     "runtime_initial_context_distinct_count",
     "exact_encoded_length_entry_count",
+    "in_place_storage_fit_entry_count",
     "page_select_padding_count",
 }
 SAFE_FIELDS = {
@@ -782,6 +783,69 @@ def exact_length_row_symbols(
     raise ValueError("first context row has no exact-length Huffman route")
 
 
+def bounded_length_row_symbols(
+    *,
+    trees: dict[int, object],
+    initial_context: int,
+    maximum_bits: int,
+    page: int,
+    assignments: list[int],
+) -> tuple[list[int], int]:
+    if (
+        not 0 <= initial_context <= 0xFF
+        or not 1 <= maximum_bits <= 0x7FFF
+        or not assignments
+    ):
+        raise ValueError("first context bounded-length row inputs are invalid")
+    lengths = _code_lengths(trees)
+
+    def transition(
+        previous: int,
+        symbols: tuple[int, ...],
+    ) -> tuple[int, int] | None:
+        bits = 0
+        for symbol in symbols:
+            code_length = lengths.get(previous, {}).get(symbol)
+            if code_length is None:
+                return None
+            bits += code_length
+            previous = symbol
+        return bits, previous
+
+    visible_suffix = tuple(
+        page_select_symbols(page) + assignments + [CANDIDATE_END_SYMBOL]
+    )
+    page_tokens = [
+        tuple(page_select_symbols(candidate_page))
+        for candidate_page in range(FONT_PAGE_COUNT)
+    ]
+    start = (0, initial_context)
+    queue = deque([start])
+    paths: dict[tuple[int, int], tuple[int, ...]] = {start: ()}
+    while queue:
+        bits, previous = queue.popleft()
+        suffix = transition(previous, visible_suffix)
+        if suffix is not None and bits + suffix[0] <= maximum_bits:
+            prefix = paths[(bits, previous)]
+            return list(prefix + visible_suffix), len(prefix) // 3
+
+        unique_transitions: dict[tuple[int, int], tuple[int, ...]] = {}
+        for token in page_tokens:
+            encoded = transition(previous, token)
+            if encoded is None or bits + encoded[0] >= maximum_bits:
+                continue
+            unique_transitions.setdefault((encoded[0], encoded[1]), token)
+        for (added_bits, next_previous), token in sorted(
+            unique_transitions.items()
+        ):
+            candidate = (bits + added_bits, next_previous)
+            if candidate in paths:
+                continue
+            paths[candidate] = paths[(bits, previous)] + token
+            queue.append(candidate)
+    raise ValueError("first context row exceeds its in-place Huffman capacity")
+
+
 def solve_exact_length_row_visual_symbols(
     *,
     trees: dict[int, object],
@@ -984,12 +1048,19 @@ def select_row_font_pages(
                         visuals=visuals,
                     )
                 else:
-                    solve_exact_length_row_visual_symbols(
+                    assignments = solve_row_visual_symbols(
                         trees=trees,
-                        initial_context=int(constraint["initial_context"]),
-                        target_bits=int(constraint["original_encoded_bits"]),
                         page=page,
                         visuals=visuals,
+                    )
+                    bounded_length_row_symbols(
+                        trees=trees,
+                        initial_context=int(constraint["initial_context"]),
+                        maximum_bits=(
+                            int(constraint["original_record_length_bytes"]) * 8
+                        ),
+                        page=page,
+                        assignments=assignments,
                     )
             except ValueError:
                 continue
@@ -1044,6 +1115,7 @@ def build_single_page_symbol_rows(
             padding_count = 0
             initial_context = CANDIDATE_END_SYMBOL
             target_bits = 0
+            storage_capacity_bits = 0
         elif expected_index <= len(PROVEN_ROW_FONT_PAGES):
             assignments = solve_row_visual_symbols(
                 trees=trees,
@@ -1052,6 +1124,9 @@ def build_single_page_symbol_rows(
             )
             initial_context = int(constraint["initial_context"])
             target_bits = int(constraint["original_encoded_bits"])
+            storage_capacity_bits = (
+                int(constraint["original_record_length_bytes"]) * 8
+            )
             symbols, padding_count = exact_length_row_symbols(
                 trees=trees,
                 initial_context=initial_context,
@@ -1062,16 +1137,20 @@ def build_single_page_symbol_rows(
         else:
             initial_context = int(constraint["initial_context"])
             target_bits = int(constraint["original_encoded_bits"])
-            (
-                symbols,
-                padding_count,
-                assignments,
-            ) = solve_exact_length_row_visual_symbols(
+            storage_capacity_bits = (
+                int(constraint["original_record_length_bytes"]) * 8
+            )
+            assignments = solve_row_visual_symbols(
                 trees=trees,
-                initial_context=initial_context,
-                target_bits=target_bits,
                 page=page,
                 visuals=visuals,
+            )
+            symbols, padding_count = bounded_length_row_symbols(
+                trees=trees,
+                initial_context=initial_context,
+                maximum_bits=storage_capacity_bits,
+                page=page,
+                assignments=assignments,
             )
         rows.append(
             {
@@ -1083,6 +1162,7 @@ def build_single_page_symbol_rows(
                 "page_select_padding_count": padding_count,
                 "initial_context": initial_context,
                 "target_encoded_bits": target_bits,
+                "storage_capacity_bits": storage_capacity_bits,
                 "visible_symbol_count": len(visuals),
                 "preserved_non_text_glyph_count": sum(
                     visual.startswith("preserved:") for visual in visuals
@@ -1218,7 +1298,7 @@ def build_first_context_translation_encoding(
         and encoding["runtime_initial_context_entry_count"]
         == encoding["context_entry_count"]
         and encoding["runtime_initial_context_distinct_count"] > 0
-        and encoding["exact_encoded_length_entry_count"]
+        and encoding["in_place_storage_fit_entry_count"]
         == encoding["context_entry_count"]
     )
     value: dict[str, object] = {
@@ -1308,7 +1388,7 @@ def validate_first_context_translation_encoding(
         and counts["runtime_initial_context_entry_count"]
         == counts["context_entry_count"]
         and counts["runtime_initial_context_distinct_count"] > 0
-        and counts["exact_encoded_length_entry_count"]
+        and counts["in_place_storage_fit_entry_count"]
         == counts["context_entry_count"]
     )
     if (
@@ -1554,12 +1634,14 @@ def _main() -> int:
     initial_page_failures = 0
     later_failures = 0
     exact_length_entries = 0
+    in_place_storage_fits = 0
     runtime_initial_contexts: set[int] = set()
     for row in symbol_rows:
         symbols = row["symbols"]
         assert isinstance(symbols, list)
         initial_context = int(row["initial_context"])
         target_bits = int(row["target_encoded_bits"])
+        storage_capacity_bits = int(row["storage_capacity_bits"])
         runtime_initial_contexts.add(initial_context)
         try:
             encoded, bits = encode_symbols(
@@ -1567,7 +1649,7 @@ def _main() -> int:
                 symbols,
                 initial_symbol=initial_context,
                 end_symbol=CANDIDATE_END_SYMBOL,
-                max_bits=target_bits,
+                max_bits=storage_capacity_bits,
             )
             decoded, decoded_bits = decode_symbols(
                 encoded,
@@ -1582,7 +1664,7 @@ def _main() -> int:
             if (
                 decoded != symbols
                 or decoded_bits != bits
-                or bits != target_bits
+                or bits > storage_capacity_bits
             ):
                 raise PatchError("first context Huffman roundtrip disagrees")
         except PatchError as error:
@@ -1599,6 +1681,9 @@ def _main() -> int:
         row["encoded_bytes"] = len(encoded)
         roundtrips += 1
         exact_length_entries += int(bits == target_bits)
+        in_place_storage_fits += int(
+            len(encoded) <= storage_capacity_bits // 8
+        )
         encoded_bits += bits
         encoded_bytes += len(encoded)
         maximum_bits = max(maximum_bits, bits)
@@ -1627,6 +1712,7 @@ def _main() -> int:
             runtime_initial_contexts
         ),
         "exact_encoded_length_entry_count": exact_length_entries,
+        "in_place_storage_fit_entry_count": in_place_storage_fits,
     }
     captured_utc = datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"
