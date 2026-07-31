@@ -554,6 +554,44 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    source_target_runtime_sequence_output="$(
+      python tools/v5_1_source_target_runtime_sequence.py --if-ready 2>&1
+    )"
+    source_target_runtime_sequence_status=$?
+    printf '%s\n' "$source_target_runtime_sequence_output"
+    if [ "$source_target_runtime_sequence_status" -ne 0 ]; then
+      stage_status="$source_target_runtime_sequence_status"
+      diagnostic_trigger=probe
+      source_target_runtime_sequence_failure_stage=source-target-runtime-sequence
+      case "$source_target_runtime_sequence_output" in
+        *"runtime sequence input identity disagrees"*|\
+        *"runtime sequence identity is invalid"*)
+          source_target_runtime_sequence_failure_stage=runtime-sequence-identity
+          ;;
+        *"runtime sequence confirmed anchor was not reached"*|\
+        *"runtime sequence anchor observation disagrees"*)
+          source_target_runtime_sequence_failure_stage=runtime-sequence-anchor
+          ;;
+        *"runtime sequence registers"*|\
+        *"runtime sequence observation"*)
+          source_target_runtime_sequence_failure_stage=runtime-sequence-observation
+          ;;
+        *"runtime sequence input is missing"*|\
+        *"runtime sequence ROM must stay under build"*)
+          source_target_runtime_sequence_failure_stage=runtime-sequence-input
+          ;;
+        *"runtime sequence fields do not match"*|\
+        *"runtime sequence counts do not match"*|\
+        *"runtime sequence aggregates are inconsistent"*|\
+        *"runtime sequence policy is invalid"*)
+          source_target_runtime_sequence_failure_stage=runtime-sequence-validation
+          ;;
+      esac
+      record_stage_failure "$source_target_runtime_sequence_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then
