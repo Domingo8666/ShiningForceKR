@@ -1,10 +1,10 @@
 {
   "artifact_kind": "sanitized-runtime-stage-diagnostic",
   "schema_version": 3,
-  "status": "runtime-stage-not-ready",
-  "trigger": "probe",
-  "exit_code": 1,
-  "attempt_utc": "2026-07-31T00:44:27Z",
+  "status": "runtime-stage-ready",
+  "trigger": "manual",
+  "exit_code": 0,
+  "attempt_utc": "2026-07-31T00:52:36Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -16,13 +16,8 @@
     "trace_plan_present": true,
     "target_identity_ready": true
   },
-  "failed_stage": "runtime-command",
+  "failed_stage": null,
   "runtime_observation_present": true,
-  "runtime_failure": {
-    "schema_version": 1,
-    "failure_stage": "source-target-runtime-sequence",
-    "failure_kind": "runtime-error",
-    "mcp_method": "debug_get_status"
-  },
-  "next_checkpoint": "repair-runtime-command"
+  "runtime_failure": null,
+  "next_checkpoint": "rerun-runtime-probe"
 }

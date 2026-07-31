@@ -1,0 +1,32 @@
+{
+  "artifact_kind": "sanitized-v5-1-source-target-runtime-sequence",
+  "schema_version": 1,
+  "status": "runtime-sequence-corroboration-ready",
+  "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "test_target_sha256": "ce572f5f1688796a0b70b02d9695613325947fcf56c2588ee6841f7b84596ac1",
+  "display_capture_sha256": "9c08ea3dc7d766b1ba4806be872ecf0fc19d6087a1c2297ed15eaa0dc5494141",
+  "structural_corroboration_sha256": "a8727366e77e1476d2f5965ea955c6abc5f1b70823cb18c99fc060877ed027db",
+  "local_sequence_sha256": "5dd8349ee7fca717bb7c28f8c0184b6a24afbe16a6e3aa758313177739ad740a",
+  "captured_utc": "2026-07-31T00:52:22.512811Z",
+  "runtime_sequence": {
+    "captured_entry_count": 4,
+    "post_anchor_entry_count": 3,
+    "same_selector_post_anchor_entry_count": 3,
+    "different_selector_post_anchor_entry_count": 0,
+    "consecutive_same_selector_step_count": 3,
+    "nonconsecutive_same_selector_step_count": 0,
+    "distinct_screen_hash_count": 4,
+    "advance_attempt_count": 8
+  },
+  "cold_boot": true,
+  "anchor_reached_once": true,
+  "first_post_anchor_step_consecutive": true,
+  "candidate_pairing_only": true,
+  "human_review_required": true,
+  "hancharacter_contract_mode": "translator_declared",
+  "local_payload_policy": "selectors-ordinals-screens-registers-hit-order-and-text-local-only",
+  "source_pairing_complete": false,
+  "speaker_assignment_complete": false,
+  "translation_build_eligible": false,
+  "next_checkpoint": "compare-runtime-sequence-with-source-context"
+}
