@@ -1019,6 +1019,38 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    first_context_translation_runtime_output="$(
+      python tools/v5_1_first_context_translation_runtime_capture.py --if-ready 2>&1
+    )"
+    first_context_translation_runtime_status=$?
+    printf '%s\n' "$first_context_translation_runtime_output"
+    if [ "$first_context_translation_runtime_status" -ne 0 ]; then
+      stage_status="$first_context_translation_runtime_status"
+      diagnostic_trigger=probe
+      first_context_translation_runtime_failure_stage=first-context-translation-runtime-capture
+      case "$first_context_translation_runtime_output" in
+        *"runtime capture identity"*)
+          first_context_translation_runtime_failure_stage=first-context-runtime-capture-identity
+          ;;
+        *"runtime sequence is incomplete"*|\
+        *"runtime screenshots are incomplete"*)
+          first_context_translation_runtime_failure_stage=first-context-runtime-capture-sequence
+          ;;
+        *"runtime capture input is missing"*|\
+        *"runtime capture inputs are invalid"*)
+          first_context_translation_runtime_failure_stage=first-context-runtime-capture-input
+          ;;
+        *"runtime capture fields do not match"*|\
+        *"runtime capture counts do not match"*|\
+        *"runtime capture is inconsistent"*)
+          first_context_translation_runtime_failure_stage=first-context-runtime-capture-validation
+          ;;
+      esac
+      record_stage_failure "$first_context_translation_runtime_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then
