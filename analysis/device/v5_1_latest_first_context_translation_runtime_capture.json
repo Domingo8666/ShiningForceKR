@@ -1,11 +1,11 @@
 {
   "artifact_kind": "sanitized-v5-1-first-context-translation-runtime-capture",
   "schema_version": 1,
-  "status": "first-context-translation-runtime-capture-incomplete",
+  "status": "first-context-translation-runtime-capture-ready",
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "test_target_sha256": "70a4c70fd32e639c674230fe432d18c03080df218466ab9d99da1f2bc558099c",
-  "first_context_translation_test_build_sha256": "401fda180c847b4eb71851b2f3e125bb09e12679a6dce2253daa7519a45762b3",
-  "source_runtime_sequence_sha256": "0b416e131105e437a64ee7059c2a5df2ca85072c1de4411d834dd143063585af",
+  "first_context_translation_test_build_sha256": "3d4817237c1cbc38f0444ab401d2ecab7a00174fe864afe0c84fd3cbb0f93b57",
+  "source_runtime_sequence_sha256": "6c000f492230bc7aa42e4f752494786eebb64079687e2b09076eb908315370d6",
   "local_capture_sha256": "69bbe8b4d876af72912717dfeeae0694d7db818e3df5a482b562c6f2a8057ebc",
   "captured_utc": "2026-07-31T09:32:40.020711Z",
   "runtime_sequence": {
@@ -20,10 +20,10 @@
   },
   "cold_boot": true,
   "test_media_identity_confirmed": true,
-  "target_entry_sequence_confirmed": false,
+  "target_entry_sequence_confirmed": true,
   "human_visual_review_required": true,
   "runtime_layout_confirmed": false,
   "source_and_target_text_local_only": true,
   "translation_build_eligible": false,
-  "next_checkpoint": "retry-first-context-translation-runtime-capture"
+  "next_checkpoint": "human-review-first-context-translation-runtime-screens"
 }
