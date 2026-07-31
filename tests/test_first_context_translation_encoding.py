@@ -8,6 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
+    ROW_FONT_PAGES,
     build_character_assignments,
     build_first_context_translation_encoding,
     build_first_context_translation_encoding_failure,
@@ -45,6 +46,9 @@ def tree(previous: int, left: int, right: int) -> ParsedTree:
 
 
 class FirstContextTranslationEncodingTests(unittest.TestCase):
+    def test_keeps_proven_four_row_pages_before_the_fifth_page(self) -> None:
+        self.assertEqual(ROW_FONT_PAGES, (240, 241, 242, 243, 239))
+
     def test_adds_invisible_page_select_padding_to_exact_bit_length(self) -> None:
         trees = {
             0xC9: tree(0xC9, 0x5F, 0xC9),
