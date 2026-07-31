@@ -62,6 +62,25 @@ class RuntimeContextGlyphCandidatesTests(unittest.TestCase):
                     },
                 ]
             },
+            {
+                "glyphs": [
+                    {
+                        "page": 1,
+                        "symbol": 2,
+                        "status": "unmatched",
+                    },
+                    {
+                        "page": 1,
+                        "symbol": 3,
+                        "status": "ambiguous-exact-non-hangul",
+                    },
+                    {
+                        "page": 9,
+                        "symbol": 4,
+                        "status": "outside-font-page-range",
+                    },
+                ]
+            },
         )
         self.assertEqual(counts["demanded_occurrence_count"], 5)
         self.assertEqual(counts["demanded_distinct_glyph_count"], 4)
@@ -72,6 +91,10 @@ class RuntimeContextGlyphCandidatesTests(unittest.TestCase):
         self.assertEqual(counts["distance_two_distinct_count"], 1)
         self.assertEqual(counts["distance_over_four_distinct_count"], 1)
         self.assertEqual(counts["high_confidence_occurrence_count"], 2)
+        self.assertEqual(
+            counts["non_hangul_ambiguous_exact_distinct_count"], 1
+        )
+        self.assertEqual(counts["non_hangul_missing_distinct_count"], 1)
         self.assertFalse(local["automatic_character_selection_allowed"])
 
     def test_rejects_disagreement_between_rows_and_distinct_glyphs(
@@ -81,7 +104,7 @@ class RuntimeContextGlyphCandidatesTests(unittest.TestCase):
         demand["distinct_glyphs"] = [{"page": 1, "symbol": 3}]
         with self.assertRaisesRegex(ValueError, "coordinates disagree"):
             analyze_runtime_context_glyph_candidates(
-                demand, {"glyphs": []}
+                demand, {"glyphs": []}, {"glyphs": []}
             )
 
     def test_builds_fixed_safe_receipt_without_candidate_payload(
@@ -101,12 +124,22 @@ class RuntimeContextGlyphCandidatesTests(unittest.TestCase):
                     }
                 ]
             },
+            {
+                "glyphs": [
+                    {
+                        "page": 1,
+                        "symbol": 2,
+                        "status": "unmatched",
+                    }
+                ]
+            },
         )
         artifact = build_runtime_context_glyph_candidates(
             target_sha256="1" * 64,
             runtime_context_glyph_demand_sha256="2" * 64,
             target_group_expanded_glyphs_sha256="3" * 64,
-            local_candidates_sha256="4" * 64,
+            target_group_non_hangul_glyphs_sha256="4" * 64,
+            local_candidates_sha256="5" * 64,
             candidates=counts,
             captured_utc="2026-07-31T04:00:00Z",
         )

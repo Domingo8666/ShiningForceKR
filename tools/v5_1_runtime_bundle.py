@@ -1022,6 +1022,7 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
         if (
             RUNTIME_CONTEXT_GLYPH_DEMAND_RELATIVE_PATH not in artifacts
             or TARGET_GROUP_EXPANDED_GLYPHS_RELATIVE_PATH not in artifacts
+            or TARGET_GROUP_NON_HANGUL_GLYPHS_RELATIVE_PATH not in artifacts
             or runtime_context_glyph_candidates["target_sha256"]
             != runtime_context_glyph_demand["target_sha256"]
             or runtime_context_glyph_candidates[
@@ -1032,6 +1033,12 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
                 "target_group_expanded_glyphs_sha256"
             ]
             != sha256_file(root / TARGET_GROUP_EXPANDED_GLYPHS_RELATIVE_PATH)
+            or runtime_context_glyph_candidates[
+                "target_group_non_hangul_glyphs_sha256"
+            ]
+            != sha256_file(
+                root / TARGET_GROUP_NON_HANGUL_GLYPHS_RELATIVE_PATH
+            )
         ):
             artifacts.pop(RUNTIME_CONTEXT_GLYPH_CANDIDATES_RELATIVE_PATH)
     group_context_resolution = artifacts.get(

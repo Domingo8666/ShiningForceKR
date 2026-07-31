@@ -26,6 +26,11 @@ try:
         PUBLISH_RELATIVE_PATH as EXPANDED_GLYPHS_PATH,
         validate_target_group_expanded_glyphs,
     )
+    from .v5_1_target_group_non_hangul_glyphs import (
+        LOCAL_REPORT_PATH as LOCAL_NON_HANGUL_GLYPHS_PATH,
+        PUBLISH_RELATIVE_PATH as NON_HANGUL_GLYPHS_PATH,
+        validate_target_group_non_hangul_glyphs,
+    )
     from .v5_1_unmatched_glyph_fuzzy import (
         HIGH_CONFIDENCE_MAX_DISTANCE,
         HIGH_CONFIDENCE_MIN_MARGIN,
@@ -43,6 +48,11 @@ except ImportError:  # pragma: no cover - direct script execution
         PUBLISH_RELATIVE_PATH as EXPANDED_GLYPHS_PATH,
         validate_target_group_expanded_glyphs,
     )
+    from v5_1_target_group_non_hangul_glyphs import (
+        LOCAL_REPORT_PATH as LOCAL_NON_HANGUL_GLYPHS_PATH,
+        PUBLISH_RELATIVE_PATH as NON_HANGUL_GLYPHS_PATH,
+        validate_target_group_non_hangul_glyphs,
+    )
     from v5_1_unmatched_glyph_fuzzy import (
         HIGH_CONFIDENCE_MAX_DISTANCE,
         HIGH_CONFIDENCE_MIN_MARGIN,
@@ -50,7 +60,7 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-v5-1-runtime-context-glyph-candidates"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_runtime_context_glyph_candidates.json"
 )
@@ -97,6 +107,18 @@ COUNT_KEYS = {
     "high_confidence_occurrence_count",
     "high_confidence_distinct_count",
     "maximum_nearest_candidate_count",
+    "non_hangul_unique_exact_occurrence_count",
+    "non_hangul_unique_exact_distinct_count",
+    "non_hangul_equivalent_exact_occurrence_count",
+    "non_hangul_equivalent_exact_distinct_count",
+    "non_hangul_ambiguous_exact_occurrence_count",
+    "non_hangul_ambiguous_exact_distinct_count",
+    "non_hangul_unmatched_occurrence_count",
+    "non_hangul_unmatched_distinct_count",
+    "non_hangul_out_of_range_occurrence_count",
+    "non_hangul_out_of_range_distinct_count",
+    "non_hangul_missing_occurrence_count",
+    "non_hangul_missing_distinct_count",
 }
 SAFE_FIELDS = {
     "artifact_kind",
@@ -105,6 +127,7 @@ SAFE_FIELDS = {
     "target_sha256",
     "runtime_context_glyph_demand_sha256",
     "target_group_expanded_glyphs_sha256",
+    "target_group_non_hangul_glyphs_sha256",
     "local_candidates_sha256",
     "captured_utc",
     "candidates",
@@ -153,14 +176,20 @@ def _coordinate(value: object, *, label: str) -> tuple[int, int]:
 def analyze_runtime_context_glyph_candidates(
     demand_analysis: dict[str, object],
     fuzzy_analysis: dict[str, object],
+    non_hangul_analysis: dict[str, object],
 ) -> tuple[dict[str, int], dict[str, object]]:
     rows = demand_analysis.get("rows")
     distinct = demand_analysis.get("distinct_glyphs")
     fuzzy_glyphs = fuzzy_analysis.get("glyphs")
+    non_hangul_glyphs = non_hangul_analysis.get("glyphs")
     if not isinstance(rows, list) or not isinstance(distinct, list):
         raise ValueError("runtime glyph candidate demand analysis is missing")
     if not isinstance(fuzzy_glyphs, list):
         raise ValueError("runtime glyph candidate fuzzy analysis is missing")
+    if not isinstance(non_hangul_glyphs, list):
+        raise ValueError(
+            "runtime glyph candidate non-Hangul analysis is missing"
+        )
 
     occurrences: dict[tuple[int, int], int] = {}
     for row in rows:
@@ -189,6 +218,17 @@ def analyze_runtime_context_glyph_candidates(
             )
         assert isinstance(glyph, dict)
         fuzzy_by_coordinate[coordinate] = glyph
+    non_hangul_by_coordinate: dict[
+        tuple[int, int], dict[str, object]
+    ] = {}
+    for glyph in non_hangul_glyphs:
+        coordinate = _coordinate(glyph, label="non-Hangul")
+        if coordinate in non_hangul_by_coordinate:
+            raise ValueError(
+                "runtime glyph candidate non-Hangul coordinate is duplicated"
+            )
+        assert isinstance(glyph, dict)
+        non_hangul_by_coordinate[coordinate] = glyph
 
     counts = {key: 0 for key in COUNT_KEYS}
     counts["demanded_occurrence_count"] = sum(occurrences.values())
@@ -197,6 +237,26 @@ def analyze_runtime_context_glyph_candidates(
 
     for (page, symbol), occurrence_count in sorted(occurrences.items()):
         fuzzy = fuzzy_by_coordinate.get((page, symbol))
+        non_hangul = non_hangul_by_coordinate.get((page, symbol))
+        if non_hangul is None:
+            non_hangul_bucket = "non_hangul_missing"
+        else:
+            non_hangul_status = non_hangul.get("status")
+            non_hangul_bucket = {
+                "unique-exact-non-hangul": "non_hangul_unique_exact",
+                "equivalent-exact-non-hangul":
+                    "non_hangul_equivalent_exact",
+                "ambiguous-exact-non-hangul":
+                    "non_hangul_ambiguous_exact",
+                "unmatched": "non_hangul_unmatched",
+                "outside-font-page-range": "non_hangul_out_of_range",
+            }.get(str(non_hangul_status), "")
+            if not non_hangul_bucket:
+                raise ValueError(
+                    "runtime glyph candidate non-Hangul match is invalid"
+                )
+        counts[f"{non_hangul_bucket}_occurrence_count"] += occurrence_count
+        counts[f"{non_hangul_bucket}_distinct_count"] += 1
         if fuzzy is None:
             counts["missing_fuzzy_occurrence_count"] += occurrence_count
             counts["missing_fuzzy_distinct_count"] += 1
@@ -206,6 +266,7 @@ def analyze_runtime_context_glyph_candidates(
                     "symbol": symbol,
                     "occurrence_count": occurrence_count,
                     "status": "missing-from-expanded-fuzzy-analysis",
+                    "non_hangul": non_hangul,
                 }
             )
             continue
@@ -220,7 +281,8 @@ def analyze_runtime_context_glyph_candidates(
                     "page": page,
                     "symbol": symbol,
                     "occurrence_count": occurrence_count,
-                    **fuzzy,
+                    "fuzzy": fuzzy,
+                    "non_hangul": non_hangul,
                 }
             )
             continue
@@ -275,7 +337,8 @@ def analyze_runtime_context_glyph_candidates(
                 "page": page,
                 "symbol": symbol,
                 "occurrence_count": occurrence_count,
-                **fuzzy,
+                "fuzzy": fuzzy,
+                "non_hangul": non_hangul,
             }
         )
 
@@ -293,8 +356,17 @@ def _next_checkpoint(counts: dict[str, int]) -> str:
     if (
         counts["missing_fuzzy_distinct_count"] > 0
         or counts["out_of_range_distinct_count"] > 0
+        or counts["non_hangul_missing_distinct_count"] > 0
+        or counts["non_hangul_out_of_range_distinct_count"] > 0
     ):
         return "trace-runtime-context-font-source"
+    if (
+        counts["non_hangul_unique_exact_distinct_count"] > 0
+        or counts["non_hangul_equivalent_exact_distinct_count"] > 0
+    ):
+        return "reconcile-runtime-context-exact-non-hangul-overrides"
+    if counts["non_hangul_ambiguous_exact_distinct_count"] > 0:
+        return "prepare-local-runtime-glyph-ambiguity-review"
     if counts["high_confidence_distinct_count"] > 0:
         return "prepare-local-runtime-glyph-review"
     return "analyze-runtime-context-glyph-transform"
@@ -305,6 +377,7 @@ def build_runtime_context_glyph_candidates(
     target_sha256: str,
     runtime_context_glyph_demand_sha256: str,
     target_group_expanded_glyphs_sha256: str,
+    target_group_non_hangul_glyphs_sha256: str,
     local_candidates_sha256: str,
     candidates: dict[str, int],
     captured_utc: str,
@@ -323,6 +396,8 @@ def build_runtime_context_glyph_candidates(
             runtime_context_glyph_demand_sha256,
         "target_group_expanded_glyphs_sha256":
             target_group_expanded_glyphs_sha256,
+        "target_group_non_hangul_glyphs_sha256":
+            target_group_non_hangul_glyphs_sha256,
         "local_candidates_sha256": local_candidates_sha256,
         "captured_utc": captured_utc,
         "candidates": candidates,
@@ -365,6 +440,7 @@ def validate_runtime_context_glyph_candidates(
                 "target_sha256",
                 "runtime_context_glyph_demand_sha256",
                 "target_group_expanded_glyphs_sha256",
+                "target_group_non_hangul_glyphs_sha256",
                 "local_candidates_sha256",
             )
         )
@@ -407,6 +483,28 @@ def validate_runtime_context_glyph_candidates(
         if complete
         else "runtime-context-glyph-candidates-incomplete"
     )
+    non_hangul_occurrences = sum(
+        counts[f"non_hangul_{bucket}_occurrence_count"]
+        for bucket in (
+            "unique_exact",
+            "equivalent_exact",
+            "ambiguous_exact",
+            "unmatched",
+            "out_of_range",
+            "missing",
+        )
+    )
+    non_hangul_distinct = sum(
+        counts[f"non_hangul_{bucket}_distinct_count"]
+        for bucket in (
+            "unique_exact",
+            "equivalent_exact",
+            "ambiguous_exact",
+            "unmatched",
+            "out_of_range",
+            "missing",
+        )
+    )
     if (
         matched_occurrences + counts["missing_fuzzy_occurrence_count"]
         != demanded_occurrences
@@ -433,6 +531,8 @@ def validate_runtime_context_glyph_candidates(
         or counts["high_confidence_occurrence_count"]
         > counts["in_range_occurrence_count"]
         or counts["high_confidence_distinct_count"] > in_range_distinct
+        or non_hangul_occurrences != demanded_occurrences
+        or non_hangul_distinct != demanded_distinct
         or value["status"] != expected_status
         or value["high_confidence_policy"]
         != {
@@ -465,6 +565,8 @@ def main() -> int:
         "local_demand": root / LOCAL_DEMAND_PATH,
         "expanded": root / EXPANDED_GLYPHS_PATH,
         "local_expanded": root / LOCAL_EXPANDED_GLYPHS_PATH,
+        "non_hangul": root / NON_HANGUL_GLYPHS_PATH,
+        "local_non_hangul": root / LOCAL_NON_HANGUL_GLYPHS_PATH,
     }
     if not all(path.is_file() for path in paths.values()):
         if args.if_ready:
@@ -476,28 +578,39 @@ def main() -> int:
     local_demand = _load_json_object(paths["local_demand"])
     expanded = _load_json_object(paths["expanded"])
     local_expanded = _load_json_object(paths["local_expanded"])
+    non_hangul = _load_json_object(paths["non_hangul"])
+    local_non_hangul = _load_json_object(paths["local_non_hangul"])
     validate_runtime_context_glyph_demand(demand)
     validate_target_group_expanded_glyphs(expanded)
+    validate_target_group_non_hangul_glyphs(non_hangul)
     if (
         demand["target_sha256"] != expanded["target_sha256"]
+        or demand["target_sha256"] != non_hangul["target_sha256"]
+        or non_hangul["source_expanded_glyphs_sha256"]
+        != sha256_file(paths["expanded"])
         or sha256_file(paths["local_demand"]) != demand["local_demand_sha256"]
         or local_demand.get("target_sha256") != demand["target_sha256"]
         or local_expanded.get("target_sha256") != demand["target_sha256"]
+        or local_non_hangul.get("target_sha256")
+        != demand["target_sha256"]
         or local_demand.get("artifact_kind")
         != "local-v5-1-runtime-context-glyph-demand"
         or local_expanded.get("artifact_kind")
         != "local-v5-1-target-group-expanded-glyphs"
+        or local_non_hangul.get("artifact_kind")
+        != "local-v5-1-target-group-non-hangul-glyphs"
     ):
         raise ValueError("runtime glyph candidate input identity disagrees")
     demand_analysis = local_demand.get("analysis")
     fuzzy_analysis = local_expanded.get("analysis")
+    non_hangul_analysis = local_non_hangul.get("analysis")
     if not isinstance(demand_analysis, dict) or not isinstance(
         fuzzy_analysis, dict
-    ):
+    ) or not isinstance(non_hangul_analysis, dict):
         raise ValueError("runtime glyph candidate local inputs are missing")
 
     counts, local_analysis = analyze_runtime_context_glyph_candidates(
-        demand_analysis, fuzzy_analysis
+        demand_analysis, fuzzy_analysis, non_hangul_analysis
     )
     if (
         counts["demanded_occurrence_count"]
@@ -518,6 +631,8 @@ def main() -> int:
         "runtime_context_glyph_demand_sha256": sha256_file(paths["demand"]),
         "target_group_expanded_glyphs_sha256":
             sha256_file(paths["expanded"]),
+        "target_group_non_hangul_glyphs_sha256":
+            sha256_file(paths["non_hangul"]),
         "captured_utc": captured_utc,
         "candidates": counts,
         "analysis": local_analysis,
@@ -536,6 +651,8 @@ def main() -> int:
         target_sha256=str(demand["target_sha256"]),
         runtime_context_glyph_demand_sha256=sha256_file(paths["demand"]),
         target_group_expanded_glyphs_sha256=sha256_file(paths["expanded"]),
+        target_group_non_hangul_glyphs_sha256=
+            sha256_file(paths["non_hangul"]),
         local_candidates_sha256=sha256_file(local_path),
         candidates=counts,
         captured_utc=captured_utc,

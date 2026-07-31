@@ -695,6 +695,7 @@ else
           ;;
         *"runtime glyph candidate demand"*|\
         *"runtime glyph candidate fuzzy"*|\
+        *"runtime glyph candidate non-Hangul"*|\
         *"runtime glyph candidate coordinate"*)
           runtime_context_glyph_candidates_failure_stage=context-glyph-candidates-mapping
           ;;
