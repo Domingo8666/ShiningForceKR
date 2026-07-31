@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
 
 from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     MAX_EXACT_FONT_PAGE_CANDIDATES,
+    MAX_EXACT_SINGLE_PAGE_STATES,
     RowRouteError,
     ROW_FONT_PAGES,
     bounded_length_row_symbols,
@@ -61,6 +62,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
     def test_keeps_proven_four_row_pages_before_the_fifth_page(self) -> None:
         self.assertEqual(ROW_FONT_PAGES, (240, 241, 242, 243, 239))
         self.assertEqual(MAX_EXACT_FONT_PAGE_CANDIDATES, 8)
+        self.assertEqual(MAX_EXACT_SINGLE_PAGE_STATES, 5_000)
 
     def test_builds_a_proven_row_with_the_joint_exact_solver(self) -> None:
         target = [{"review_index": 1, "target_text": "가"}]
