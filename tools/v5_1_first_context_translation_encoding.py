@@ -1494,6 +1494,42 @@ def solve_exact_length_row_visual_symbols(
         return best_target
 
     @lru_cache(maxsize=None)
+    def exact_terminator_route(
+        previous: int,
+        remaining_bits: int,
+    ) -> tuple[int, ...] | None:
+        """Reach the terminator exactly through trailing invisible controls."""
+
+        queue = deque([(0, previous)])
+        paths: dict[tuple[int, int], tuple[int, ...]] = {
+            (0, previous): ()
+        }
+        while queue:
+            bits, current = queue.popleft()
+            end_length = lengths.get(current, {}).get(CANDIDATE_END_SYMBOL)
+            if end_length is not None and bits + end_length == remaining_bits:
+                return paths[(bits, current)] + (CANDIDATE_END_SYMBOL,)
+            unique_transitions: dict[
+                tuple[int, int], tuple[int, ...]
+            ] = {}
+            for token in prefix_tokens:
+                encoded = transition(current, token)
+                if encoded is not None:
+                    unique_transitions.setdefault(encoded, token)
+            for (added_bits, next_previous), token in sorted(
+                unique_transitions.items()
+            ):
+                total_bits = bits + added_bits
+                if total_bits >= remaining_bits:
+                    continue
+                state = (total_bits, next_previous)
+                if state in paths:
+                    continue
+                paths[state] = paths[(bits, current)] + token
+                queue.append(state)
+        return None
+
+    @lru_cache(maxsize=None)
     def relaxed_can_finish(
         previous: int,
         depth: int,
@@ -1512,10 +1548,7 @@ def solve_exact_length_row_visual_symbols(
         if remaining_bits <= 0:
             return False
         if depth == len(visuals):
-            return (
-                lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
-                == remaining_bits
-            )
+            return exact_terminator_route(previous, remaining_bits) is not None
         routes = [(0, previous)]
         reselection = shortest_page_reselection(previous)
         if reselection is not None:
@@ -1553,10 +1586,10 @@ def solve_exact_length_row_visual_symbols(
         if not relaxed_can_finish(previous, depth, target_bits - bits):
             return None
         if depth == len(visuals):
-            end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
-            if end_length is not None and bits + end_length == target_bits:
-                return (CANDIDATE_END_SYMBOL,), ()
-            return None
+            terminator = exact_terminator_route(
+                previous, target_bits - bits
+            )
+            return (terminator, ()) if terminator is not None else None
         routes = [(0, (), previous)]
         reselection = shortest_page_reselection(previous)
         if reselection is not None:
@@ -1738,6 +1771,33 @@ def solve_exact_length_row_multi_page_visual_symbols(
         )
 
     @lru_cache(maxsize=None)
+    def exact_terminator_route(
+        previous: int,
+        remaining_bits: int,
+    ) -> tuple[int, ...] | None:
+        queue = deque([(0, previous)])
+        paths: dict[tuple[int, int], tuple[int, ...]] = {
+            (0, previous): ()
+        }
+        while queue:
+            bits, current = queue.popleft()
+            end_length = lengths.get(current, {}).get(CANDIDATE_END_SYMBOL)
+            if end_length is not None and bits + end_length == remaining_bits:
+                return paths[(bits, current)] + (CANDIDATE_END_SYMBOL,)
+            for added_bits, next_previous, token in (
+                unique_bridge_transitions(current)
+            ):
+                total_bits = bits + added_bits
+                if total_bits >= remaining_bits:
+                    continue
+                state = (total_bits, next_previous)
+                if state in paths:
+                    continue
+                paths[state] = paths[(bits, current)] + token
+                queue.append(state)
+        return None
+
+    @lru_cache(maxsize=None)
     def page_routes(
         previous: int,
     ) -> tuple[tuple[int, tuple[int, ...], int, int], ...]:
@@ -1822,10 +1882,7 @@ def solve_exact_length_row_multi_page_visual_symbols(
         if remaining_bits <= 0:
             return False
         if depth == len(visuals):
-            return (
-                lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
-                == remaining_bits
-            )
+            return exact_terminator_route(previous, remaining_bits) is not None
         for route_bits, _, route_page, route_previous in visible_routes(
             previous, current_page
         ):
@@ -1870,10 +1927,12 @@ def solve_exact_length_row_multi_page_visual_symbols(
         ):
             return None
         if depth == len(visuals):
-            end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
-            if end_length is not None and bits + end_length == target_bits:
-                return (CANDIDATE_END_SYMBOL,), (), ()
-            return None
+            terminator = exact_terminator_route(
+                previous, target_bits - bits
+            )
+            return (
+                (terminator, (), ()) if terminator is not None else None
+            )
         visual_id = visual_ids[depth]
         assigned_coordinate = assignments_by_visual[visual_id]
         for route_bits, route_symbols, route_page, route_previous in (
