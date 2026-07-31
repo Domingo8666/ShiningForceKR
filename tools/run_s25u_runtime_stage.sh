@@ -715,6 +715,43 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    runtime_context_glyph_review_output="$(
+      python tools/v5_1_runtime_context_glyph_review.py --if-ready 2>&1
+    )"
+    runtime_context_glyph_review_status=$?
+    printf '%s\n' "$runtime_context_glyph_review_output"
+    if [ "$runtime_context_glyph_review_status" -ne 0 ]; then
+      stage_status="$runtime_context_glyph_review_status"
+      diagnostic_trigger=probe
+      runtime_context_glyph_review_failure_stage=runtime-context-glyph-review
+      case "$runtime_context_glyph_review_output" in
+        *"runtime glyph review input identity"*|\
+        *"runtime glyph review identity"*)
+          runtime_context_glyph_review_failure_stage=context-glyph-review-identity
+          ;;
+        *"runtime glyph review demand"*|\
+        *"runtime glyph review candidate"*|\
+        *"runtime glyph review fuzzy"*|\
+        *"runtime glyph review non-Hangul"*|\
+        *"runtime glyph review coordinate"*)
+          runtime_context_glyph_review_failure_stage=context-glyph-review-mapping
+          ;;
+        *"runtime glyph review local inputs"*|\
+        *"runtime glyph review input is missing"*)
+          runtime_context_glyph_review_failure_stage=context-glyph-review-input
+          ;;
+        *"runtime glyph review fields do not match"*|\
+        *"runtime glyph review counts do not match"*|\
+        *"runtime glyph review result is inconsistent"*|\
+        *"runtime glyph review aggregates disagree"*)
+          runtime_context_glyph_review_failure_stage=context-glyph-review-validation
+          ;;
+      esac
+      record_stage_failure "$runtime_context_glyph_review_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then
