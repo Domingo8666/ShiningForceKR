@@ -8,7 +8,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.v5_1_first_context_translation_runtime_capture import (  # noqa: E402
+    CONFIRMED_ORDINAL,
+    CONFIRMED_SELECTOR,
     build_first_context_translation_runtime_capture,
+    select_target_runtime_sequence,
     validate_first_context_translation_runtime_capture,
 )
 
@@ -102,6 +105,34 @@ class FirstContextTranslationRuntimeCaptureTests(unittest.TestCase):
         unsafe["screens"] = [{"file": "capture.png"}]
         with self.assertRaisesRegex(ValueError, "fields do not match"):
             validate_first_context_translation_runtime_capture(unsafe)
+
+    def test_filters_interleaved_decoder_screens_from_review_sequence(
+        self,
+    ) -> None:
+        observations = [
+            {"selector": CONFIRMED_SELECTOR, "ordinal": CONFIRMED_ORDINAL},
+            {"selector": CONFIRMED_SELECTOR + 1, "ordinal": 0},
+            {"selector": CONFIRMED_SELECTOR, "ordinal": CONFIRMED_ORDINAL + 1},
+            {"selector": CONFIRMED_SELECTOR, "ordinal": CONFIRMED_ORDINAL + 2},
+        ]
+        screens = [{"file": f"screen-{index}.png"} for index in range(4)]
+        selected_observations, selected_screens = select_target_runtime_sequence(
+            observations=observations,
+            screenshots=screens,
+            expected_entry_count=3,
+        )
+        self.assertEqual(
+            [row["ordinal"] for row in selected_observations],
+            [
+                CONFIRMED_ORDINAL,
+                CONFIRMED_ORDINAL + 1,
+                CONFIRMED_ORDINAL + 2,
+            ],
+        )
+        self.assertEqual(
+            [screen["file"] for screen in selected_screens],
+            ["screen-0.png", "screen-2.png", "screen-3.png"],
+        )
 
 
 if __name__ == "__main__":

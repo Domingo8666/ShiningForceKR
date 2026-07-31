@@ -26,6 +26,10 @@ try:
         summarize_runtime_sequence,
         validate_source_target_runtime_sequence,
     )
+    from .v5_1_source_target_anchor import (
+        CONFIRMED_ORDINAL,
+        CONFIRMED_SELECTOR,
+    )
 except ImportError:  # pragma: no cover - direct script execution
     from patch_io import sha256_file
     from v5_1_first_context_translation_test_build import (
@@ -42,6 +46,10 @@ except ImportError:  # pragma: no cover - direct script execution
         capture_runtime_sequence,
         summarize_runtime_sequence,
         validate_source_target_runtime_sequence,
+    )
+    from v5_1_source_target_anchor import (
+        CONFIRMED_ORDINAL,
+        CONFIRMED_SELECTOR,
     )
 
 try:
@@ -327,6 +335,34 @@ img{width:100%;height:auto;image-rendering:pixelated;border-radius:8px}
     review_path.write_text(document, encoding="utf-8")
 
 
+def select_target_runtime_sequence(
+    *,
+    observations: list[dict[str, object]],
+    screenshots: list[dict[str, object]],
+    expected_entry_count: int,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    if (
+        len(observations) != len(screenshots)
+        or not 1 <= expected_entry_count <= 100
+    ):
+        raise ValueError("first context captured screen sequence is invalid")
+    selected_observations = []
+    selected_screens = []
+    expected_ordinal = CONFIRMED_ORDINAL
+    for observation, screenshot in zip(observations, screenshots):
+        if (
+            observation.get("selector") != CONFIRMED_SELECTOR
+            or observation.get("ordinal") != expected_ordinal
+        ):
+            continue
+        selected_observations.append(observation)
+        selected_screens.append(screenshot)
+        expected_ordinal += 1
+        if len(selected_observations) == expected_entry_count:
+            break
+    return selected_observations, selected_screens
+
+
 def _main() -> int:
     global ACTIVE_CAPTURE_FAILURE_STAGE
     ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-input"
@@ -483,11 +519,21 @@ def _main() -> int:
             evidence_dir=evidence_dir,
         )
     )
+    raw_screens = local_capture.get("screens")
+    if not isinstance(raw_screens, list):
+        raise RuntimeError(
+            "first context translation runtime screenshots are missing"
+        )
+    selected_observations, selected_screens = select_target_runtime_sequence(
+        observations=observations,
+        screenshots=raw_screens,
+        expected_entry_count=expected_entry_count,
+    )
     ACTIVE_CAPTURE_FAILURE_STAGE = (
         "first-context-runtime-capture-summary-validation"
     )
     counts, status, first_consecutive = summarize_runtime_sequence(
-        observations,
+        selected_observations,
         advance_attempt_count=advance_attempt_count,
     )
     captured_utc = datetime.now(timezone.utc).isoformat().replace(
@@ -527,7 +573,7 @@ def _main() -> int:
     _write_review(
         root=root,
         translations=translations,
-        screenshots=screens,
+        screenshots=selected_screens,
     )
     ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-local-write"
     local_path.parent.mkdir(parents=True, exist_ok=True)
