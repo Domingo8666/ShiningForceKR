@@ -945,13 +945,26 @@ else
         *"reinsertion identity"*)
           first_context_record_reinsertion_failure_stage=first-context-reinsertion-identity
           ;;
-        *"row count"*|\
-        *"projection"*|\
-        *"context row"*|\
-        *"target record"*|\
-        *"record fields"*|\
-        *"record bounds"*)
-          first_context_record_reinsertion_failure_stage=first-context-reinsertion-record
+        *"row count disagrees"*)
+          first_context_record_reinsertion_failure_stage=first-context-reinsertion-row-count
+          ;;
+        *"projection is duplicated"*)
+          first_context_record_reinsertion_failure_stage=first-context-reinsertion-duplicate-projection
+          ;;
+        *"projection is invalid"*)
+          first_context_record_reinsertion_failure_stage=first-context-reinsertion-invalid-projection
+          ;;
+        *"context row is invalid"*)
+          first_context_record_reinsertion_failure_stage=first-context-reinsertion-invalid-context-row
+          ;;
+        *"target record is missing"*)
+          first_context_record_reinsertion_failure_stage=first-context-reinsertion-missing-target-record
+          ;;
+        *"record fields are invalid"*)
+          first_context_record_reinsertion_failure_stage=first-context-reinsertion-invalid-record-fields
+          ;;
+        *"record bounds disagree"*)
+          first_context_record_reinsertion_failure_stage=first-context-reinsertion-record-bounds
           ;;
         *"reinsertion input is missing"*|\
         *"reinsertion rows are missing"*)
