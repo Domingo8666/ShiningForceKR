@@ -1,0 +1,9 @@
+{
+  "artifact_kind": "sanitized-v5-1-first-context-translation-encoding-failure",
+  "schema_version": 1,
+  "status": "first-context-translation-encoding-failed",
+  "category": "unexpected",
+  "captured_utc": "2026-07-31T08:19:03.259093Z",
+  "source_and_target_text_local_only": true,
+  "next_checkpoint": "repair-first-context-unexpected"
+}
