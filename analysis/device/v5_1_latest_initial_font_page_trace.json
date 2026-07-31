@@ -3,7 +3,7 @@
   "schema_version": 1,
   "status": "font-bank-outside-candidates",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "source_mapping_sha256": "aa02630bc92b3478fa7025c16ef1625c7d41b0e849dbf52deca0b9828703b474",
+  "source_mapping_sha256": "0b91c5b9e1b3f22fc9a23e284496f5b939b9fa5784ccc612c4d4f37fc9e09f18",
   "captured_utc": "2026-07-30T12:48:45.410367Z",
   "runtime_entry": {
     "record_length_bytes": 16,
