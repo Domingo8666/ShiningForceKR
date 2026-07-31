@@ -9,6 +9,8 @@ if str(ROOT) not in sys.path:
 
 from tools.v5_1_runtime_context_glyph_preservation import (  # noqa: E402
     EXPECTED_TARGET_SHA256,
+    EXPECTED_REVIEW_COUNTS,
+    EXPECTED_SHAPE_COUNTS,
     analyze_runtime_glyph_preservation,
     build_runtime_context_glyph_preservation,
     validate_runtime_context_glyph_preservation,
@@ -25,6 +27,18 @@ def _card(page: int, symbol: int, rows: list[str]) -> dict:
 
 
 class RuntimeContextGlyphPreservationTests(unittest.TestCase):
+    def test_human_review_contract_matches_six_card_packet(self) -> None:
+        self.assertEqual(EXPECTED_REVIEW_COUNTS["glyph_card_count"], 6)
+        self.assertEqual(EXPECTED_REVIEW_COUNTS["glyph_occurrence_count"], 6)
+        self.assertEqual(
+            EXPECTED_SHAPE_COUNTS,
+            {
+                "blank_cell_distinct_count": 3,
+                "one_pixel_marker_distinct_count": 2,
+                "visual_symbol_distinct_count": 1,
+            },
+        )
+
     def test_classifies_blank_marker_and_symbol_without_unicode(self) -> None:
         counts, records = analyze_runtime_glyph_preservation(
             [

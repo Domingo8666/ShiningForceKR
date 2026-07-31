@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Preserve visually reviewed non-text runtime glyphs as raw glyph tokens.
 
-The user-supplied review screenshot confirms that this fixed target/context
-contains two blank cells, two one-pixel markers, and one visual symbol.  This
+The user-supplied review screenshots confirm that this fixed target/context
+contains three blank cells, two one-pixel markers, and one visual symbol.  This
 stage verifies that exact local mask distribution before recording a
 preserve-original-glyph-token policy.  It never assigns Unicode characters.
 Coordinates, masks, text, speakers, and candidate characters stay phone-local.
@@ -51,16 +51,16 @@ EXPECTED_TARGET_SHA256 = (
     "ff4fb5d77fe66d5361d78059186adb39"
 )
 EXPECTED_REVIEW_COUNTS = {
-    "glyph_card_count": 5,
-    "glyph_occurrence_count": 5,
-    "source_context_occurrence_count": 5,
-    "ambiguous_exact_non_hangul_card_count": 3,
+    "glyph_card_count": 6,
+    "glyph_occurrence_count": 6,
+    "source_context_occurrence_count": 6,
+    "ambiguous_exact_non_hangul_card_count": 4,
     "unmatched_non_hangul_card_count": 2,
     "maximum_exact_candidate_count": 13,
     "maximum_fuzzy_candidate_count": 1,
 }
 EXPECTED_SHAPE_COUNTS = {
-    "blank_cell_distinct_count": 2,
+    "blank_cell_distinct_count": 3,
     "one_pixel_marker_distinct_count": 2,
     "visual_symbol_distinct_count": 1,
 }
