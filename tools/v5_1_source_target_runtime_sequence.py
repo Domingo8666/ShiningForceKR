@@ -124,6 +124,7 @@ REQUIRED_TOOLS = {
     "read_memory",
     "remove_breakpoint",
     "set_breakpoint_range",
+    "set_trace_log",
 }
 
 COUNT_KEYS = {
@@ -499,6 +500,19 @@ def _capture_runtime_initial_context(
     *,
     rom_size: int,
 ) -> tuple[int, dict[str, object]]:
+    client.call(
+        "set_trace_log",
+        {
+            "enabled": True,
+            "cpu_irq": False,
+            "vdp_write": False,
+            "vdp_status": False,
+            "psg": False,
+            "ym2413": False,
+            "io_port": False,
+            "bank_switch": True,
+        },
+    )
     ranges = [
         (f"{start:04X}", f"{end:04X}")
         for start, end in VECTOR_LOGICAL_RANGES
@@ -555,7 +569,22 @@ def _capture_runtime_initial_context(
                 )
             except RuntimeError:
                 pass
-        _step_instruction_and_wait(client)
+        try:
+            client.call(
+                "set_trace_log",
+                {
+                    "enabled": False,
+                    "cpu_irq": False,
+                    "vdp_write": False,
+                    "vdp_status": False,
+                    "psg": False,
+                    "ym2413": False,
+                    "io_port": False,
+                    "bank_switch": True,
+                },
+            )
+        except RuntimeError:
+            pass
 
 
 def capture_runtime_sequence(

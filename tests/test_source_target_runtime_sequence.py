@@ -8,6 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.v5_1_source_target_runtime_sequence import (  # noqa: E402
+    REQUIRED_TOOLS,
     build_source_target_runtime_sequence,
     summarize_runtime_sequence,
     validate_reusable_local_sequence,
@@ -30,6 +31,9 @@ def _observation(
 
 
 class SourceTargetRuntimeSequenceTests(unittest.TestCase):
+    def test_runtime_context_capture_requires_trace_log(self) -> None:
+        self.assertIn("set_trace_log", REQUIRED_TOOLS)
+
     def test_accepts_three_consecutive_post_anchor_entries(self) -> None:
         observations = [
             _observation(2, 147, "1"),
