@@ -76,6 +76,7 @@ SAFE_FIELDS = {
     "schema_version",
     "status",
     "target_sha256",
+    "review_batch_sha256",
     "source_target_runtime_context_sha256",
     "runtime_context_glyph_preservation_sha256",
     "local_review_packet_sha256",
@@ -187,6 +188,37 @@ def build_first_context_review_rows(
     return counts, rows
 
 
+def first_context_review_batch_sha256(
+    rows: list[dict[str, object]],
+) -> str:
+    stable_rows = []
+    for row in rows:
+        if (
+            not isinstance(row, dict)
+            or not isinstance(row.get("review_index"), int)
+            or not isinstance(row.get("source_text"), str)
+            or (
+                row.get("speaker") is not None
+                and not isinstance(row.get("speaker"), str)
+            )
+        ):
+            raise ValueError("first context review batch row is invalid")
+        stable_rows.append(
+            {
+                "review_index": row["review_index"],
+                "source_text": row["source_text"],
+                "speaker": row["speaker"],
+            }
+        )
+    payload = json.dumps(
+        stable_rows,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def render_first_context_translation_review_html(
     *, rows: list[dict[str, object]], captured_utc: str
 ) -> str:
@@ -253,6 +285,7 @@ body {{ margin: 0; padding: 16px; background: #111; color: #f5f5f5;
 def build_first_context_translation_review(
     *,
     target_sha256: str,
+    review_batch_sha256: str,
     source_target_runtime_context_sha256: str,
     runtime_context_glyph_preservation_sha256: str,
     local_review_packet_sha256: str,
@@ -278,6 +311,7 @@ def build_first_context_translation_review(
             else "first-context-translation-review-incomplete"
         ),
         "target_sha256": target_sha256,
+        "review_batch_sha256": review_batch_sha256,
         "source_target_runtime_context_sha256":
             source_target_runtime_context_sha256,
         "runtime_context_glyph_preservation_sha256":
@@ -324,6 +358,7 @@ def validate_first_context_translation_review(
             _is_sha256(value[key])
             for key in (
                 "target_sha256",
+                "review_batch_sha256",
                 "source_target_runtime_context_sha256",
                 "runtime_context_glyph_preservation_sha256",
                 "local_review_packet_sha256",
@@ -439,6 +474,7 @@ def main() -> int:
             "first context translation review local rows are missing"
         )
     counts, rows = build_first_context_review_rows(analysis["rows"])
+    review_batch_sha256 = first_context_review_batch_sha256(rows)
     counts["preserved_non_text_glyph_occurrence_count"] = int(
         preservation["preservation"][
             "preserve_original_glyph_occurrence_count"
@@ -491,6 +527,7 @@ def main() -> int:
         "artifact_kind": "local-v5-1-first-context-translation-review",
         "schema_version": SCHEMA_VERSION,
         "target_sha256": context["target_sha256"],
+        "review_batch_sha256": review_batch_sha256,
         "source_target_runtime_context_sha256": sha256_file(paths["context"]),
         "runtime_context_glyph_preservation_sha256":
             sha256_file(paths["preservation"]),
@@ -511,6 +548,7 @@ def main() -> int:
     )
     safe = build_first_context_translation_review(
         target_sha256=str(context["target_sha256"]),
+        review_batch_sha256=review_batch_sha256,
         source_target_runtime_context_sha256=sha256_file(paths["context"]),
         runtime_context_glyph_preservation_sha256=
             sha256_file(paths["preservation"]),

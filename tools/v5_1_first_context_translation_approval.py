@@ -21,6 +21,7 @@ try:
     from .v5_1_first_context_translation_review import (
         LOCAL_REPORT_PATH as LOCAL_REVIEW_PATH,
         PUBLISH_RELATIVE_PATH as REVIEW_PATH,
+        first_context_review_batch_sha256,
         validate_first_context_translation_review,
     )
     from .v5_1_renderer_output_trace import _load_json_object
@@ -29,6 +30,7 @@ except ImportError:  # pragma: no cover - direct script execution
     from v5_1_first_context_translation_review import (
         LOCAL_REPORT_PATH as LOCAL_REVIEW_PATH,
         PUBLISH_RELATIVE_PATH as REVIEW_PATH,
+        first_context_review_batch_sha256,
         validate_first_context_translation_review,
     )
     from v5_1_renderer_output_trace import _load_json_object
@@ -36,7 +38,7 @@ except ImportError:  # pragma: no cover - direct script execution
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-translation-approval"
 LOCAL_ARTIFACT_KIND = "local-v5-1-first-context-translation-approval"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_translation_approval.json"
 )
@@ -57,7 +59,7 @@ SAFE_FIELDS = {
     "schema_version",
     "status",
     "target_sha256",
-    "first_context_translation_review_sha256",
+    "review_batch_sha256",
     "local_approval_sha256",
     "captured_utc",
     "approval",
@@ -76,8 +78,7 @@ LOCAL_FIELDS = {
     "artifact_kind",
     "schema_version",
     "target_sha256",
-    "first_context_translation_review_sha256",
-    "first_context_local_review_sha256",
+    "review_batch_sha256",
     "captured_utc",
     "approval_label",
     "approval_authority",
@@ -141,8 +142,7 @@ def normalize_approved_targets(
 def build_local_first_context_translation_approval(
     *,
     target_sha256: str,
-    first_context_translation_review_sha256: str,
-    first_context_local_review_sha256: str,
+    review_batch_sha256: str,
     targets: list[str],
     captured_utc: str,
 ) -> dict[str, object]:
@@ -150,10 +150,7 @@ def build_local_first_context_translation_approval(
         "artifact_kind": LOCAL_ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
         "target_sha256": target_sha256,
-        "first_context_translation_review_sha256":
-            first_context_translation_review_sha256,
-        "first_context_local_review_sha256":
-            first_context_local_review_sha256,
+        "review_batch_sha256": review_batch_sha256,
         "captured_utc": captured_utc,
         "approval_label": APPROVAL_LABEL,
         "approval_authority": "human-user-explicit",
@@ -183,8 +180,7 @@ def validate_local_first_context_translation_approval(
             _is_sha256(value[key])
             for key in (
                 "target_sha256",
-                "first_context_translation_review_sha256",
-                "first_context_local_review_sha256",
+                "review_batch_sha256",
             )
         )
         or not _is_utc_timestamp(value["captured_utc"])
@@ -242,7 +238,7 @@ def approval_counts(
 def build_first_context_translation_approval(
     *,
     target_sha256: str,
-    first_context_translation_review_sha256: str,
+    review_batch_sha256: str,
     local_approval_sha256: str,
     approval: dict[str, int],
     captured_utc: str,
@@ -266,8 +262,7 @@ def build_first_context_translation_approval(
             else "first-context-translation-approval-incomplete"
         ),
         "target_sha256": target_sha256,
-        "first_context_translation_review_sha256":
-            first_context_translation_review_sha256,
+        "review_batch_sha256": review_batch_sha256,
         "local_approval_sha256": local_approval_sha256,
         "captured_utc": captured_utc,
         "approval": approval,
@@ -309,7 +304,7 @@ def validate_first_context_translation_approval(
             _is_sha256(value[key])
             for key in (
                 "target_sha256",
-                "first_context_translation_review_sha256",
+                "review_batch_sha256",
                 "local_approval_sha256",
             )
         )
@@ -363,6 +358,66 @@ def validate_first_context_translation_approval(
         raise ValueError("translation approval result is inconsistent")
 
 
+def migrate_legacy_local_approval(
+    value: dict[str, object],
+    *,
+    target_sha256: str,
+    review_batch_sha256: str,
+) -> dict[str, object]:
+    legacy_fields = {
+        "artifact_kind",
+        "schema_version",
+        "target_sha256",
+        "first_context_translation_review_sha256",
+        "first_context_local_review_sha256",
+        "captured_utc",
+        "approval_label",
+        "approval_authority",
+        "hancharacter_contract_mode",
+        "rows",
+        "publication_policy",
+    }
+    if set(value) != legacy_fields or value.get("schema_version") != 1:
+        return value
+    if (
+        value.get("artifact_kind") != LOCAL_ARTIFACT_KIND
+        or value.get("target_sha256") != target_sha256
+        or value.get("approval_label") != APPROVAL_LABEL
+        or value.get("approval_authority") != "human-user-explicit"
+        or value.get("hancharacter_contract_mode") != "translator_declared"
+        or not _is_utc_timestamp(value.get("captured_utc"))
+        or value.get("publication_policy")
+        != (
+            "never-publish-source-text-speakers-target-text-selectors-ordinals-"
+            "indices-screens-translations-or-review-cards"
+        )
+        or not isinstance(value.get("rows"), list)
+    ):
+        raise ValueError("legacy local translation approval is invalid")
+    rows = value["rows"]
+    assert isinstance(rows, list)
+    targets = []
+    for expected_index, row in enumerate(rows, start=1):
+        if (
+            not isinstance(row, dict)
+            or set(row) != {"review_index", "target_text"}
+            or row.get("review_index") != expected_index
+            or not isinstance(row.get("target_text"), str)
+        ):
+            raise ValueError("legacy local translation approval row is invalid")
+        targets.append(row["target_text"])
+    targets = normalize_approved_targets(
+        targets,
+        expected_count=len(rows),
+    )
+    return build_local_first_context_translation_approval(
+        target_sha256=target_sha256,
+        review_batch_sha256=review_batch_sha256,
+        targets=targets,
+        captured_utc=str(value["captured_utc"]),
+    )
+
+
 def _load_review_inputs(root: Path) -> tuple[dict[str, object], Path]:
     safe_path = root / REVIEW_PATH
     local_path = root / LOCAL_REVIEW_PATH
@@ -375,8 +430,11 @@ def _load_review_inputs(root: Path) -> tuple[dict[str, object], Path]:
         local.get("target_sha256") != safe["target_sha256"]
         or local.get("review") != safe["review"]
         or local.get("html_sha256") != safe["local_review_packet_sha256"]
+        or local.get("review_batch_sha256") != safe["review_batch_sha256"]
         or not isinstance(local.get("rows"), list)
         or len(local["rows"]) != safe["review"]["context_entry_count"]
+        or first_context_review_batch_sha256(local["rows"])
+        != safe["review_batch_sha256"]
     ):
         raise ValueError("first context translation review identity disagrees")
     return safe, local_path
@@ -407,10 +465,7 @@ def main() -> int:
         )
         local = build_local_first_context_translation_approval(
             target_sha256=str(review["target_sha256"]),
-            first_context_translation_review_sha256=sha256_file(
-                root / REVIEW_PATH
-            ),
-            first_context_local_review_sha256=sha256_file(local_review_path),
+            review_batch_sha256=str(review["review_batch_sha256"]),
             targets=targets,
             captured_utc=captured_utc,
         )
@@ -426,14 +481,20 @@ def main() -> int:
         raise SystemExit(
             "local first context translation approval input is missing"
         )
-    local = _load_json_object(local_path)
+    local = migrate_legacy_local_approval(
+        _load_json_object(local_path),
+        target_sha256=str(review["target_sha256"]),
+        review_batch_sha256=str(review["review_batch_sha256"]),
+    )
+    if local.get("schema_version") == SCHEMA_VERSION:
+        local_path.write_text(
+            json.dumps(local, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
     validate_local_first_context_translation_approval(local)
     if (
         local["target_sha256"] != review["target_sha256"]
-        or local["first_context_translation_review_sha256"]
-        != sha256_file(root / REVIEW_PATH)
-        or local["first_context_local_review_sha256"]
-        != sha256_file(local_review_path)
+        or local["review_batch_sha256"] != review["review_batch_sha256"]
     ):
         raise ValueError("first context translation approval identity disagrees")
     counts = approval_counts(
@@ -442,9 +503,7 @@ def main() -> int:
     )
     safe = build_first_context_translation_approval(
         target_sha256=str(review["target_sha256"]),
-        first_context_translation_review_sha256=sha256_file(
-            root / REVIEW_PATH
-        ),
+        review_batch_sha256=str(review["review_batch_sha256"]),
         local_approval_sha256=sha256_file(local_path),
         approval=counts,
         captured_utc=str(local["captured_utc"]),

@@ -1163,11 +1163,9 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             or first_context_translation_approval["target_sha256"]
             != first_context_translation_review["target_sha256"]
             or first_context_translation_approval[
-                "first_context_translation_review_sha256"
+                "review_batch_sha256"
             ]
-            != sha256_file(
-                root / FIRST_CONTEXT_TRANSLATION_REVIEW_RELATIVE_PATH
-            )
+            != first_context_translation_review["review_batch_sha256"]
         ):
             artifacts.pop(FIRST_CONTEXT_TRANSLATION_APPROVAL_RELATIVE_PATH)
     group_context_resolution = artifacts.get(

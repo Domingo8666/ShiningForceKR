@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
 from tools.v5_1_first_context_translation_review import (  # noqa: E402
     build_first_context_review_rows,
     build_first_context_translation_review,
+    first_context_review_batch_sha256,
     render_first_context_translation_review_html,
     validate_first_context_translation_review,
 )
@@ -47,12 +48,14 @@ class FirstContextTranslationReviewTests(unittest.TestCase):
             build_first_context_review_rows(rows)
 
     def test_builds_fixed_safe_receipt_without_source_or_translation(self) -> None:
-        counts, _ = build_first_context_review_rows(
+        counts, rows = build_first_context_review_rows(
             [_row(index, "a" if index < 2 else "b") for index in range(4)]
         )
         counts["preserved_non_text_glyph_occurrence_count"] = 5
+        batch_sha256 = first_context_review_batch_sha256(rows)
         artifact = build_first_context_translation_review(
             target_sha256="1" * 64,
+            review_batch_sha256=batch_sha256,
             source_target_runtime_context_sha256="2" * 64,
             runtime_context_glyph_preservation_sha256="3" * 64,
             local_review_packet_sha256="4" * 64,
@@ -65,6 +68,7 @@ class FirstContextTranslationReviewTests(unittest.TestCase):
             artifact["translation_generated_by_mechanical_stage"]
         )
         self.assertFalse(artifact["translation_build_eligible"])
+        self.assertEqual(artifact["review_batch_sha256"], batch_sha256)
         unsafe = deepcopy(artifact)
         unsafe["source_text"] = "raw"
         with self.assertRaisesRegex(ValueError, "fields do not match"):
