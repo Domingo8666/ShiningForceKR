@@ -1,0 +1,42 @@
+{
+  "artifact_kind": "sanitized-v5-1-runtime-context-glyph-preservation",
+  "schema_version": 1,
+  "status": "runtime-context-non-text-glyphs-preserved",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "runtime_context_glyph_candidates_sha256": "58ab63f1e4fb66fd7eaa1c7046618412080b330cf80f6820c320c4910e6b9d21",
+  "runtime_context_glyph_review_sha256": "d85e623530442ccbcbb17e2aba8d16dc106bdb0df6ba42b6630fae9ef19f9a1a",
+  "local_preservation_sha256": "d17b346b2ad5c376510f04e17706d2a878683f31cc9d96826f1dfe1fc0e12d35",
+  "captured_utc": "2026-07-31T06:28:45.633783Z",
+  "preservation": {
+    "glyph_occurrence_count": 5,
+    "visual_symbol_occurrence_count": 1,
+    "maximum_ink_pixel_count": 14,
+    "preserve_original_glyph_distinct_count": 5,
+    "blank_cell_occurrence_count": 2,
+    "unclassified_distinct_count": 0,
+    "preserve_original_glyph_occurrence_count": 5,
+    "distinct_glyph_count": 5,
+    "visual_symbol_distinct_count": 1,
+    "blank_cell_distinct_count": 2,
+    "unicode_character_assignment_count": 0,
+    "one_pixel_marker_occurrence_count": 2,
+    "one_pixel_marker_distinct_count": 2,
+    "unclassified_occurrence_count": 0
+  },
+  "review_evidence_kind": "user-supplied-runtime-glyph-screenshot",
+  "reviewed_shape_contract": {
+    "blank_cell_distinct_count": 2,
+    "one_pixel_marker_distinct_count": 2,
+    "visual_symbol_distinct_count": 1,
+    "classification_rule": "zero-ink-blank-one-ink-marker-otherwise-symbol",
+    "preservation_action": "preserve-original-glyph-token"
+  },
+  "human_visual_review_complete": true,
+  "original_glyph_tokens_preserved": true,
+  "automatic_character_selection_allowed": false,
+  "hancharacter_contract_mode": "translator_declared",
+  "local_payload_policy": "glyph-coordinates-masks-text-speakers-codepoints-characters-and-preservation-records-local-only",
+  "runtime_context_glyph_recovery_complete": true,
+  "translation_build_eligible": false,
+  "next_checkpoint": "prepare-first-contextual-translation-review"
+}
