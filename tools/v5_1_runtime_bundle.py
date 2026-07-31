@@ -134,6 +134,10 @@ try:
         PUBLISH_RELATIVE_PATH as SOURCE_TARGET_RUNTIME_CONTEXT_RELATIVE_PATH,
         validate_source_target_runtime_context,
     )
+    from .v5_1_runtime_context_glyph_demand import (
+        PUBLISH_RELATIVE_PATH as RUNTIME_CONTEXT_GLYPH_DEMAND_RELATIVE_PATH,
+        validate_runtime_context_glyph_demand,
+    )
     from .v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -291,6 +295,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as SOURCE_TARGET_RUNTIME_CONTEXT_RELATIVE_PATH,
         validate_source_target_runtime_context,
     )
+    from v5_1_runtime_context_glyph_demand import (
+        PUBLISH_RELATIVE_PATH as RUNTIME_CONTEXT_GLYPH_DEMAND_RELATIVE_PATH,
+        validate_runtime_context_glyph_demand,
+    )
     from v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -404,6 +412,8 @@ SAFE_ARTIFACTS = {
         validate_source_target_runtime_sequence,
     SOURCE_TARGET_RUNTIME_CONTEXT_RELATIVE_PATH:
         validate_source_target_runtime_context,
+    RUNTIME_CONTEXT_GLYPH_DEMAND_RELATIVE_PATH:
+        validate_runtime_context_glyph_demand,
     GROUP_TEXT_CANDIDATE_RELATIVE_PATH:
         validate_group_text_candidate_resolution,
     UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH:
@@ -971,6 +981,28 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != sha256_file(root / SOURCE_TARGET_RUNTIME_SEQUENCE_RELATIVE_PATH)
         ):
             artifacts.pop(SOURCE_TARGET_RUNTIME_CONTEXT_RELATIVE_PATH)
+    runtime_context_glyph_demand = artifacts.get(
+        RUNTIME_CONTEXT_GLYPH_DEMAND_RELATIVE_PATH
+    )
+    if runtime_context_glyph_demand is not None:
+        if (
+            SOURCE_TARGET_RUNTIME_CONTEXT_RELATIVE_PATH not in artifacts
+            or SOURCE_TARGET_SECTION_PROJECTION_RELATIVE_PATH not in artifacts
+            or SOURCE_TARGET_RUNTIME_SEQUENCE_RELATIVE_PATH not in artifacts
+            or runtime_context_glyph_demand["target_sha256"]
+            != source_target_runtime_context["target_sha256"]
+            or runtime_context_glyph_demand["runtime_context_sha256"]
+            != sha256_file(root / SOURCE_TARGET_RUNTIME_CONTEXT_RELATIVE_PATH)
+            or runtime_context_glyph_demand[
+                "source_section_projection_sha256"
+            ]
+            != sha256_file(
+                root / SOURCE_TARGET_SECTION_PROJECTION_RELATIVE_PATH
+            )
+            or runtime_context_glyph_demand["runtime_sequence_sha256"]
+            != sha256_file(root / SOURCE_TARGET_RUNTIME_SEQUENCE_RELATIVE_PATH)
+        ):
+            artifacts.pop(RUNTIME_CONTEXT_GLYPH_DEMAND_RELATIVE_PATH)
     group_context_resolution = artifacts.get(
         GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH
     )

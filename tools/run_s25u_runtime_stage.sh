@@ -641,6 +641,44 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    runtime_context_glyph_demand_output="$(
+      python tools/v5_1_runtime_context_glyph_demand.py --if-ready 2>&1
+    )"
+    runtime_context_glyph_demand_status=$?
+    printf '%s\n' "$runtime_context_glyph_demand_output"
+    if [ "$runtime_context_glyph_demand_status" -ne 0 ]; then
+      stage_status="$runtime_context_glyph_demand_status"
+      diagnostic_trigger=probe
+      runtime_context_glyph_demand_failure_stage=runtime-context-glyph-demand
+      case "$runtime_context_glyph_demand_output" in
+        *"runtime context glyph demand identity"*|\
+        *"runtime context glyph demand input identity"*)
+          runtime_context_glyph_demand_failure_stage=context-glyph-demand-identity
+          ;;
+        *"runtime context glyph demand pair"*|\
+        *"runtime context glyph demand target record"*|\
+        *"runtime context glyph demand token"*|\
+        *"runtime context glyph demand coordinate"*|\
+        *"runtime context glyph demand candidates"*|\
+        *"runtime context glyph demand mapping"*)
+          runtime_context_glyph_demand_failure_stage=context-glyph-demand-mapping
+          ;;
+        *"runtime context glyph demand local inputs"*|\
+        *"runtime context glyph demand input is missing"*)
+          runtime_context_glyph_demand_failure_stage=context-glyph-demand-input
+          ;;
+        *"runtime context glyph demand fields do not match"*|\
+        *"runtime context glyph demand counts do not match"*|\
+        *"runtime context glyph demand result is inconsistent"*|\
+        *"runtime context glyph demand aggregates disagree"*)
+          runtime_context_glyph_demand_failure_stage=context-glyph-demand-validation
+          ;;
+      esac
+      record_stage_failure "$runtime_context_glyph_demand_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then
