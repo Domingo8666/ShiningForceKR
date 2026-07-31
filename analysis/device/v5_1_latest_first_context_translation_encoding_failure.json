@@ -5,9 +5,11 @@
   "category": "row-route",
   "failure_step": "build-symbol-rows",
   "failure_kind": "ValueError",
+  "failure_row_index": 1,
+  "failure_detail": "solve-proven-row",
   "required_visible_symbol_count": 0,
   "maximum_routable_visible_symbol_count": 0,
-  "captured_utc": "2026-07-31T16:38:20.798030Z",
+  "captured_utc": "2026-07-31T16:43:01.981167Z",
   "source_and_target_text_local_only": true,
   "next_checkpoint": "repair-first-context-row-route"
 }
