@@ -11,6 +11,7 @@ from tools.v5_1_first_context_translation_visual_review import (  # noqa: E402
     build_first_context_translation_visual_review,
     validate_first_context_translation_visual_review,
 )
+import json
 
 
 class FirstContextTranslationVisualReviewTests(unittest.TestCase):
@@ -56,6 +57,20 @@ class FirstContextTranslationVisualReviewTests(unittest.TestCase):
             "first-context-translation-runtime-visual-incomplete",
         )
         self.assertFalse(value["human_visual_review_complete"])
+
+    def test_published_review_matches_current_safe_schema(self) -> None:
+        path = (
+            ROOT
+            / "analysis/device/"
+            / "v5_1_latest_first_context_translation_visual_review.json"
+        )
+        value = json.loads(path.read_text(encoding="utf-8"))
+        validate_first_context_translation_visual_review(value)
+        self.assertEqual(
+            value["status"],
+            "first-context-translation-runtime-visual-fail",
+        )
+        self.assertFalse(value["runtime_layout_confirmed"])
 
 
 if __name__ == "__main__":

@@ -1445,25 +1445,45 @@ def solve_exact_length_row_visual_symbols(
     }
 
     @lru_cache(maxsize=None)
-    def possible_remaining_lengths(
+    def shortest_page_reselection(
         previous: int,
-        glyph_count: int,
-    ) -> frozenset[int]:
-        if glyph_count == 0:
-            end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
-            return frozenset() if end_length is None else frozenset({end_length})
-        totals = set()
-        for symbol in set(lengths.get(previous, {})) & glyph_symbol_set:
-            added_bits = lengths[previous][symbol]
-            totals.update(
-                added_bits + suffix_bits
-                for suffix_bits in possible_remaining_lengths(
-                    symbol,
-                    glyph_count - 1,
-                )
-                if added_bits + suffix_bits <= target_bits
-            )
-        return frozenset(totals)
+    ) -> tuple[int, tuple[int, ...]] | None:
+        """Find a visually inert route back to the row's font page.
+
+        The exact solver used to permit page-select padding only before the
+        first glyph.  Runtime review showed that accepting a shorter route is
+        unsafe, so also permit a page reset between visible glyphs while still
+        requiring the original encoded bit length exactly.
+        """
+
+        heap: list[tuple[int, tuple[int, ...], int]] = [(0, (), previous)]
+        best = {previous: 0}
+        best_target: tuple[int, tuple[int, ...]] | None = None
+        while heap:
+            bits, path, current = heappop(heap)
+            if bits != best.get(current):
+                continue
+            if best_target is not None and bits >= best_target[0]:
+                break
+            for candidate_page, token in enumerate(prefix_tokens):
+                encoded = transition(current, token)
+                if encoded is None:
+                    continue
+                added_bits, next_previous = encoded
+                total_bits = bits + added_bits
+                if total_bits >= target_bits:
+                    continue
+                candidate_path = path + token
+                if candidate_page == page:
+                    candidate = (total_bits, candidate_path)
+                    if best_target is None or candidate < best_target:
+                        best_target = candidate
+                    continue
+                if total_bits >= best.get(next_previous, target_bits + 1):
+                    continue
+                best[next_previous] = total_bits
+                heappush(heap, (total_bits, candidate_path, next_previous))
+        return best_target
 
     @lru_cache(maxsize=None)
     def search_visible(
@@ -1471,44 +1491,52 @@ def solve_exact_length_row_visual_symbols(
         used_mask: int,
         depth: int,
         bits: int,
-    ) -> tuple[int, ...] | None:
-        remaining_glyphs = len(visuals) - depth
-        if target_bits - bits not in possible_remaining_lengths(
-            previous,
-            remaining_glyphs,
-        ):
-            return None
+    ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
         if depth == len(visuals):
             end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
             if end_length is not None and bits + end_length == target_bits:
-                return (CANDIDATE_END_SYMBOL,)
+                return (CANDIDATE_END_SYMBOL,), ()
             return None
-        candidates = sorted(
-            (
-                symbol
-                for symbol in glyph_symbols
-                if not used_mask
-                & (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL))
-                and symbol in lengths.get(previous, {})
-            ),
-            key=lambda symbol: (
-                CANDIDATE_END_SYMBOL not in lengths.get(symbol, {}),
-                -len(set(lengths.get(symbol, {})) & glyph_symbol_set),
-                symbol,
-            ),
-        )
-        for symbol in candidates:
-            added_bits = lengths[previous][symbol]
-            if bits + added_bits >= target_bits:
-                continue
-            suffix = search_visible(
-                symbol,
-                used_mask | (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL)),
-                depth + 1,
-                bits + added_bits,
+        routes = [(0, (), previous)]
+        reselection = shortest_page_reselection(previous)
+        if reselection is not None:
+            reselection_bits, reselection_symbols = reselection
+            routes.append(
+                (reselection_bits, reselection_symbols, page_token[-1])
             )
-            if suffix is not None:
-                return (symbol,) + suffix
+        for route_bits, route_symbols, route_previous in routes:
+            candidates = sorted(
+                (
+                    symbol
+                    for symbol in glyph_symbols
+                    if not used_mask
+                    & (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL))
+                    and symbol in lengths.get(route_previous, {})
+                ),
+                key=lambda symbol: (
+                    CANDIDATE_END_SYMBOL not in lengths.get(symbol, {}),
+                    -len(set(lengths.get(symbol, {})) & glyph_symbol_set),
+                    symbol,
+                ),
+            )
+            for symbol in candidates:
+                added_bits = lengths[route_previous][symbol]
+                next_bits = bits + route_bits + added_bits
+                if next_bits >= target_bits:
+                    continue
+                suffix = search_visible(
+                    symbol,
+                    used_mask | (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL)),
+                    depth + 1,
+                    next_bits,
+                )
+                if suffix is None:
+                    continue
+                suffix_symbols, suffix_assignments = suffix
+                return (
+                    route_symbols + (symbol,) + suffix_symbols,
+                    (symbol,) + suffix_assignments,
+                )
         return None
 
     while queue:
@@ -1524,10 +1552,17 @@ def solve_exact_length_row_visual_symbols(
             )
             if visible_suffix is not None:
                 prefix = prefix_paths[prefix_state]
-                assignments = list(visible_suffix[:-1])
+                visible_symbols, visible_assignments = visible_suffix
+                assignments = list(visible_assignments)
                 return (
-                    list(prefix + page_token + visible_suffix),
-                    len(prefix) // 3,
+                    list(prefix + page_token + visible_symbols),
+                    (
+                        sum(
+                            symbol == page_token[0]
+                            for symbol in prefix + page_token + visible_symbols
+                        )
+                        - 1
+                    ),
                     assignments,
                 )
 
@@ -1564,11 +1599,6 @@ def select_row_font_pages(
     pages = list(PROVEN_ROW_FONT_PAGES)
     used_pages = set(pages)
     constraints = runtime_constraints or [None] * len(visual_rows)
-    group_capacity_bits = sum(
-        int(constraint["original_record_length_bytes"]) * 8
-        for constraint in constraints
-        if constraint is not None
-    )
     for row_index in range(len(PROVEN_ROW_FONT_PAGES), len(visual_rows)):
         visuals = visual_rows[row_index]
         constraint = constraints[row_index]
@@ -1583,10 +1613,10 @@ def select_row_font_pages(
                         visuals=visuals,
                     )
                 else:
-                    solve_bounded_length_row_visual_symbols(
+                    solve_exact_length_row_visual_symbols(
                         trees=trees,
                         initial_context=int(constraint["initial_context"]),
-                        maximum_bits=group_capacity_bits,
+                        target_bits=int(constraint["original_encoded_bits"]),
                         page=page,
                         visuals=visuals,
                     )
@@ -1600,45 +1630,7 @@ def select_row_font_pages(
                 raise ValueError(
                     "first context row has no usable font page Huffman route"
                 )
-            available_pages = tuple(
-                page
-                for page in range(FONT_PAGE_COUNT - 1, -1, -1)
-                if page not in used_pages
-            )
-            try:
-                (
-                    _,
-                    _,
-                    _,
-                    assignment_pages,
-                ) = solve_bounded_length_row_multi_page_visual_symbols(
-                    trees=trees,
-                    initial_context=int(constraint["initial_context"]),
-                    maximum_bits=group_capacity_bits,
-                    pages=available_pages,
-                    visuals=visuals,
-                )
-            except ValueError as error:
-                maximum = 0
-                for visible_count in range(len(visuals) - 1, 0, -1):
-                    try:
-                        solve_bounded_length_row_multi_page_visual_symbols(
-                            trees=trees,
-                            initial_context=int(constraint["initial_context"]),
-                            maximum_bits=group_capacity_bits,
-                            pages=available_pages,
-                            visuals=visuals[:visible_count],
-                        )
-                    except ValueError:
-                        continue
-                    maximum = visible_count
-                    break
-                raise RowRouteError(len(visuals), maximum) from error
-            selected_pages = tuple(dict.fromkeys(assignment_pages))
-            if not selected_pages:
-                raise ValueError("first context multi-page row is empty")
-            pages.append(selected_pages[0])
-            used_pages.update(selected_pages)
+            raise RowRouteError(len(visuals), 0)
     return tuple(pages)
 
 
@@ -1668,13 +1660,6 @@ def build_single_page_symbol_rows(
     rows = []
     assignments_by_row = []
     constraints = runtime_constraints or [None] * len(visual_rows)
-    group_capacity_bits = sum(
-        int(constraint["original_record_length_bytes"]) * 8
-        for constraint in constraints
-        if constraint is not None
-    )
-    primary_pages = set(pages)
-    dynamic_pages: set[int] = set()
     for expected_index, (target_row, visuals, page, constraint) in enumerate(
         zip(target_rows, visual_rows, pages, constraints),
         start=1,
@@ -1696,116 +1681,30 @@ def build_single_page_symbol_rows(
             storage_capacity_bits = 0
             route_capacity_bits = 0
             assignment_pages = [page] * len(assignments)
-        elif expected_index <= len(PROVEN_ROW_FONT_PAGES):
-            initial_context = int(constraint["initial_context"])
-            target_bits = int(constraint["original_encoded_bits"])
-            storage_capacity_bits = (
-                int(constraint["original_record_length_bytes"]) * 8
-            )
-            route_capacity_bits = group_capacity_bits
-            try:
-                ACTIVE_FAILURE_DETAIL = "solve-proven-exact-row"
-                (
-                    symbols,
-                    padding_count,
-                    assignments,
-                ) = solve_exact_length_row_visual_symbols(
-                    trees=trees,
-                    initial_context=initial_context,
-                    target_bits=target_bits,
-                    page=page,
-                    visuals=visuals,
-                )
-                assignment_pages = [page] * len(assignments)
-            except ValueError:
-                try:
-                    ACTIVE_FAILURE_DETAIL = "solve-proven-bounded-row"
-                    (
-                        symbols,
-                        padding_count,
-                        assignments,
-                    ) = solve_bounded_length_row_visual_symbols(
-                        trees=trees,
-                        initial_context=initial_context,
-                        maximum_bits=route_capacity_bits,
-                        page=page,
-                        visuals=visuals,
-                    )
-                    assignment_pages = [page] * len(assignments)
-                except ValueError:
-                    ACTIVE_FAILURE_DETAIL = "solve-proven-multi-page-row"
-                    unavailable_pages = (
-                        (primary_pages - {page}) | dynamic_pages
-                    )
-                    available_pages = tuple(
-                        candidate_page
-                        for candidate_page in range(
-                            FONT_PAGE_COUNT - 1, -1, -1
-                        )
-                        if candidate_page not in unavailable_pages
-                    )
-                    (
-                        symbols,
-                        padding_count,
-                        assignments,
-                        assignment_pages,
-                    ) = solve_bounded_length_row_multi_page_visual_symbols(
-                        trees=trees,
-                        initial_context=initial_context,
-                        maximum_bits=route_capacity_bits,
-                        pages=available_pages,
-                        visuals=visuals,
-                    )
         else:
             initial_context = int(constraint["initial_context"])
             target_bits = int(constraint["original_encoded_bits"])
             storage_capacity_bits = (
                 int(constraint["original_record_length_bytes"]) * 8
             )
-            route_capacity_bits = group_capacity_bits
-            try:
-                ACTIVE_FAILURE_DETAIL = "solve-extra-single-page-row"
-                (
-                    symbols,
-                    padding_count,
-                    assignments,
-                ) = solve_bounded_length_row_visual_symbols(
-                    trees=trees,
-                    initial_context=initial_context,
-                    maximum_bits=route_capacity_bits,
-                    page=page,
-                    visuals=visuals,
-                )
-                assignment_pages = [page] * len(assignments)
-            except ValueError:
-                ACTIVE_FAILURE_DETAIL = "solve-extra-multi-page-row"
-                unavailable_pages = (
-                    (primary_pages - {page}) | dynamic_pages
-                )
-                available_pages = tuple(
-                    candidate_page
-                    for candidate_page in range(
-                        FONT_PAGE_COUNT - 1, -1, -1
-                    )
-                    if candidate_page not in unavailable_pages
-                )
-                (
-                    symbols,
-                    padding_count,
-                    assignments,
-                    assignment_pages,
-                ) = solve_bounded_length_row_multi_page_visual_symbols(
-                    trees=trees,
-                    initial_context=initial_context,
-                    maximum_bits=route_capacity_bits,
-                    pages=available_pages,
-                    visuals=visuals,
-                )
-        dynamic_pages.update(
-            assignment_page
-            for assignment_page in assignment_pages
-            if assignment_page not in primary_pages
-        )
+            route_capacity_bits = target_bits
+            ACTIVE_FAILURE_DETAIL = (
+                "solve-proven-exact-row"
+                if expected_index <= len(PROVEN_ROW_FONT_PAGES)
+                else "solve-extra-single-page-row"
+            )
+            (
+                symbols,
+                padding_count,
+                assignments,
+            ) = solve_exact_length_row_visual_symbols(
+                trees=trees,
+                initial_context=initial_context,
+                target_bits=target_bits,
+                page=page,
+                visuals=visuals,
+            )
+            assignment_pages = [page] * len(assignments)
         ACTIVE_FAILURE_DETAIL = "validate-row-assignments"
         if (
             len(assignments) != len(visuals)
@@ -1961,6 +1860,8 @@ def build_first_context_translation_encoding(
         and encoding["runtime_initial_context_entry_count"]
         == encoding["context_entry_count"]
         and encoding["runtime_initial_context_distinct_count"] > 0
+        and encoding["exact_encoded_length_entry_count"]
+        == encoding["context_entry_count"]
         and encoding["group_storage_fit_entry_count"]
         == encoding["context_entry_count"]
     )
@@ -2051,6 +1952,8 @@ def validate_first_context_translation_encoding(
         and counts["runtime_initial_context_entry_count"]
         == counts["context_entry_count"]
         and counts["runtime_initial_context_distinct_count"] > 0
+        and counts["exact_encoded_length_entry_count"]
+        == counts["context_entry_count"]
         and counts["group_storage_fit_entry_count"]
         == counts["context_entry_count"]
     )
@@ -2188,6 +2091,12 @@ def _main() -> int:
         preservation_records=preservation_records,
         target_rows=target_rows,
     )
+    # The reviewed source glyphs are evidence about the original script, not
+    # target-language punctuation to append.  Runtime review showed them as
+    # visible garbage after otherwise correct Korean.  The approved Korean
+    # target already carries its own punctuation and digits, so retain the
+    # source occurrences in the private audit while rendering target text only.
+    rendered_preserved_by_row = [[] for _ in preserved_by_row]
     trees = load_trees_at(
         sparse.data,
         sparse.known,
@@ -2206,7 +2115,7 @@ def _main() -> int:
     selected_row_font_pages = select_row_font_pages(
         trees=trees,
         target_rows=target_rows,
-        preserved_by_row=preserved_by_row,
+        preserved_by_row=rendered_preserved_by_row,
         runtime_constraints=runtime_constraints,
     )
     ACTIVE_FAILURE_STEP = "build-symbol-rows"
@@ -2217,9 +2126,12 @@ def _main() -> int:
     ) = build_single_page_symbol_rows(
         trees=trees,
         target_rows=target_rows,
-        preserved_by_row=preserved_by_row,
+        preserved_by_row=rendered_preserved_by_row,
         runtime_constraints=runtime_constraints,
         pages=selected_row_font_pages,
+    )
+    symbol_counts["preserved_non_text_glyph_occurrence_count"] = sum(
+        len(row) for row in preserved_by_row
     )
     custom_pages = {
         int(assignment["page"])
@@ -2412,6 +2324,7 @@ def _main() -> int:
         "encoding": counts,
         "character_assignments": all_assignments,
         "preserved_by_row": preserved_by_row,
+        "rendered_preserved_non_text_glyph_occurrence_count": 0,
         "rows": symbol_rows,
         "font_write_audit": font_audit,
         "combined_font_overlay_sha256": sha256_bytes(font_overlay),

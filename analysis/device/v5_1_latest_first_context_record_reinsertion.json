@@ -1,7 +1,7 @@
 {
   "artifact_kind": "sanitized-v5-1-first-context-record-reinsertion",
   "schema_version": 1,
-  "status": "first-context-record-reinsertion-plan-ready",
+  "status": "first-context-record-reinsertion-plan-blocked",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "review_batch_sha256": "8eba1e7f4f380c6aa7a3eb2f649719b1fadb3b6ebb33de588387acdd5c3ee47a",
   "first_context_translation_encoding_sha256": "1e9322177d98313067edf2d039a7583fbfe68827f801b272e1508b928168d9b1",
@@ -30,9 +30,9 @@
   "target_records_distinct": true,
   "in_place_storage_confirmed": true,
   "shared_alias_impact_clear": true,
-  "record_storage_capacity_confirmed": true,
+  "record_storage_capacity_confirmed": false,
   "runtime_layout_confirmed": false,
   "source_and_target_text_local_only": true,
   "translation_build_eligible": false,
-  "next_checkpoint": "build-first-context-in-place-test-patch"
+  "next_checkpoint": "repair-first-context-record-reinsertion-plan"
 }

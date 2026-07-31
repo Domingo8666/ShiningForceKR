@@ -313,6 +313,8 @@ def build_first_context_translation_test_build(
         and verification["decoded_roundtrip_entry_count"]
         == verification["context_entry_count"]
         and verification["decoded_failure_entry_count"] == 0
+        and verification["encoded_length_exact_count"]
+        == verification["context_entry_count"]
         and verification["font_glyph_assignment_count"] > 0
         and verification["font_glyph_verified_count"]
         == verification["font_glyph_assignment_count"]
@@ -398,6 +400,8 @@ def validate_first_context_translation_test_build(
         and verification["decoded_roundtrip_entry_count"]
         == verification["context_entry_count"]
         and verification["decoded_failure_entry_count"] == 0
+        and verification["encoded_length_exact_count"]
+        == verification["context_entry_count"]
         and verification["font_glyph_assignment_count"] > 0
         and verification["font_glyph_verified_count"]
         == verification["font_glyph_assignment_count"]

@@ -1,7 +1,7 @@
 {
   "artifact_kind": "sanitized-v5-1-first-context-translation-encoding",
   "schema_version": 1,
-  "status": "first-context-translation-encoding-ready",
+  "status": "first-context-translation-encoding-incomplete",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "review_batch_sha256": "8eba1e7f4f380c6aa7a3eb2f649719b1fadb3b6ebb33de588387acdd5c3ee47a",
   "first_context_translation_capacity_sha256": "45d64a66b4a9625a43eae8c923b22df83d6aaa19c63637d6cd202bdee1fe9c79",
@@ -43,14 +43,14 @@
     "group_storage_fit_entry_count": 5
   },
   "human_translation_approval_confirmed": true,
-  "reviewed_non_text_glyph_visuals_preserved": true,
+  "reviewed_non_text_glyph_visuals_preserved": false,
   "original_non_text_glyph_coordinates_reused": false,
-  "custom_test_font_pages_complete": true,
-  "huffman_roundtrip_complete": true,
-  "text_encoding_confirmed": true,
+  "custom_test_font_pages_complete": false,
+  "huffman_roundtrip_complete": false,
+  "text_encoding_confirmed": false,
   "record_storage_capacity_confirmed": false,
   "runtime_layout_confirmed": false,
   "source_and_target_text_local_only": true,
   "translation_build_eligible": false,
-  "next_checkpoint": "plan-first-context-record-reinsertion"
+  "next_checkpoint": "repair-first-context-translation-encoding"
 }

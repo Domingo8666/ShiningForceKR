@@ -2,14 +2,15 @@
   "artifact_kind": "sanitized-v5-1-first-context-translation-runtime-visual-review",
   "schema_version": 1,
   "status": "first-context-translation-runtime-visual-fail",
-  "runtime_capture_sha256": "a1e5706bc53c963eb3cd96602bb06622a95e8d7e01598a032863b402c9c9af34",
-  "review_evidence_sha256": "ce4f8d8f2e97c60d8ecedf9284b6a36bb8f2302b26513f0df2016b64b4a0ce3d",
-  "captured_utc": "2026-07-31T12:18:18.538Z",
+  "runtime_capture_sha256": "10a1dfbfe82ab560d1766b4c1dd39eeef324ca5adad7d9c868a427d6c3ecdb8e",
+  "review_evidence_sha256": "3ac649f231d4321c2a37ad707bcf0026e4ed5a0834b0eb5b45b41420987bf42d",
+  "captured_utc": "2026-07-31T20:01:26.211Z",
   "review": {
-    "reviewed_screen_count": 4,
-    "missing_dialogue_screen_count": 1,
-    "corrupted_text_screen_count": 2,
-    "wrong_context_screen_count": 1
+    "expected_screen_count": 5,
+    "reviewed_screen_count": 5,
+    "missing_dialogue_screen_count": 0,
+    "corrupted_text_screen_count": 5,
+    "wrong_context_screen_count": 0
   },
   "review_evidence_kind": "user-supplied-runtime-review-screenshots",
   "human_visual_review_complete": true,
