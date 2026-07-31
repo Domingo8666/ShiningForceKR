@@ -112,6 +112,36 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(assignments, [0x03, 0x04])
         self.assertEqual(symbols, [0x5F, 0x11, 0x02, 0x03, 0x04, 0xC9])
 
+    def test_reselects_the_same_page_between_bounded_visible_glyphs(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x5F),
+            0x11: tree(0x11, 0x02, 0x11),
+            0x02: tree(0x02, 0x03, 0x04),
+            0x03: tree(0x03, 0x5F, 0x03),
+            0x04: tree(0x04, 0xC9, 0x04),
+        }
+        with patch(
+            "tools.v5_1_first_context_translation_encoding."
+            "solve_row_visual_symbols",
+            side_effect=ValueError("force joint search"),
+        ):
+            symbols, padding_count, assignments = (
+                solve_bounded_length_row_visual_symbols(
+                    trees=trees,
+                    initial_context=0xC9,
+                    maximum_bits=9,
+                    page=240,
+                    visuals=["text:가", "text:나"],
+                )
+            )
+        self.assertEqual(padding_count, 1)
+        self.assertEqual(assignments, [0x03, 0x04])
+        self.assertEqual(
+            symbols,
+            [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x11, 0x02, 0x04, 0xC9],
+        )
+
     def test_jointly_searches_a_non_greedy_exact_length_assignment(self) -> None:
         trees = {
             0xC9: tree(0xC9, 0x5F, 0xC9),

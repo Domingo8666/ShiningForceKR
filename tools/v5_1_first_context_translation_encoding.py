@@ -14,6 +14,7 @@ import argparse
 from collections import deque
 from datetime import datetime, timezone
 from functools import lru_cache
+from heapq import heappop, heappush
 import json
 from pathlib import Path
 
@@ -910,43 +911,101 @@ def solve_bounded_length_row_visual_symbols(
     }
 
     @lru_cache(maxsize=None)
+    def shortest_page_reselection(
+        previous: int,
+    ) -> tuple[int, tuple[int, ...]] | None:
+        """Return the cheapest control-only route that selects ``page``.
+
+        A dialogue may legitimately select its current font page again between
+        two visible glyphs.  Besides being visually inert, that resets the
+        Huffman context to the selected page's low nibble.  Some source trees
+        have no direct glyph-to-glyph edge even though this control route fits
+        inside the original record.  Earlier searches only allowed those
+        control tokens before the first visible glyph and therefore rejected
+        otherwise encodable rows.
+        """
+
+        queue: list[tuple[int, tuple[int, ...], int]] = [(0, (), previous)]
+        best = {previous: 0}
+        best_target: tuple[int, tuple[int, ...]] | None = None
+        while queue:
+            bits, path, current = heappop(queue)
+            if bits != best.get(current):
+                continue
+            if best_target is not None and bits >= best_target[0]:
+                break
+            for candidate_page, token in enumerate(prefix_tokens):
+                encoded = transition(current, token)
+                if encoded is None:
+                    continue
+                added_bits, next_previous = encoded
+                total_bits = bits + added_bits
+                if total_bits >= maximum_bits:
+                    continue
+                candidate_path = path + token
+                if candidate_page == page:
+                    candidate_target = (total_bits, candidate_path)
+                    if best_target is None or candidate_target < best_target:
+                        best_target = candidate_target
+                    continue
+                if total_bits >= best.get(next_previous, maximum_bits + 1):
+                    continue
+                best[next_previous] = total_bits
+                heappush(
+                    queue,
+                    (total_bits, candidate_path, next_previous),
+                )
+        return best_target
+
+    @lru_cache(maxsize=None)
     def search_visible(
         previous: int,
         used_mask: int,
         depth: int,
         bits: int,
-    ) -> tuple[int, ...] | None:
+    ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
         if depth == len(visuals):
             end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
             if end_length is not None and bits + end_length <= maximum_bits:
-                return (CANDIDATE_END_SYMBOL,)
+                return (CANDIDATE_END_SYMBOL,), ()
             return None
-        candidates = sorted(
-            (
-                symbol
-                for symbol in glyph_symbols
-                if not used_mask
-                & (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL))
-                and symbol in lengths.get(previous, {})
-            ),
-            key=lambda symbol: (
-                CANDIDATE_END_SYMBOL not in lengths.get(symbol, {}),
-                -len(set(lengths.get(symbol, {})) & set(glyph_symbols)),
-                symbol,
-            ),
-        )
-        for symbol in candidates:
-            added_bits = lengths[previous][symbol]
-            if bits + added_bits >= maximum_bits:
-                continue
-            suffix = search_visible(
-                symbol,
-                used_mask | (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL)),
-                depth + 1,
-                bits + added_bits,
+        routes = [(0, (), previous)]
+        reselection = shortest_page_reselection(previous)
+        if reselection is not None:
+            reselection_bits, reselection_symbols = reselection
+            routes.append((reselection_bits, reselection_symbols, page_token[-1]))
+        for route_bits, route_symbols, route_previous in routes:
+            candidates = sorted(
+                (
+                    symbol
+                    for symbol in glyph_symbols
+                    if not used_mask
+                    & (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL))
+                    and symbol in lengths.get(route_previous, {})
+                ),
+                key=lambda symbol: (
+                    CANDIDATE_END_SYMBOL not in lengths.get(symbol, {}),
+                    -len(set(lengths.get(symbol, {})) & set(glyph_symbols)),
+                    symbol,
+                ),
             )
-            if suffix is not None:
-                return (symbol,) + suffix
+            for symbol in candidates:
+                added_bits = lengths[route_previous][symbol]
+                next_bits = bits + route_bits + added_bits
+                if next_bits >= maximum_bits:
+                    continue
+                suffix = search_visible(
+                    symbol,
+                    used_mask | (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL)),
+                    depth + 1,
+                    next_bits,
+                )
+                if suffix is not None:
+                    suffix_symbols, suffix_assignments = suffix
+                    return (
+                        route_symbols + (symbol,) + suffix_symbols,
+                        (symbol,) + suffix_assignments,
+                    )
         return None
 
     while queue:
@@ -962,10 +1021,12 @@ def solve_bounded_length_row_visual_symbols(
             )
             if visible_suffix is not None:
                 prefix = prefix_paths[prefix_state]
-                assignments = list(visible_suffix[:-1])
+                visible_symbols, visible_assignments = visible_suffix
+                symbols = list(prefix + page_token + visible_symbols)
+                assignments = list(visible_assignments)
                 return (
-                    list(prefix + page_token + visible_suffix),
-                    len(prefix) // 3,
+                    symbols,
+                    sum(symbol == page_token[0] for symbol in symbols) - 1,
                     assignments,
                 )
 
