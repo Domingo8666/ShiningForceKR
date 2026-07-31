@@ -1,0 +1,27 @@
+{
+  "artifact_kind": "sanitized-v5-1-first-context-translation-approval",
+  "schema_version": 2,
+  "status": "first-context-translation-human-approved",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "review_batch_sha256": "57ccb526e4ad19b5095479f877b537330b27a693bd15c8311391299b8590eec4",
+  "local_approval_sha256": "c7a9d6152869f7b51dd0b31c9c160ac491a2189fe4da4e14e74f355b7113750d",
+  "captured_utc": "2026-07-31T07:18:02.605601Z",
+  "approval": {
+    "context_entry_count": 4,
+    "approved_entry_count": 4,
+    "nonempty_target_entry_count": 4,
+    "target_character_count": 50,
+    "hangul_syllable_count": 33,
+    "unique_hangul_syllable_count": 30
+  },
+  "human_approval_recorded": true,
+  "human_approval_scope": "first-context-four-entry-batch",
+  "approval_authority": "human-user-explicit",
+  "hancharacter_contract_mode": "translator_declared",
+  "hancharacter_claim_scope": "translator-declared-rendering-consistency-only",
+  "translation_generated_by_mechanical_stage": false,
+  "source_and_target_text_local_only": true,
+  "non_text_glyph_preservation_required": true,
+  "translation_build_eligible": false,
+  "next_checkpoint": "validate-first-context-translation-capacity"
+}
