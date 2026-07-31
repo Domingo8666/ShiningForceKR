@@ -139,9 +139,11 @@ except ImportError:  # pragma: no cover - direct script execution
 ARTIFACT_KIND = "sanitized-v5-1-first-context-translation-encoding"
 LOCAL_ARTIFACT_KIND = "local-v5-1-first-context-translation-encoding"
 SCHEMA_VERSION = 1
-# Preserve the four already runtime-proven row routes and append the extra
-# page only for the newly confirmed fifth dialogue.
-ROW_FONT_PAGES = (240, 241, 242, 243, 239)
+# Preserve the four already runtime-proven row routes.  Later rows search the
+# remaining font pages because a page-select token that exists in the ROM is
+# not necessarily reachable at that row's exact Huffman bit length.
+PROVEN_ROW_FONT_PAGES = (240, 241, 242, 243)
+ROW_FONT_PAGES = PROVEN_ROW_FONT_PAGES + (239,)
 TARGET_PATH = Path("build/Final_Conflict_Korean_v5.1.gg")
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_translation_encoding.json"
@@ -779,6 +781,59 @@ def exact_length_row_symbols(
     raise ValueError("first context row has no exact-length Huffman route")
 
 
+def select_row_font_pages(
+    *,
+    trees: dict[int, object],
+    target_rows: list[dict[str, object]],
+    preserved_by_row: list[list[dict[str, int]]],
+    runtime_constraints: list[dict[str, int]] | None = None,
+) -> tuple[int, ...]:
+    visual_rows = build_row_visuals(
+        target_rows=target_rows,
+        preserved_by_row=preserved_by_row,
+    )
+    if runtime_constraints is not None and len(runtime_constraints) != len(
+        visual_rows
+    ):
+        raise ValueError("first context runtime constraint count does not match")
+    if len(visual_rows) <= len(PROVEN_ROW_FONT_PAGES):
+        return PROVEN_ROW_FONT_PAGES[: len(visual_rows)]
+
+    pages = list(PROVEN_ROW_FONT_PAGES)
+    used_pages = set(pages)
+    constraints = runtime_constraints or [None] * len(visual_rows)
+    for row_index in range(len(PROVEN_ROW_FONT_PAGES), len(visual_rows)):
+        visuals = visual_rows[row_index]
+        constraint = constraints[row_index]
+        for page in range(FONT_PAGE_COUNT - 1, -1, -1):
+            if page in used_pages:
+                continue
+            try:
+                assignments = solve_row_visual_symbols(
+                    trees=trees,
+                    page=page,
+                    visuals=visuals,
+                )
+                if constraint is not None:
+                    exact_length_row_symbols(
+                        trees=trees,
+                        initial_context=int(constraint["initial_context"]),
+                        target_bits=int(constraint["original_encoded_bits"]),
+                        page=page,
+                        assignments=assignments,
+                    )
+            except ValueError:
+                continue
+            pages.append(page)
+            used_pages.add(page)
+            break
+        else:
+            raise ValueError(
+                "first context row has no usable font page Huffman route"
+            )
+    return tuple(pages)
+
+
 def build_single_page_symbol_rows(
     *,
     trees: dict[int, object],
@@ -969,7 +1024,8 @@ def build_first_context_translation_encoding(
         == encoding["context_entry_count"]
         and encoding["huffman_failure_entry_count"] == 0
         and encoding["preserved_non_text_glyph_occurrence_count"] > 0
-        and encoding["custom_font_page_count"] == len(ROW_FONT_PAGES)
+        and encoding["custom_font_page_count"]
+        == encoding["context_entry_count"]
         and encoding["font_page_changed_byte_count"] > 0
         and encoding["runtime_initial_context_entry_count"]
         == encoding["context_entry_count"]
@@ -1059,7 +1115,7 @@ def validate_first_context_translation_encoding(
         == counts["context_entry_count"]
         and counts["huffman_failure_entry_count"] == 0
         and counts["preserved_non_text_glyph_occurrence_count"] > 0
-        and counts["custom_font_page_count"] == len(ROW_FONT_PAGES)
+        and counts["custom_font_page_count"] == counts["context_entry_count"]
         and counts["font_page_changed_byte_count"] > 0
         and counts["runtime_initial_context_entry_count"]
         == counts["context_entry_count"]
@@ -1211,6 +1267,12 @@ def _main() -> int:
         projection_pairs=projection_pairs,
     )
     ACTIVE_FAILURE_CATEGORY = "row-route"
+    selected_row_font_pages = select_row_font_pages(
+        trees=trees,
+        target_rows=target_rows,
+        preserved_by_row=preserved_by_row,
+        runtime_constraints=runtime_constraints,
+    )
     (
         symbol_counts,
         symbol_rows,
@@ -1220,13 +1282,14 @@ def _main() -> int:
         target_rows=target_rows,
         preserved_by_row=preserved_by_row,
         runtime_constraints=runtime_constraints,
+        pages=selected_row_font_pages,
     )
-    custom_pages = set(ROW_FONT_PAGES)
+    custom_pages = set(selected_row_font_pages)
     ACTIVE_FAILURE_CATEGORY = "font-input"
     writes = []
     all_assignments = []
     for row_index, (page, assignments) in enumerate(
-        zip(ROW_FONT_PAGES, assignments_by_row),
+        zip(selected_row_font_pages, assignments_by_row),
         start=1,
     ):
         for assignment in assignments:

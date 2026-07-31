@@ -2,6 +2,7 @@ from copy import deepcopy
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -16,6 +17,7 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     build_row_visuals,
     build_symbol_rows,
     exact_length_row_symbols,
+    select_row_font_pages,
     solve_row_visual_symbols,
     validate_first_context_translation_encoding,
     validate_first_context_translation_encoding_failure,
@@ -48,6 +50,37 @@ def tree(previous: int, left: int, right: int) -> ParsedTree:
 class FirstContextTranslationEncodingTests(unittest.TestCase):
     def test_keeps_proven_four_row_pages_before_the_fifth_page(self) -> None:
         self.assertEqual(ROW_FONT_PAGES, (240, 241, 242, 243, 239))
+
+    def test_searches_past_an_unusable_extra_row_page(self) -> None:
+        targets = [{"target_text": "가"} for _ in range(5)]
+        constraints = [
+            {"initial_context": 0xC9, "original_encoded_bits": 8}
+            for _ in range(5)
+        ]
+
+        def solve(*, trees, page, visuals):
+            del trees
+            if page == 239:
+                raise ValueError("unusable route")
+            return [0x02] * len(visuals)
+
+        with patch(
+            "tools.v5_1_first_context_translation_encoding."
+            "solve_row_visual_symbols",
+            side_effect=solve,
+        ), patch(
+            "tools.v5_1_first_context_translation_encoding."
+            "exact_length_row_symbols",
+            return_value=([0x02], 0),
+        ):
+            pages = select_row_font_pages(
+                trees={},
+                target_rows=targets,
+                preserved_by_row=[[] for _ in targets],
+                runtime_constraints=constraints,
+            )
+
+        self.assertEqual(pages, (240, 241, 242, 243, 238))
 
     def test_adds_invisible_page_select_padding_to_exact_bit_length(self) -> None:
         trees = {
