@@ -118,6 +118,11 @@ try:
         PUBLISH_RELATIVE_PATH as SOURCE_TARGET_SECTION_PROJECTION_RELATIVE_PATH,
         validate_source_target_section_projection,
     )
+    from .v5_1_source_target_structural_corroboration import (
+        PUBLISH_RELATIVE_PATH
+        as SOURCE_TARGET_STRUCTURAL_CORROBORATION_RELATIVE_PATH,
+        validate_source_target_structural_corroboration,
+    )
     from .v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -259,6 +264,11 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as SOURCE_TARGET_SECTION_PROJECTION_RELATIVE_PATH,
         validate_source_target_section_projection,
     )
+    from v5_1_source_target_structural_corroboration import (
+        PUBLISH_RELATIVE_PATH
+        as SOURCE_TARGET_STRUCTURAL_CORROBORATION_RELATIVE_PATH,
+        validate_source_target_structural_corroboration,
+    )
     from v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -367,6 +377,8 @@ SAFE_ARTIFACTS = {
         validate_source_target_anchor,
     SOURCE_TARGET_SECTION_PROJECTION_RELATIVE_PATH:
         validate_source_target_section_projection,
+    SOURCE_TARGET_STRUCTURAL_CORROBORATION_RELATIVE_PATH:
+        validate_source_target_structural_corroboration,
     GROUP_TEXT_CANDIDATE_RELATIVE_PATH:
         validate_group_text_candidate_resolution,
     UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH:
@@ -872,6 +884,24 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != sha256_file(root / SOURCE_TARGET_ANCHOR_RELATIVE_PATH)
         ):
             artifacts.pop(SOURCE_TARGET_SECTION_PROJECTION_RELATIVE_PATH)
+    source_target_structural_corroboration = artifacts.get(
+        SOURCE_TARGET_STRUCTURAL_CORROBORATION_RELATIVE_PATH
+    )
+    if source_target_structural_corroboration is not None:
+        if (
+            SOURCE_TARGET_SECTION_PROJECTION_RELATIVE_PATH not in artifacts
+            or source_target_structural_corroboration["target_sha256"]
+            != source_target_section_projection["target_sha256"]
+            or source_target_structural_corroboration[
+                "source_section_projection_sha256"
+            ]
+            != sha256_file(
+                root / SOURCE_TARGET_SECTION_PROJECTION_RELATIVE_PATH
+            )
+        ):
+            artifacts.pop(
+                SOURCE_TARGET_STRUCTURAL_CORROBORATION_RELATIVE_PATH
+            )
     group_context_resolution = artifacts.get(
         GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH
     )

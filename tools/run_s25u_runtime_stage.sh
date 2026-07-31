@@ -514,6 +514,46 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    source_target_structural_corroboration_output="$(
+      python tools/v5_1_source_target_structural_corroboration.py --if-ready 2>&1
+    )"
+    source_target_structural_corroboration_status=$?
+    printf '%s\n' "$source_target_structural_corroboration_output"
+    if [ "$source_target_structural_corroboration_status" -ne 0 ]; then
+      stage_status="$source_target_structural_corroboration_status"
+      diagnostic_trigger=probe
+      source_target_structural_corroboration_failure_stage=source-target-structural-corroboration
+      case "$source_target_structural_corroboration_output" in
+        *"structural corroboration projection identity disagrees"*|\
+        *"structural corroboration identity is invalid"*)
+          source_target_structural_corroboration_failure_stage=structural-corroboration-identity
+          ;;
+        *"structural corroboration pair"*)
+          source_target_structural_corroboration_failure_stage=structural-corroboration-pair
+          ;;
+        *"structural corroboration speaker"*)
+          source_target_structural_corroboration_failure_stage=structural-corroboration-speaker
+          ;;
+        *"structural corroboration target token"*|\
+        *"structural corroboration control symbol"*)
+          source_target_structural_corroboration_failure_stage=structural-corroboration-token
+          ;;
+        *"structural corroboration local projection is missing"*|\
+        *"source-target structural corroboration input is missing"*)
+          source_target_structural_corroboration_failure_stage=structural-corroboration-input
+          ;;
+        *"structural corroboration fields do not match"*|\
+        *"structural corroboration counts do not match"*|\
+        *"structural corroboration aggregates are inconsistent"*|\
+        *"structural corroboration policy is invalid"*)
+          source_target_structural_corroboration_failure_stage=structural-corroboration-validation
+          ;;
+      esac
+      record_stage_failure "$source_target_structural_corroboration_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then
