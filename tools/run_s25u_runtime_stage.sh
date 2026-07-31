@@ -907,7 +907,11 @@ else
           first_context_translation_encoding_failure_stage=first-context-encoding-identity
           ;;
         *"preserved glyph"*|\
+        *"preserved visual"*|\
         *"custom font page"*|\
+        *"visual row"*|\
+        *"Huffman assignment"*|\
+        *"Huffman symbol domain"*|\
         *"target character is unmapped"*|\
         *"Huffman roundtrip"*)
           first_context_translation_encoding_failure_stage=first-context-encoding-plan
