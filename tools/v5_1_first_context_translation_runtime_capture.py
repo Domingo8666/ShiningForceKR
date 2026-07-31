@@ -516,20 +516,26 @@ def _main() -> int:
         ),
     }
     screens = local_capture.get("screens")
+    ACTIVE_CAPTURE_FAILURE_STAGE = (
+        "first-context-runtime-capture-screen-validation"
+    )
     if not isinstance(screens, list):
         raise RuntimeError(
             "first context translation runtime screenshots are missing"
         )
+    ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-review-write"
     _write_review(
         root=root,
         translations=translations,
         screenshots=screens,
     )
+    ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-local-write"
     local_path.parent.mkdir(parents=True, exist_ok=True)
     local_path.write_text(
         json.dumps(local, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-safe-build"
     safe = build_first_context_translation_runtime_capture(
         baseline_target_sha256=str(build["baseline_target_sha256"]),
         test_target_sha256=str(build["test_target_sha256"]),
@@ -544,6 +550,7 @@ def _main() -> int:
         runtime_sequence=counts,
         captured_utc=captured_utc,
     )
+    ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-safe-write"
     safe_path.parent.mkdir(parents=True, exist_ok=True)
     safe_path.write_text(
         json.dumps(safe, ensure_ascii=False, indent=2) + "\n",
