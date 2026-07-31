@@ -24,6 +24,7 @@ try:
     from .patch_io import PatchError, extract_bps_target_literals, sha256_bytes
     from .sfgfc_huffman import (
         CANDIDATE_END_SYMBOL,
+        _symbol_codes,
         decode_symbols,
         encode_symbols,
         load_trees_at,
@@ -80,6 +81,7 @@ except ImportError:  # pragma: no cover - direct script execution
     from patch_io import PatchError, extract_bps_target_literals, sha256_bytes
     from sfgfc_huffman import (
         CANDIDATE_END_SYMBOL,
+        _symbol_codes,
         decode_symbols,
         encode_symbols,
         load_trees_at,
@@ -160,6 +162,13 @@ COUNT_KEYS = {
     "maximum_encoded_entry_bit_count",
     "font_page_write_byte_count",
     "font_page_changed_byte_count",
+    "internally_encodable_font_page_count",
+    "initially_selectable_font_page_count",
+    "glyph_transition_edge_count",
+    "glyph_symbol_page_select_exit_count",
+    "glyph_symbol_terminator_exit_count",
+    "initial_page_token_failure_entry_count",
+    "post_initial_page_token_failure_entry_count",
 }
 SAFE_FIELDS = {
     "artifact_kind",
@@ -206,6 +215,61 @@ def _is_utc_timestamp(value: object) -> bool:
 
 def _is_hangul_syllable(character: str) -> bool:
     return "\uac00" <= character <= "\ud7a3"
+
+
+def measure_huffman_route_capacity(
+    trees: dict[int, object],
+) -> dict[str, int]:
+    codes = {
+        previous: set(_symbol_codes(tree.root))
+        for previous, tree in trees.items()
+    }
+    page_select = 0x5F
+    initial_can_select = page_select in codes.get(CANDIDATE_END_SYMBOL, set())
+    internally_encodable = 0
+    for page in range(244):
+        _, high, low = page_select_symbols(page)
+        if (
+            high in codes.get(page_select, set())
+            and low in codes.get(high, set())
+        ):
+            internally_encodable += 1
+    glyph_symbols = range(
+        FONT_GLYPH_FIRST_SYMBOL,
+        FONT_GLYPH_LAST_SYMBOL + 1,
+    )
+    return {
+        "internally_encodable_font_page_count": internally_encodable,
+        "initially_selectable_font_page_count": (
+            internally_encodable if initial_can_select else 0
+        ),
+        "glyph_transition_edge_count": sum(
+            next_symbol in codes.get(previous, set())
+            for previous in glyph_symbols
+            for next_symbol in glyph_symbols
+        ),
+        "glyph_symbol_page_select_exit_count": sum(
+            page_select in codes.get(symbol, set())
+            for symbol in glyph_symbols
+        ),
+        "glyph_symbol_terminator_exit_count": sum(
+            CANDIDATE_END_SYMBOL in codes.get(symbol, set())
+            for symbol in glyph_symbols
+        ),
+    }
+
+
+def first_missing_transition_index(
+    trees: dict[int, object],
+    symbols: list[int],
+) -> int | None:
+    previous = CANDIDATE_END_SYMBOL
+    for index, symbol in enumerate(symbols):
+        tree = trees.get(previous)
+        if tree is None or symbol not in _symbol_codes(tree.root):
+            return index
+        previous = symbol
+    return None
 
 
 def build_character_assignments(
@@ -713,6 +777,8 @@ def main() -> int:
     encoded_bits = 0
     encoded_bytes = 0
     maximum_bits = 0
+    initial_page_failures = 0
+    later_failures = 0
     for row in symbol_rows:
         symbols = row["symbols"]
         assert isinstance(symbols, list)
@@ -731,6 +797,11 @@ def main() -> int:
         except PatchError as error:
             failures += 1
             row["encoding_error"] = str(error)
+            missing_index = first_missing_transition_index(trees, symbols)
+            if missing_index is not None and missing_index < 3:
+                initial_page_failures += 1
+            else:
+                later_failures += 1
             continue
         row["encoded_hex"] = encoded.hex().upper()
         row["encoded_bits"] = bits
@@ -756,6 +827,9 @@ def main() -> int:
         "font_page_write_byte_count": sum(len(write.after) for write in writes),
         "font_page_changed_byte_count":
             int(font_audit["changed_byte_count"]),
+        **measure_huffman_route_capacity(trees),
+        "initial_page_token_failure_entry_count": initial_page_failures,
+        "post_initial_page_token_failure_entry_count": later_failures,
     }
     captured_utc = datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"

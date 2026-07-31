@@ -87,6 +87,13 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             "maximum_encoded_entry_bit_count": 90,
             "font_page_write_byte_count": 320,
             "font_page_changed_byte_count": 200,
+            "internally_encodable_font_page_count": 20,
+            "initially_selectable_font_page_count": 20,
+            "glyph_transition_edge_count": 200,
+            "glyph_symbol_page_select_exit_count": 10,
+            "glyph_symbol_terminator_exit_count": 8,
+            "initial_page_token_failure_entry_count": 0,
+            "post_initial_page_token_failure_entry_count": 0,
         }
         safe = build_first_context_translation_encoding(
             target_sha256=SHA_A,
