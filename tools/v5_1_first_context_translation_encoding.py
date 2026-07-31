@@ -843,11 +843,33 @@ def solve_exact_length_row_visual_symbols(
     glyph_symbols = tuple(
         range(FONT_GLYPH_FIRST_SYMBOL, FONT_GLYPH_LAST_SYMBOL + 1)
     )
+    glyph_symbol_set = set(glyph_symbols)
 
     queue = deque([(0, initial_context)])
     prefix_paths: dict[tuple[int, int], tuple[int, ...]] = {
         (0, initial_context): ()
     }
+
+    @lru_cache(maxsize=None)
+    def possible_remaining_lengths(
+        previous: int,
+        glyph_count: int,
+    ) -> frozenset[int]:
+        if glyph_count == 0:
+            end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
+            return frozenset() if end_length is None else frozenset({end_length})
+        totals = set()
+        for symbol in set(lengths.get(previous, {})) & glyph_symbol_set:
+            added_bits = lengths[previous][symbol]
+            totals.update(
+                added_bits + suffix_bits
+                for suffix_bits in possible_remaining_lengths(
+                    symbol,
+                    glyph_count - 1,
+                )
+                if added_bits + suffix_bits <= target_bits
+            )
+        return frozenset(totals)
 
     @lru_cache(maxsize=None)
     def search_visible(
@@ -856,6 +878,12 @@ def solve_exact_length_row_visual_symbols(
         depth: int,
         bits: int,
     ) -> tuple[int, ...] | None:
+        remaining_glyphs = len(visuals) - depth
+        if target_bits - bits not in possible_remaining_lengths(
+            previous,
+            remaining_glyphs,
+        ):
+            return None
         if depth == len(visuals):
             end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
             if end_length is not None and bits + end_length == target_bits:
@@ -871,7 +899,7 @@ def solve_exact_length_row_visual_symbols(
             ),
             key=lambda symbol: (
                 CANDIDATE_END_SYMBOL not in lengths.get(symbol, {}),
-                -len(set(lengths.get(symbol, {})) & set(glyph_symbols)),
+                -len(set(lengths.get(symbol, {})) & glyph_symbol_set),
                 symbol,
             ),
         )
