@@ -752,6 +752,41 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    runtime_context_glyph_preservation_output="$(
+      python tools/v5_1_runtime_context_glyph_preservation.py --if-ready 2>&1
+    )"
+    runtime_context_glyph_preservation_status=$?
+    printf '%s\n' "$runtime_context_glyph_preservation_output"
+    if [ "$runtime_context_glyph_preservation_status" -ne 0 ]; then
+      stage_status="$runtime_context_glyph_preservation_status"
+      diagnostic_trigger=probe
+      runtime_context_glyph_preservation_failure_stage=runtime-context-glyph-preservation
+      case "$runtime_context_glyph_preservation_output" in
+        *"runtime glyph preservation identity"*)
+          runtime_context_glyph_preservation_failure_stage=context-glyph-preservation-identity
+          ;;
+        *"runtime glyph preservation card"*|\
+        *"runtime glyph preservation coordinate"*|\
+        *"runtime glyph preservation reviewed shapes"*|\
+        *"runtime glyph preservation review evidence"*)
+          runtime_context_glyph_preservation_failure_stage=context-glyph-preservation-classification
+          ;;
+        *"runtime glyph preservation local cards"*|\
+        *"runtime glyph preservation input is missing"*)
+          runtime_context_glyph_preservation_failure_stage=context-glyph-preservation-input
+          ;;
+        *"runtime glyph preservation fields do not match"*|\
+        *"runtime glyph preservation counts do not match"*|\
+        *"runtime glyph preservation result is inconsistent"*|\
+        *"runtime glyph preservation aggregates disagree"*)
+          runtime_context_glyph_preservation_failure_stage=context-glyph-preservation-validation
+          ;;
+      esac
+      record_stage_failure "$runtime_context_glyph_preservation_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then
