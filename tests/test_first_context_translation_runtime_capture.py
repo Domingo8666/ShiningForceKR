@@ -58,6 +58,27 @@ class FirstContextTranslationRuntimeCaptureTests(unittest.TestCase):
         self.assertFalse(value["target_entry_sequence_confirmed"])
         self.assertFalse(value["translation_build_eligible"])
 
+    def test_accepts_consecutive_post_translation_regression_screen(
+        self,
+    ) -> None:
+        counts = self._counts()
+        counts.update(
+            {
+                "captured_entry_count": 5,
+                "post_anchor_entry_count": 4,
+                "same_selector_post_anchor_entry_count": 4,
+                "consecutive_same_selector_step_count": 4,
+                "distinct_screen_hash_count": 5,
+                "advance_attempt_count": 7,
+            }
+        )
+        value = self._build(counts)
+        self.assertEqual(
+            value["status"],
+            "first-context-translation-runtime-capture-ready",
+        )
+        self.assertTrue(value["target_entry_sequence_confirmed"])
+
     def test_rejects_unexpected_private_screen_data(self) -> None:
         value = self._build(self._counts())
         unsafe = deepcopy(value)

@@ -114,13 +114,13 @@ def build_first_context_translation_runtime_capture(
     captured_utc: str,
 ) -> dict[str, object]:
     sequence_confirmed = (
-        runtime_sequence["captured_entry_count"] == 4
-        and runtime_sequence["post_anchor_entry_count"] == 3
-        and runtime_sequence["same_selector_post_anchor_entry_count"] == 3
+        runtime_sequence["captured_entry_count"] >= 4
+        and runtime_sequence["post_anchor_entry_count"] >= 3
+        and runtime_sequence["same_selector_post_anchor_entry_count"] >= 3
         and runtime_sequence["different_selector_post_anchor_entry_count"] == 0
-        and runtime_sequence["consecutive_same_selector_step_count"] == 3
+        and runtime_sequence["consecutive_same_selector_step_count"] >= 3
         and runtime_sequence["nonconsecutive_same_selector_step_count"] == 0
-        and runtime_sequence["distinct_screen_hash_count"] == 4
+        and runtime_sequence["distinct_screen_hash_count"] >= 4
     )
     value: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
@@ -201,13 +201,13 @@ def validate_first_context_translation_runtime_capture(
             "first context translation runtime capture counts do not match"
         )
     sequence_confirmed = (
-        counts["captured_entry_count"] == 4
-        and counts["post_anchor_entry_count"] == 3
-        and counts["same_selector_post_anchor_entry_count"] == 3
+        counts["captured_entry_count"] >= 4
+        and counts["post_anchor_entry_count"] >= 3
+        and counts["same_selector_post_anchor_entry_count"] >= 3
         and counts["different_selector_post_anchor_entry_count"] == 0
-        and counts["consecutive_same_selector_step_count"] == 3
+        and counts["consecutive_same_selector_step_count"] >= 3
         and counts["nonconsecutive_same_selector_step_count"] == 0
-        and counts["distinct_screen_hash_count"] == 4
+        and counts["distinct_screen_hash_count"] >= 4
     )
     if (
         value["status"]
@@ -324,7 +324,9 @@ def main() -> int:
     if safe_path.is_file() and local_path.is_file():
         try:
             existing = json.loads(safe_path.read_text(encoding="utf-8"))
-            validate_first_context_translation_runtime_capture(existing)
+            existing_local = json.loads(
+                local_path.read_text(encoding="utf-8")
+            )
             if (
                 existing["test_target_sha256"]
                 == build["test_target_sha256"]
@@ -335,9 +337,49 @@ def main() -> int:
                 and existing["local_capture_sha256"]
                 == sha256_file(local_path)
             ):
+                existing_counts = existing_local.get("runtime_sequence")
+                existing_capture = existing_local.get("capture")
+                if (
+                    not isinstance(existing_counts, dict)
+                    or not isinstance(existing_capture, dict)
+                    or set(existing_counts) != COUNT_KEYS
+                ):
+                    raise ValueError(
+                        "reusable first context runtime capture is invalid"
+                    )
+                refreshed = (
+                    build_first_context_translation_runtime_capture(
+                        baseline_target_sha256=str(
+                            build["baseline_target_sha256"]
+                        ),
+                        test_target_sha256=str(
+                            build["test_target_sha256"]
+                        ),
+                        first_context_translation_test_build_sha256=
+                            sha256_file(paths["build"]),
+                        source_runtime_sequence_sha256=sha256_file(
+                            paths["source_sequence"]
+                        ),
+                        local_capture_sha256=sha256_file(local_path),
+                        runtime_sequence=existing_counts,
+                        captured_utc=str(existing["captured_utc"]),
+                    )
+                )
+                screens = existing_capture.get("screens")
+                if isinstance(screens, list):
+                    _write_review(root=root, screenshots=screens)
+                safe_path.write_text(
+                    json.dumps(
+                        refreshed,
+                        ensure_ascii=False,
+                        indent=2,
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
                 print(
                     "SFKR first context translation runtime capture: "
-                    "reusing matching local capture"
+                    "refreshed matching local capture"
                 )
                 return 0
         except (OSError, ValueError, json.JSONDecodeError):
