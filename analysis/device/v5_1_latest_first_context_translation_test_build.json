@@ -1,0 +1,32 @@
+{
+  "artifact_kind": "sanitized-v5-1-first-context-translation-test-build",
+  "schema_version": 1,
+  "status": "first-context-translation-static-build-ready",
+  "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "test_target_sha256": "70a4c70fd32e639c674230fe432d18c03080df218466ab9d99da1f2bc558099c",
+  "test_overlay_sha256": "a5911e0329b6b6362f545ccdca6c241324877d00e80defe6ce1ccaca6bde5415",
+  "first_context_record_reinsertion_sha256": "1cbc23ca05dd91f91a000952df701cd41c17596bffd6b2255803b1812d312337",
+  "local_build_sha256": "fff1e5726a9bf5886b06d1df48b0e8538fddb92ce7c1a044f2ec167c897ffd94",
+  "captured_utc": "2026-07-31T09:07:52.592781Z",
+  "verification": {
+    "context_entry_count": 4,
+    "record_length_unchanged_count": 4,
+    "decoded_roundtrip_entry_count": 4,
+    "decoded_failure_entry_count": 0,
+    "font_glyph_assignment_count": 55,
+    "font_glyph_verified_count": 55,
+    "record_write_count": 4,
+    "font_write_count": 46,
+    "write_count": 50,
+    "changed_byte_count": 967
+  },
+  "expected_write_audit_complete": true,
+  "record_lengths_unchanged": true,
+  "huffman_roundtrip_complete": true,
+  "font_tiles_verified": true,
+  "static_translation_build_confirmed": true,
+  "runtime_layout_confirmed": false,
+  "source_and_target_text_local_only": true,
+  "translation_build_eligible": false,
+  "next_checkpoint": "capture-first-context-translation-runtime-screen"
+}
