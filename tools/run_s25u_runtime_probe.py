@@ -266,6 +266,11 @@ RUNTIME_FAILURE_KINDS = {
     "required-tools",
     "media-identity",
     "invalid-mcp-payload",
+    "runtime-sequence-anchor-missing",
+    "runtime-sequence-registers-invalid",
+    "runtime-huffman-read-missing",
+    "runtime-huffman-read-unparsed",
+    "runtime-huffman-read-invalid",
     "runtime-error",
     "unexpected-exception",
 }
@@ -1114,6 +1119,19 @@ def _runtime_failure_kind(error: Exception) -> str:
     if isinstance(error, ValueError):
         return "invalid-runtime-data"
     message = str(error)
+    if message == "runtime sequence confirmed anchor was not reached":
+        return "runtime-sequence-anchor-missing"
+    if message in {
+        "runtime sequence registers are missing",
+        "runtime sequence registers are invalid",
+    }:
+        return "runtime-sequence-registers-invalid"
+    if message == "runtime Huffman vector read was not reached":
+        return "runtime-huffman-read-missing"
+    if message == "runtime Huffman vector read was not parsed":
+        return "runtime-huffman-read-unparsed"
+    if message == "runtime Huffman vector read is invalid":
+        return "runtime-huffman-read-invalid"
     if message.startswith("Gearsystem frame step did not finish"):
         return "frame-step-timeout"
     if message.startswith("Gearsystem instruction step did not finish"):

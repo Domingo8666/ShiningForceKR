@@ -239,6 +239,24 @@ class S25URuntimeProbeTests(unittest.TestCase):
         self.assertEqual(receipt["failure_kind"], "frame-step-timeout")
         self.assertEqual(receipt["mcp_method"], "debug_get_status")
 
+    def test_runtime_failure_receipt_classifies_huffman_read_failure(
+        self,
+    ) -> None:
+        class FakeClient:
+            last_request_method = "tools/call"
+            last_tool_name = "debug_get_status"
+
+        receipt = _runtime_failure_receipt(
+            "source-target-runtime-sequence",
+            RuntimeError("runtime Huffman vector read was not reached"),
+            FakeClient(),  # type: ignore[arg-type]
+        )
+        self.assertEqual(
+            receipt["failure_kind"],
+            "runtime-huffman-read-missing",
+        )
+        self.assertEqual(receipt["mcp_method"], "debug_get_status")
+
     def test_watch_ranges_require_trace_schema_five(self) -> None:
         plan = {
             "schema_version": 5,
