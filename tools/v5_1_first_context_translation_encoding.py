@@ -221,6 +221,8 @@ FAILURE_FIELDS = {
     "schema_version",
     "status",
     "category",
+    "failure_step",
+    "failure_kind",
     "required_visible_symbol_count",
     "maximum_routable_visible_symbol_count",
     "captured_utc",
@@ -240,6 +242,25 @@ FAILURE_CATEGORIES = {
     "unexpected",
 }
 ACTIVE_FAILURE_CATEGORY = "unexpected"
+ACTIVE_FAILURE_STEP = "input"
+FAILURE_STEPS = {
+    "input",
+    "select-row-font-pages",
+    "build-symbol-rows",
+    "build-font-overlay",
+    "encode-symbol-rows",
+    "validate-safe-result",
+}
+FAILURE_KINDS = {
+    "AssertionError",
+    "IndexError",
+    "KeyError",
+    "PatchError",
+    "RowRouteError",
+    "RuntimeError",
+    "TypeError",
+    "ValueError",
+}
 
 
 class RowRouteError(ValueError):
@@ -277,6 +298,8 @@ def build_first_context_translation_encoding_failure(
     captured_utc: str,
     required_visible_symbol_count: int = 0,
     maximum_routable_visible_symbol_count: int = 0,
+    failure_step: str = "input",
+    failure_kind: str = "ValueError",
 ) -> dict[str, object]:
     value: dict[str, object] = {
         "artifact_kind":
@@ -284,6 +307,8 @@ def build_first_context_translation_encoding_failure(
         "schema_version": 1,
         "status": "first-context-translation-encoding-failed",
         "category": category,
+        "failure_step": failure_step,
+        "failure_kind": failure_kind,
         "required_visible_symbol_count": required_visible_symbol_count,
         "maximum_routable_visible_symbol_count":
             maximum_routable_visible_symbol_count,
@@ -308,6 +333,8 @@ def validate_first_context_translation_encoding_failure(
         or value["schema_version"] != 1
         or value["status"] != "first-context-translation-encoding-failed"
         or value["category"] not in FAILURE_CATEGORIES
+        or value["failure_step"] not in FAILURE_STEPS
+        or value["failure_kind"] not in FAILURE_KINDS
         or not isinstance(value["required_visible_symbol_count"], int)
         or isinstance(value["required_visible_symbol_count"], bool)
         or not isinstance(value["maximum_routable_visible_symbol_count"], int)
@@ -1899,8 +1926,9 @@ def validate_first_context_translation_encoding(
 
 
 def _main() -> int:
-    global ACTIVE_FAILURE_CATEGORY
+    global ACTIVE_FAILURE_CATEGORY, ACTIVE_FAILURE_STEP
     ACTIVE_FAILURE_CATEGORY = "input"
+    ACTIVE_FAILURE_STEP = "input"
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--if-ready", action="store_true")
@@ -2015,12 +2043,14 @@ def _main() -> int:
         projection_pairs=projection_pairs,
     )
     ACTIVE_FAILURE_CATEGORY = "row-route"
+    ACTIVE_FAILURE_STEP = "select-row-font-pages"
     selected_row_font_pages = select_row_font_pages(
         trees=trees,
         target_rows=target_rows,
         preserved_by_row=preserved_by_row,
         runtime_constraints=runtime_constraints,
     )
+    ACTIVE_FAILURE_STEP = "build-symbol-rows"
     (
         symbol_counts,
         symbol_rows,
@@ -2038,6 +2068,7 @@ def _main() -> int:
         for assignment in assignments
     }
     ACTIVE_FAILURE_CATEGORY = "font-input"
+    ACTIVE_FAILURE_STEP = "build-font-overlay"
     writes = []
     all_assignments = []
     for row_index, assignments in enumerate(assignments_by_row, start=1):
@@ -2110,6 +2141,7 @@ def _main() -> int:
     overlay_path.write_bytes(font_overlay)
 
     ACTIVE_FAILURE_CATEGORY = "row-route"
+    ACTIVE_FAILURE_STEP = "encode-symbol-rows"
     roundtrips = 0
     failures = 0
     encoded_bits = 0
@@ -2236,6 +2268,7 @@ def _main() -> int:
         encoding="utf-8",
     )
     ACTIVE_FAILURE_CATEGORY = "validation"
+    ACTIVE_FAILURE_STEP = "validate-safe-result"
     safe = build_first_context_translation_encoding(
         target_sha256=str(capacity["target_sha256"]),
         review_batch_sha256=str(capacity["review_batch_sha256"]),
@@ -2291,6 +2324,8 @@ def main() -> int:
             required_visible_symbol_count=required_visible_symbol_count,
             maximum_routable_visible_symbol_count=
                 maximum_routable_visible_symbol_count,
+            failure_step=ACTIVE_FAILURE_STEP,
+            failure_kind=type(error).__name__,
         )
         failure_path.parent.mkdir(parents=True, exist_ok=True)
         failure_path.write_text(
