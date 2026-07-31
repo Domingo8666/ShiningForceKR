@@ -146,6 +146,7 @@ class S25UAutopilotTests(unittest.TestCase):
 
     def test_runtime_stage_bounds_runtime_sequence_wall_time(self) -> None:
         self.assertIn("timeout -k 15s 240s", RUNTIME_STAGE)
+        self.assertIn("timeout -k 5s 120s", RUNTIME_STAGE)
         self.assertIn(
             "run_source_target_runtime_sequence 2>&1",
             RUNTIME_STAGE,
