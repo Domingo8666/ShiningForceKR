@@ -1019,9 +1019,18 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
-    first_context_translation_runtime_output="$(
-      python tools/v5_1_first_context_translation_runtime_capture.py --if-ready 2>&1
-    )"
+    if command -v timeout >/dev/null 2>&1; then
+      first_context_translation_runtime_output="$(
+        timeout -k 15s 360s \
+          python tools/v5_1_first_context_translation_runtime_capture.py \
+          --if-ready 2>&1
+      )"
+    else
+      first_context_translation_runtime_output="$(
+        python tools/v5_1_first_context_translation_runtime_capture.py \
+          --if-ready 2>&1
+      )"
+    fi
     first_context_translation_runtime_status=$?
     printf '%s\n' "$first_context_translation_runtime_output"
     if [ "$first_context_translation_runtime_status" -ne 0 ]; then
