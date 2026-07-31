@@ -80,6 +80,15 @@ run_display_capture() {
   fi
 }
 
+run_source_target_runtime_sequence() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout -k 15s 240s \
+      python tools/v5_1_source_target_runtime_sequence.py --if-ready
+  else
+    python tools/v5_1_source_target_runtime_sequence.py --if-ready
+  fi
+}
+
 visible_font_catalog_ready() {
   python -c 'import json; from pathlib import Path; path=Path("analysis/local/v5_1_font_catalog.json"); value=json.loads(path.read_text(encoding="utf-8")); print("yes" if value.get("artifact_kind") == "local-v5-1-galmuri7-font-catalog" and value.get("status") == "verified-static-local-analysis" and isinstance(value.get("entries"), list) and bool(value["entries"]) else "no")' 2>/dev/null || true
 }
@@ -555,7 +564,7 @@ else
 
   if [ "$stage_status" -eq 0 ]; then
     source_target_runtime_sequence_output="$(
-      python tools/v5_1_source_target_runtime_sequence.py --if-ready 2>&1
+      run_source_target_runtime_sequence 2>&1
     )"
     source_target_runtime_sequence_status=$?
     printf '%s\n' "$source_target_runtime_sequence_output"

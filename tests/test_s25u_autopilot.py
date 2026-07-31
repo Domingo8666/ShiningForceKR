@@ -139,6 +139,13 @@ class S25UAutopilotTests(unittest.TestCase):
     def test_runtime_stage_bounds_display_capture_wall_time(self) -> None:
         self.assertIn("timeout -k 15s 180s", RUNTIME_STAGE)
 
+    def test_runtime_stage_bounds_runtime_sequence_wall_time(self) -> None:
+        self.assertIn("timeout -k 15s 240s", RUNTIME_STAGE)
+        self.assertIn(
+            "run_source_target_runtime_sequence 2>&1",
+            RUNTIME_STAGE,
+        )
+
     def test_autopilot_bounds_and_retries_the_complete_runtime_stage(self) -> None:
         self.assertIn('SFKR_RUNTIME_TIMEOUT:-900', SCRIPT)
         self.assertIn('if [ "$runtime_timeout" -lt 300 ]', SCRIPT)
