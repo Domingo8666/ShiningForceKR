@@ -134,7 +134,7 @@ except ImportError:  # pragma: no cover - direct script execution
 ARTIFACT_KIND = "sanitized-v5-1-first-context-translation-encoding"
 LOCAL_ARTIFACT_KIND = "local-v5-1-first-context-translation-encoding"
 SCHEMA_VERSION = 1
-CUSTOM_NON_HANGUL_PAGE = 242
+ROW_FONT_PAGES = (240, 241, 242, 243)
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_translation_encoding.json"
 )
@@ -183,7 +183,8 @@ SAFE_FIELDS = {
     "captured_utc",
     "encoding",
     "human_translation_approval_confirmed",
-    "original_non_text_glyph_tokens_preserved",
+    "reviewed_non_text_glyph_visuals_preserved",
+    "original_non_text_glyph_coordinates_reused",
     "custom_test_font_pages_complete",
     "huffman_roundtrip_complete",
     "text_encoding_confirmed",
@@ -312,13 +313,13 @@ def build_character_assignments(
                 "first context non-Hangul glyph is missing from Galmuri7"
             )
         symbol = FONT_GLYPH_FIRST_SYMBOL + index
-        coordinates[character] = (CUSTOM_NON_HANGUL_PAGE, symbol)
+        coordinates[character] = (ROW_FONT_PAGES[0], symbol)
         tile = tile_bytes_from_ink_mask(mask)
         local_assignments.append(
             {
                 "character": character,
                 "codepoint": f"U+{ord(character):04X}",
-                "page": CUSTOM_NON_HANGUL_PAGE,
+                "page": ROW_FONT_PAGES[0],
                 "symbol": symbol,
                 "ink_mask": list(mask),
                 "tile_sha256": sha256_bytes(tile),
@@ -414,6 +415,222 @@ def locate_preserved_occurrences(
     if occurrence_counts != declared:
         raise ValueError("first context preserved glyph occurrences disagree")
     return output
+
+
+def build_row_visuals(
+    *,
+    target_rows: list[dict[str, object]],
+    preserved_by_row: list[list[dict[str, int]]],
+) -> list[list[str]]:
+    if len(target_rows) != len(preserved_by_row):
+        raise ValueError("first context visual row count does not match")
+    output = []
+    for target_row, preserved in zip(target_rows, preserved_by_row):
+        target = target_row.get("target_text")
+        if not isinstance(target, str):
+            raise ValueError("first context visual target is invalid")
+        insertions: dict[int, list[str]] = {}
+        for occurrence in preserved:
+            position = occurrence.get("target_character_index")
+            page = occurrence.get("page")
+            symbol = occurrence.get("symbol")
+            if (
+                not isinstance(position, int)
+                or not 0 <= position <= len(target)
+                or not isinstance(page, int)
+                or not isinstance(symbol, int)
+            ):
+                raise ValueError("first context visual insertion is invalid")
+            insertions.setdefault(position, []).append(
+                f"preserved:{page:02X}:{symbol:02X}"
+            )
+        visuals = []
+        for position in range(len(target) + 1):
+            visuals.extend(insertions.get(position, []))
+            if position < len(target):
+                visuals.append(f"text:{target[position]}")
+        output.append(visuals)
+    return output
+
+
+def solve_row_visual_symbols(
+    *,
+    trees: dict[int, object],
+    page: int,
+    visuals: list[str],
+) -> dict[str, int]:
+    if not visuals:
+        raise ValueError("first context visual row is empty")
+    unique_visuals = list(dict.fromkeys(visuals))
+    capacity = FONT_GLYPH_LAST_SYMBOL - FONT_GLYPH_FIRST_SYMBOL + 1
+    if len(unique_visuals) > capacity:
+        raise ValueError("first context visual row exceeds one font page")
+    codes = {
+        previous: set(_symbol_codes(tree.root))
+        for previous, tree in trees.items()
+    }
+    page_token = page_select_symbols(page)
+    previous = CANDIDATE_END_SYMBOL
+    for symbol in page_token:
+        if symbol not in codes.get(previous, set()):
+            raise ValueError("first context row font page is not encodable")
+        previous = symbol
+    start_previous = previous
+
+    outgoing: dict[str, set[str]] = {
+        visual: set() for visual in unique_visuals
+    }
+    incoming: dict[str, set[str]] = {
+        visual: set() for visual in unique_visuals
+    }
+    self_edges = set()
+    for left, right in zip(visuals, visuals[1:]):
+        if left == right:
+            self_edges.add(left)
+        else:
+            outgoing[left].add(right)
+            incoming[right].add(left)
+    starts = {visuals[0]}
+    ends = {visuals[-1]}
+    glyph_symbols = set(
+        range(FONT_GLYPH_FIRST_SYMBOL, FONT_GLYPH_LAST_SYMBOL + 1)
+    )
+    domains: dict[str, set[int]] = {}
+    for visual in unique_visuals:
+        domain = set(glyph_symbols)
+        if visual in starts:
+            domain &= codes.get(start_previous, set())
+        if visual in ends:
+            domain = {
+                symbol
+                for symbol in domain
+                if CANDIDATE_END_SYMBOL in codes.get(symbol, set())
+            }
+        if visual in self_edges:
+            domain = {
+                symbol
+                for symbol in domain
+                if symbol in codes.get(symbol, set())
+            }
+        if not domain:
+            raise ValueError("first context visual has no Huffman symbol domain")
+        domains[visual] = domain
+
+    assignments: dict[str, int] = {}
+    used: set[int] = set()
+
+    def candidates(visual: str) -> list[int]:
+        possible = domains[visual] - used
+        for source in incoming[visual]:
+            if source in assignments:
+                possible &= codes.get(assignments[source], set())
+        for target in outgoing[visual]:
+            if target in assignments:
+                possible = {
+                    symbol
+                    for symbol in possible
+                    if assignments[target] in codes.get(symbol, set())
+                }
+        return sorted(possible)
+
+    def forward_possible() -> bool:
+        for visual in unique_visuals:
+            if visual in assignments:
+                continue
+            if not candidates(visual):
+                return False
+        return True
+
+    def search() -> bool:
+        if len(assignments) == len(unique_visuals):
+            return True
+        remaining = [
+            visual for visual in unique_visuals if visual not in assignments
+        ]
+        remaining.sort(
+            key=lambda visual: (
+                len(candidates(visual)),
+                -(len(incoming[visual]) + len(outgoing[visual])),
+                unique_visuals.index(visual),
+            )
+        )
+        visual = remaining[0]
+        for symbol in candidates(visual):
+            assignments[visual] = symbol
+            used.add(symbol)
+            if forward_possible() and search():
+                return True
+            used.remove(symbol)
+            del assignments[visual]
+        return False
+
+    if not search():
+        raise ValueError("first context visual row has no Huffman assignment")
+    return assignments
+
+
+def build_single_page_symbol_rows(
+    *,
+    trees: dict[int, object],
+    target_rows: list[dict[str, object]],
+    preserved_by_row: list[list[dict[str, int]]],
+    pages: tuple[int, ...] = ROW_FONT_PAGES,
+) -> tuple[
+    dict[str, int],
+    list[dict[str, object]],
+    list[dict[str, int]],
+]:
+    visual_rows = build_row_visuals(
+        target_rows=target_rows,
+        preserved_by_row=preserved_by_row,
+    )
+    if len(visual_rows) != len(pages):
+        raise ValueError("first context row font page count does not match")
+    rows = []
+    assignments_by_row = []
+    for expected_index, (target_row, visuals, page) in enumerate(
+        zip(target_rows, visual_rows, pages),
+        start=1,
+    ):
+        assignments = solve_row_visual_symbols(
+            trees=trees,
+            page=page,
+            visuals=visuals,
+        )
+        symbols = page_select_symbols(page)
+        symbols.extend(assignments[visual] for visual in visuals)
+        symbols.append(CANDIDATE_END_SYMBOL)
+        rows.append(
+            {
+                "review_index": expected_index,
+                "target_text": target_row["target_text"],
+                "visuals": visuals,
+                "symbols": symbols,
+                "page_select_count": 1,
+                "visible_symbol_count": len(visuals),
+                "preserved_non_text_glyph_count": sum(
+                    visual.startswith("preserved:") for visual in visuals
+                ),
+            }
+        )
+        assignments_by_row.append(
+            {
+                visual: symbol for visual, symbol in assignments.items()
+            }
+        )
+    visible_count = sum(len(visuals) for visuals in visual_rows)
+    preserved_count = sum(
+        visual.startswith("preserved:")
+        for visuals in visual_rows
+        for visual in visuals
+    )
+    return {
+        "planned_visible_symbol_count": visible_count,
+        "planned_page_select_count": len(rows),
+        "preserved_non_text_glyph_occurrence_count": preserved_count,
+        "planned_terminator_count": len(rows),
+        "planned_total_symbol_count": sum(len(row["symbols"]) for row in rows),
+    }, rows, assignments_by_row
 
 
 def build_symbol_rows(
@@ -513,7 +730,7 @@ def build_first_context_translation_encoding(
         == encoding["context_entry_count"]
         and encoding["huffman_failure_entry_count"] == 0
         and encoding["preserved_non_text_glyph_occurrence_count"] == 5
-        and encoding["custom_font_page_count"] == 2
+        and encoding["custom_font_page_count"] == len(ROW_FONT_PAGES)
         and encoding["font_page_changed_byte_count"] > 0
     )
     value: dict[str, object] = {
@@ -535,7 +752,8 @@ def build_first_context_translation_encoding(
         "captured_utc": captured_utc,
         "encoding": encoding,
         "human_translation_approval_confirmed": True,
-        "original_non_text_glyph_tokens_preserved": complete,
+        "reviewed_non_text_glyph_visuals_preserved": complete,
+        "original_non_text_glyph_coordinates_reused": False,
         "custom_test_font_pages_complete": complete,
         "huffman_roundtrip_complete": complete,
         "text_encoding_confirmed": complete,
@@ -597,7 +815,7 @@ def validate_first_context_translation_encoding(
         == counts["context_entry_count"]
         and counts["huffman_failure_entry_count"] == 0
         and counts["preserved_non_text_glyph_occurrence_count"] == 5
-        and counts["custom_font_page_count"] == 2
+        and counts["custom_font_page_count"] == len(ROW_FONT_PAGES)
         and counts["font_page_changed_byte_count"] > 0
     )
     if (
@@ -608,7 +826,8 @@ def validate_first_context_translation_encoding(
             else "first-context-translation-encoding-incomplete"
         )
         or value["human_translation_approval_confirmed"] is not True
-        or value["original_non_text_glyph_tokens_preserved"] is not complete
+        or value["reviewed_non_text_glyph_visuals_preserved"] is not complete
+        or value["original_non_text_glyph_coordinates_reused"] is not False
         or value["custom_test_font_pages_complete"] is not complete
         or value["huffman_roundtrip_complete"] is not complete
         or value["text_encoding_confirmed"] is not complete
@@ -701,70 +920,25 @@ def main() -> int:
     patch = paths["patch"].read_bytes()
     bdf = paths["bdf"].read_bytes()
     analyze_patch(patch)
+    sparse = extract_bps_target_literals(patch)
     reference_glyphs = parse_bdf_glyphs(bdf)
-    coordinates, all_assignments = build_character_assignments(
+    _, character_assignments = build_character_assignments(
         target_rows=target_rows,
         hangul_assignments=hangul_assignments,
         reference_glyphs=reference_glyphs,
     )
+    character_tiles = {
+        f"text:{assignment['character']}": tile_bytes_from_ink_mask(
+            tuple(assignment["ink_mask"])
+        )
+        for assignment in character_assignments
+    }
     preserved_by_row = locate_preserved_occurrences(
         context_rows=context_rows,
         projection_pairs=projection_pairs,
         preservation_records=preservation_records,
         target_rows=target_rows,
     )
-    symbol_counts, symbol_rows = build_symbol_rows(
-        target_rows=target_rows,
-        character_coordinates=coordinates,
-        preserved_by_row=preserved_by_row,
-    )
-    custom_pages = {assignment["page"] for assignment in all_assignments}
-    preserved_pages = {
-        occurrence["page"]
-        for row in preserved_by_row
-        for occurrence in row
-    }
-    if custom_pages & preserved_pages:
-        raise ValueError("first context custom font page conflicts with preservation")
-
-    sparse = extract_bps_target_literals(patch)
-    writes = []
-    for page in sorted(custom_pages):
-        page_assignments = sorted(
-            (
-                assignment
-                for assignment in all_assignments
-                if assignment["page"] == page
-            ),
-            key=lambda assignment: assignment["symbol"],
-        )
-        start = font_tile_offset(page, FONT_GLYPH_FIRST_SYMBOL)
-        after = b"".join(
-            tile_bytes_from_ink_mask(tuple(assignment["ink_mask"]))
-            for assignment in page_assignments
-        )
-        end = start + len(after)
-        if any(value == 0 for value in sparse.known[start:end]):
-            raise ValueError(
-                "first context encoding font page has source-dependent bytes"
-            )
-        writes.append(
-            ExpectedWrite(
-                writer=f"first-context-font-page-{page}",
-                purpose="first-context-technical-test-only",
-                offset=start,
-                before=sparse.data[start:end],
-                after=after,
-                allowed_start=start,
-                allowed_end_exclusive=end,
-            )
-        )
-    _, font_audit = apply_expected_writes(sparse.data, writes)
-    font_overlay = expected_writes_to_ips(writes)
-    overlay_path = root / LOCAL_COMBINED_FONT_OVERLAY_PATH
-    overlay_path.parent.mkdir(parents=True, exist_ok=True)
-    overlay_path.write_bytes(font_overlay)
-
     trees = load_trees_at(
         sparse.data,
         sparse.known,
@@ -772,6 +946,80 @@ def main() -> int:
         KO_TREE_BANK_BASE,
         KO_VECTOR_ENTRIES,
     )
+    (
+        symbol_counts,
+        symbol_rows,
+        assignments_by_row,
+    ) = build_single_page_symbol_rows(
+        trees=trees,
+        target_rows=target_rows,
+        preserved_by_row=preserved_by_row,
+    )
+    custom_pages = set(ROW_FONT_PAGES)
+    writes = []
+    all_assignments = []
+    for row_index, (page, assignments) in enumerate(
+        zip(ROW_FONT_PAGES, assignments_by_row),
+        start=1,
+    ):
+        for visual, symbol in assignments.items():
+            if visual.startswith("text:"):
+                after = character_tiles.get(visual)
+                if after is None:
+                    raise ValueError(
+                        "first context target character tile is missing"
+                    )
+                visual_kind = "approved-target-character"
+            else:
+                _, source_page_hex, source_symbol_hex = visual.split(":")
+                source_page = int(source_page_hex, 16)
+                source_symbol = int(source_symbol_hex, 16)
+                source_start = font_tile_offset(source_page, source_symbol)
+                source_end = source_start + FONT_TILE_BYTES
+                if any(
+                    value == 0
+                    for value in sparse.known[source_start:source_end]
+                ):
+                    raise ValueError(
+                        "first context preserved visual depends on source bytes"
+                    )
+                after = sparse.data[source_start:source_end]
+                visual_kind = "reviewed-non-text-glyph-visual"
+            start = font_tile_offset(page, symbol)
+            end = start + len(after)
+            if any(value == 0 for value in sparse.known[start:end]):
+                raise ValueError(
+                    "first context encoding font page has source-dependent bytes"
+                )
+            writes.append(
+                ExpectedWrite(
+                    writer=(
+                        f"first-context-row-{row_index}-font-{symbol:02x}"
+                    ),
+                    purpose="first-context-technical-test-only",
+                    offset=start,
+                    before=sparse.data[start:end],
+                    after=after,
+                    allowed_start=start,
+                    allowed_end_exclusive=end,
+                )
+            )
+            all_assignments.append(
+                {
+                    "row_index": row_index,
+                    "visual": visual,
+                    "visual_kind": visual_kind,
+                    "page": page,
+                    "symbol": symbol,
+                    "tile_sha256": sha256_bytes(after),
+                }
+            )
+    _, font_audit = apply_expected_writes(sparse.data, writes)
+    font_overlay = expected_writes_to_ips(writes)
+    overlay_path = root / LOCAL_COMBINED_FONT_OVERLAY_PATH
+    overlay_path.parent.mkdir(parents=True, exist_ok=True)
+    overlay_path.write_bytes(font_overlay)
+
     roundtrips = 0
     failures = 0
     encoded_bits = 0
@@ -815,7 +1063,7 @@ def main() -> int:
         "target_character_count": sum(
             len(str(row["target_text"])) for row in symbol_rows
         ),
-        "unique_target_character_count": len(coordinates),
+        "unique_target_character_count": len(character_tiles),
         "custom_font_page_count": len(custom_pages),
         "custom_font_glyph_count": len(all_assignments),
         **symbol_counts,

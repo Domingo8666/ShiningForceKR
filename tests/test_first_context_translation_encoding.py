@@ -10,9 +10,12 @@ if str(ROOT) not in sys.path:
 from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     build_character_assignments,
     build_first_context_translation_encoding,
+    build_row_visuals,
     build_symbol_rows,
+    solve_row_visual_symbols,
     validate_first_context_translation_encoding,
 )
+from tools.sfgfc_huffman import HuffmanNode, ParsedTree  # noqa: E402
 
 
 SHA_A = "a" * 64
@@ -20,6 +23,21 @@ SHA_B = "b" * 64
 SHA_C = "c" * 64
 SHA_D = "d" * 64
 STAMP = "2026-07-31T10:00:00Z"
+
+
+def tree(previous: int, left: int, right: int) -> ParsedTree:
+    return ParsedTree(
+        previous_symbol=previous,
+        pointer=0,
+        structure_offset=0,
+        structure_bits=3,
+        leaf_count=2,
+        symbol_offset=0,
+        root=HuffmanNode(
+            left=HuffmanNode(symbol=left),
+            right=HuffmanNode(symbol=right),
+        ),
+    )
 
 
 class FirstContextTranslationEncodingTests(unittest.TestCase):
@@ -68,12 +86,33 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(counts["planned_terminator_count"], 4)
         self.assertTrue(all(row["symbols"][-1] == 0xC9 for row in rows))
 
+    def test_assigns_one_encodable_font_page_to_a_visual_row(self) -> None:
+        visuals = build_row_visuals(
+            target_rows=[{"target_text": "가나"}],
+            preserved_by_row=[[]],
+        )
+        self.assertEqual(visuals, [["text:가", "text:나"]])
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x5F),
+            0x11: tree(0x11, 0x02, 0x11),
+            0x02: tree(0x02, 0x03, 0x04),
+            0x03: tree(0x03, 0x04, 0xC9),
+            0x04: tree(0x04, 0xC9, 0x03),
+        }
+        assignments = solve_row_visual_symbols(
+            trees=trees,
+            page=240,
+            visuals=visuals[0],
+        )
+        self.assertEqual(assignments, {"text:가": 0x03, "text:나": 0x04})
+
     def test_builds_safe_ready_receipt_without_local_payload(self) -> None:
         counts = {
             "context_entry_count": 4,
             "target_character_count": 20,
             "unique_target_character_count": 10,
-            "custom_font_page_count": 2,
+            "custom_font_page_count": 4,
             "custom_font_glyph_count": 10,
             "preserved_non_text_glyph_occurrence_count": 5,
             "planned_visible_symbol_count": 25,
@@ -109,6 +148,8 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             safe["status"], "first-context-translation-encoding-ready"
         )
         self.assertTrue(safe["text_encoding_confirmed"])
+        self.assertTrue(safe["reviewed_non_text_glyph_visuals_preserved"])
+        self.assertFalse(safe["original_non_text_glyph_coordinates_reused"])
         self.assertFalse(safe["translation_build_eligible"])
         unsafe = deepcopy(safe)
         unsafe["encoded_bytes"] = "private"
