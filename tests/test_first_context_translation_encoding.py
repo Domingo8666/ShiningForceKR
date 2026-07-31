@@ -105,7 +105,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             page=240,
             visuals=visuals[0],
         )
-        self.assertEqual(assignments, {"text:가": 0x03, "text:나": 0x04})
+        self.assertEqual(assignments, [0x03, 0x04])
 
     def test_builds_safe_ready_receipt_without_local_payload(self) -> None:
         counts = {

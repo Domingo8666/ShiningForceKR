@@ -458,12 +458,11 @@ def solve_row_visual_symbols(
     trees: dict[int, object],
     page: int,
     visuals: list[str],
-) -> dict[str, int]:
+) -> list[int]:
     if not visuals:
         raise ValueError("first context visual row is empty")
-    unique_visuals = list(dict.fromkeys(visuals))
     capacity = FONT_GLYPH_LAST_SYMBOL - FONT_GLYPH_FIRST_SYMBOL + 1
-    if len(unique_visuals) > capacity:
+    if len(visuals) > capacity:
         raise ValueError("first context visual row exceeds one font page")
     codes = {
         previous: set(_symbol_codes(tree.root))
@@ -476,95 +475,39 @@ def solve_row_visual_symbols(
             raise ValueError("first context row font page is not encodable")
         previous = symbol
     start_previous = previous
-
-    outgoing: dict[str, set[str]] = {
-        visual: set() for visual in unique_visuals
-    }
-    incoming: dict[str, set[str]] = {
-        visual: set() for visual in unique_visuals
-    }
-    self_edges = set()
-    for left, right in zip(visuals, visuals[1:]):
-        if left == right:
-            self_edges.add(left)
-        else:
-            outgoing[left].add(right)
-            incoming[right].add(left)
-    starts = {visuals[0]}
-    ends = {visuals[-1]}
     glyph_symbols = set(
         range(FONT_GLYPH_FIRST_SYMBOL, FONT_GLYPH_LAST_SYMBOL + 1)
     )
-    domains: dict[str, set[int]] = {}
-    for visual in unique_visuals:
-        domain = set(glyph_symbols)
-        if visual in starts:
-            domain &= codes.get(start_previous, set())
-        if visual in ends:
-            domain = {
-                symbol
-                for symbol in domain
-                if CANDIDATE_END_SYMBOL in codes.get(symbol, set())
-            }
-        if visual in self_edges:
-            domain = {
-                symbol
-                for symbol in domain
-                if symbol in codes.get(symbol, set())
-            }
-        if not domain:
-            raise ValueError("first context visual has no Huffman symbol domain")
-        domains[visual] = domain
-
-    assignments: dict[str, int] = {}
+    assignments: list[int] = []
     used: set[int] = set()
 
-    def candidates(visual: str) -> list[int]:
-        possible = domains[visual] - used
-        for source in incoming[visual]:
-            if source in assignments:
-                possible &= codes.get(assignments[source], set())
-        for target in outgoing[visual]:
-            if target in assignments:
-                possible = {
-                    symbol
-                    for symbol in possible
-                    if assignments[target] in codes.get(symbol, set())
-                }
-        return sorted(possible)
-
-    def forward_possible() -> bool:
-        for visual in unique_visuals:
-            if visual in assignments:
-                continue
-            if not candidates(visual):
-                return False
-        return True
-
-    def search() -> bool:
-        if len(assignments) == len(unique_visuals):
-            return True
-        remaining = [
-            visual for visual in unique_visuals if visual not in assignments
-        ]
-        remaining.sort(
-            key=lambda visual: (
-                len(candidates(visual)),
-                -(len(incoming[visual]) + len(outgoing[visual])),
-                unique_visuals.index(visual),
-            )
+    def search(previous_symbol: int) -> bool:
+        if len(assignments) == len(visuals):
+            return CANDIDATE_END_SYMBOL in codes.get(previous_symbol, set())
+        candidates = sorted(
+            (codes.get(previous_symbol, set()) & glyph_symbols) - used,
+            key=lambda symbol: (
+                CANDIDATE_END_SYMBOL not in codes.get(symbol, set()),
+                -len(codes.get(symbol, set()) & glyph_symbols),
+                symbol,
+            ),
         )
-        visual = remaining[0]
-        for symbol in candidates(visual):
-            assignments[visual] = symbol
+        if len(assignments) == len(visuals) - 1:
+            candidates = [
+                symbol
+                for symbol in candidates
+                if CANDIDATE_END_SYMBOL in codes.get(symbol, set())
+            ]
+        for symbol in candidates:
+            assignments.append(symbol)
             used.add(symbol)
-            if forward_possible() and search():
+            if search(symbol):
                 return True
             used.remove(symbol)
-            del assignments[visual]
+            assignments.pop()
         return False
 
-    if not search():
+    if not search(start_previous):
         raise ValueError("first context visual row has no Huffman assignment")
     return assignments
 
@@ -578,7 +521,7 @@ def build_single_page_symbol_rows(
 ) -> tuple[
     dict[str, int],
     list[dict[str, object]],
-    list[dict[str, int]],
+    list[list[dict[str, object]]],
 ]:
     visual_rows = build_row_visuals(
         target_rows=target_rows,
@@ -598,7 +541,7 @@ def build_single_page_symbol_rows(
             visuals=visuals,
         )
         symbols = page_select_symbols(page)
-        symbols.extend(assignments[visual] for visual in visuals)
+        symbols.extend(assignments)
         symbols.append(CANDIDATE_END_SYMBOL)
         rows.append(
             {
@@ -614,9 +557,10 @@ def build_single_page_symbol_rows(
             }
         )
         assignments_by_row.append(
-            {
-                visual: symbol for visual, symbol in assignments.items()
-            }
+            [
+                {"visual": visual, "symbol": symbol}
+                for visual, symbol in zip(visuals, assignments)
+            ]
         )
     visible_count = sum(len(visuals) for visuals in visual_rows)
     preserved_count = sum(
@@ -962,7 +906,11 @@ def main() -> int:
         zip(ROW_FONT_PAGES, assignments_by_row),
         start=1,
     ):
-        for visual, symbol in assignments.items():
+        for assignment in assignments:
+            visual = assignment["visual"]
+            symbol = assignment["symbol"]
+            assert isinstance(visual, str)
+            assert isinstance(symbol, int)
             if visual.startswith("text:"):
                 after = character_tiles.get(visual)
                 if after is None:
