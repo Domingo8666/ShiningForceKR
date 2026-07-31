@@ -679,6 +679,41 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    runtime_context_glyph_candidates_output="$(
+      python tools/v5_1_runtime_context_glyph_candidates.py --if-ready 2>&1
+    )"
+    runtime_context_glyph_candidates_status=$?
+    printf '%s\n' "$runtime_context_glyph_candidates_output"
+    if [ "$runtime_context_glyph_candidates_status" -ne 0 ]; then
+      stage_status="$runtime_context_glyph_candidates_status"
+      diagnostic_trigger=probe
+      runtime_context_glyph_candidates_failure_stage=runtime-context-glyph-candidates
+      case "$runtime_context_glyph_candidates_output" in
+        *"runtime glyph candidate input identity"*|\
+        *"runtime glyph candidate identity"*)
+          runtime_context_glyph_candidates_failure_stage=context-glyph-candidates-identity
+          ;;
+        *"runtime glyph candidate demand"*|\
+        *"runtime glyph candidate fuzzy"*|\
+        *"runtime glyph candidate coordinate"*)
+          runtime_context_glyph_candidates_failure_stage=context-glyph-candidates-mapping
+          ;;
+        *"runtime glyph candidate local inputs"*|\
+        *"runtime glyph candidate input is missing"*)
+          runtime_context_glyph_candidates_failure_stage=context-glyph-candidates-input
+          ;;
+        *"runtime glyph candidate fields do not match"*|\
+        *"runtime glyph candidate counts do not match"*|\
+        *"runtime glyph candidate result is inconsistent"*|\
+        *"runtime glyph candidate aggregates disagree"*)
+          runtime_context_glyph_candidates_failure_stage=context-glyph-candidates-validation
+          ;;
+      esac
+      record_stage_failure "$runtime_context_glyph_candidates_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then
