@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Record and validate the first human-approved translation batch.
 
-The four target strings stay in an ignored phone-local JSON file.  The
+The target strings stay in an ignored phone-local JSON file.  The
 publishable receipt contains only fixed aggregate counts and hashes.  This
 stage records an explicit human decision; it does not claim that a
 translator-declared rendering is an established published precedent.
@@ -267,7 +267,7 @@ def build_first_context_translation_approval(
         "captured_utc": captured_utc,
         "approval": approval,
         "human_approval_recorded": ready,
-        "human_approval_scope": "first-context-four-entry-batch",
+        "human_approval_scope": "first-context-entry-batch",
         "approval_authority": "human-user-explicit",
         "hancharacter_contract_mode": "translator_declared",
         "hancharacter_claim_scope": (
@@ -339,7 +339,7 @@ def validate_first_context_translation_approval(
             else "first-context-translation-approval-incomplete"
         )
         or value["human_approval_recorded"] is not ready
-        or value["human_approval_scope"] != "first-context-four-entry-batch"
+        or value["human_approval_scope"] != "first-context-entry-batch"
         or value["approval_authority"] != "human-user-explicit"
         or value["hancharacter_contract_mode"] != "translator_declared"
         or value["hancharacter_claim_scope"]

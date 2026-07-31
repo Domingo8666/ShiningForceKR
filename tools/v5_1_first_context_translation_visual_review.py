@@ -17,6 +17,7 @@ PUBLISH_RELATIVE_PATH = Path(
     "v5_1_latest_first_context_translation_visual_review.json"
 )
 COUNT_KEYS = {
+    "expected_screen_count",
     "reviewed_screen_count",
     "missing_dialogue_screen_count",
     "corrupted_text_screen_count",
@@ -64,13 +65,17 @@ def build_first_context_translation_visual_review(
     review: dict[str, int],
     captured_utc: str,
 ) -> dict[str, object]:
+    expected = review["expected_screen_count"]
     reviewed = review["reviewed_screen_count"]
     failures = sum(
         review[key]
-        for key in COUNT_KEYS
-        if key != "reviewed_screen_count"
+        for key in (
+            "missing_dialogue_screen_count",
+            "corrupted_text_screen_count",
+            "wrong_context_screen_count",
+        )
     )
-    complete = reviewed >= 4
+    complete = expected >= 4 and reviewed == expected
     passed = complete and failures == 0
     value: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
@@ -130,13 +135,17 @@ def validate_first_context_translation_visual_review(
         )
     ):
         raise ValueError("first context visual review counts do not match")
+    expected = review["expected_screen_count"]
     reviewed = review["reviewed_screen_count"]
     failures = sum(
         review[key]
-        for key in COUNT_KEYS
-        if key != "reviewed_screen_count"
+        for key in (
+            "missing_dialogue_screen_count",
+            "corrupted_text_screen_count",
+            "wrong_context_screen_count",
+        )
     )
-    complete = reviewed >= 4
+    complete = expected >= 4 and reviewed == expected
     passed = complete and failures == 0
     expected_status = (
         "first-context-translation-runtime-visual-pass"
@@ -175,4 +184,3 @@ def write_first_context_translation_visual_review(
         encoding="utf-8",
     )
     return path
-

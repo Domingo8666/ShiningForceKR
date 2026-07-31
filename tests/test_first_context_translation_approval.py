@@ -26,8 +26,8 @@ STAMP = "2026-07-31T08:00:00Z"
 class FirstContextTranslationApprovalTests(unittest.TestCase):
     def test_builds_local_only_human_approval_and_safe_counts(self) -> None:
         targets = normalize_approved_targets(
-            ["대상 하나", "대상 둘", "대상 셋", "대상 넷"],
-            expected_count=4,
+            ["대상 하나", "대상 둘", "대상 셋", "대상 넷", "대상 다섯"],
+            expected_count=5,
         )
         local = build_local_first_context_translation_approval(
             target_sha256=SHA_A,
@@ -35,8 +35,8 @@ class FirstContextTranslationApprovalTests(unittest.TestCase):
             targets=targets,
             captured_utc=STAMP,
         )
-        counts = approval_counts(local, context_entry_count=4)
-        self.assertEqual(counts["approved_entry_count"], 4)
+        counts = approval_counts(local, context_entry_count=5)
+        self.assertEqual(counts["approved_entry_count"], 5)
         self.assertGreater(counts["unique_hangul_syllable_count"], 0)
         safe = build_first_context_translation_approval(
             target_sha256=SHA_A,
@@ -49,6 +49,9 @@ class FirstContextTranslationApprovalTests(unittest.TestCase):
             safe["status"], "first-context-translation-human-approved"
         )
         self.assertTrue(safe["human_approval_recorded"])
+        self.assertEqual(
+            safe["human_approval_scope"], "first-context-entry-batch"
+        )
         self.assertFalse(safe["translation_build_eligible"])
         self.assertNotIn("rows", safe)
         self.assertNotIn("target_text", safe)

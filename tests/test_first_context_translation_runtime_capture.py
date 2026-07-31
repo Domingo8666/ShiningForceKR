@@ -28,13 +28,19 @@ class FirstContextTranslationRuntimeCaptureTests(unittest.TestCase):
             "runtime_initial_context_distinct_count": 1,
         }
 
-    def _build(self, counts: dict[str, int]) -> dict[str, object]:
+    def _build(
+        self,
+        counts: dict[str, int],
+        *,
+        expected_entry_count: int = 4,
+    ) -> dict[str, object]:
         return build_first_context_translation_runtime_capture(
             baseline_target_sha256="a" * 64,
             test_target_sha256="b" * 64,
             first_context_translation_test_build_sha256="c" * 64,
             source_runtime_sequence_sha256="d" * 64,
             local_capture_sha256="e" * 64,
+            expected_entry_count=expected_entry_count,
             runtime_sequence=counts,
             captured_utc="2026-07-31T10:00:00Z",
         )
@@ -75,12 +81,20 @@ class FirstContextTranslationRuntimeCaptureTests(unittest.TestCase):
                 "runtime_initial_context_observation_count": 5,
             }
         )
-        value = self._build(counts)
+        value = self._build(counts, expected_entry_count=5)
         self.assertEqual(
             value["status"],
             "first-context-translation-runtime-capture-ready",
         )
         self.assertTrue(value["target_entry_sequence_confirmed"])
+
+    def test_rejects_partial_capture_for_five_approved_entries(self) -> None:
+        value = self._build(self._counts(), expected_entry_count=5)
+        self.assertEqual(
+            value["status"],
+            "first-context-translation-runtime-capture-incomplete",
+        )
+        self.assertFalse(value["target_entry_sequence_confirmed"])
 
     def test_rejects_unexpected_private_screen_data(self) -> None:
         value = self._build(self._counts())

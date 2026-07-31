@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cold-boot and capture the four translated first-context dialogue screens."""
+"""Cold-boot and capture every approved first-context dialogue screen."""
 
 from __future__ import annotations
 
@@ -15,6 +15,10 @@ try:
         PUBLISH_RELATIVE_PATH as TEST_BUILD_PATH,
         validate_first_context_translation_test_build,
     )
+    from .v5_1_first_context_translation_approval import (
+        LOCAL_REPORT_PATH as LOCAL_APPROVAL_PATH,
+        validate_local_first_context_translation_approval,
+    )
     from .v5_1_source_target_runtime_sequence import (
         COUNT_KEYS,
         PUBLISH_RELATIVE_PATH as SOURCE_SEQUENCE_PATH,
@@ -27,6 +31,10 @@ except ImportError:  # pragma: no cover - direct script execution
     from v5_1_first_context_translation_test_build import (
         PUBLISH_RELATIVE_PATH as TEST_BUILD_PATH,
         validate_first_context_translation_test_build,
+    )
+    from v5_1_first_context_translation_approval import (
+        LOCAL_REPORT_PATH as LOCAL_APPROVAL_PATH,
+        validate_local_first_context_translation_approval,
     )
     from v5_1_source_target_runtime_sequence import (
         COUNT_KEYS,
@@ -57,12 +65,6 @@ LOCAL_EVIDENCE_DIR = Path(
 LOCAL_REVIEW_PATH = Path(
     "reports/HUMAN_REVIEW_FIRST_CONTEXT_TRANSLATION.html"
 )
-EXPECTED_TRANSLATIONS = (
-    "두고 봐라, 미샤엘라!",
-    "호호호!",
-    "그래, 아직도 떠날 생각이 없느냐?",
-    "스파크 레벨 3을 써 주마!",
-)
 SAFE_FIELDS = {
     "artifact_kind",
     "schema_version",
@@ -73,6 +75,7 @@ SAFE_FIELDS = {
     "source_runtime_sequence_sha256",
     "local_capture_sha256",
     "captured_utc",
+    "expected_entry_count",
     "runtime_sequence",
     "cold_boot",
     "test_media_identity_confirmed",
@@ -110,19 +113,25 @@ def build_first_context_translation_runtime_capture(
     first_context_translation_test_build_sha256: str,
     source_runtime_sequence_sha256: str,
     local_capture_sha256: str,
+    expected_entry_count: int,
     runtime_sequence: dict[str, int],
     captured_utc: str,
 ) -> dict[str, object]:
     sequence_confirmed = (
-        runtime_sequence["captured_entry_count"] >= 4
-        and runtime_sequence["post_anchor_entry_count"] >= 3
-        and runtime_sequence["same_selector_post_anchor_entry_count"] >= 3
+        expected_entry_count >= 4
+        and runtime_sequence["captured_entry_count"] == expected_entry_count
+        and runtime_sequence["post_anchor_entry_count"]
+        == expected_entry_count - 1
+        and runtime_sequence["same_selector_post_anchor_entry_count"]
+        == expected_entry_count - 1
         and runtime_sequence["different_selector_post_anchor_entry_count"] == 0
-        and runtime_sequence["consecutive_same_selector_step_count"] >= 3
+        and runtime_sequence["consecutive_same_selector_step_count"]
+        == expected_entry_count - 1
         and runtime_sequence["nonconsecutive_same_selector_step_count"] == 0
-        and runtime_sequence["distinct_screen_hash_count"] >= 4
+        and runtime_sequence["distinct_screen_hash_count"]
+        >= expected_entry_count
         and runtime_sequence["runtime_initial_context_observation_count"]
-        == runtime_sequence["captured_entry_count"]
+        == expected_entry_count
     )
     value: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
@@ -139,6 +148,7 @@ def build_first_context_translation_runtime_capture(
         "source_runtime_sequence_sha256": source_runtime_sequence_sha256,
         "local_capture_sha256": local_capture_sha256,
         "captured_utc": captured_utc,
+        "expected_entry_count": expected_entry_count,
         "runtime_sequence": runtime_sequence,
         "cold_boot": True,
         "test_media_identity_confirmed": True,
@@ -184,6 +194,9 @@ def validate_first_context_translation_runtime_capture(
         )
         or value["baseline_target_sha256"] == value["test_target_sha256"]
         or not _is_utc_timestamp(value["captured_utc"])
+        or not isinstance(value["expected_entry_count"], int)
+        or isinstance(value["expected_entry_count"], bool)
+        or not 4 <= value["expected_entry_count"] <= 100
     ):
         raise ValueError(
             "first context translation runtime capture identity is invalid"
@@ -202,16 +215,19 @@ def validate_first_context_translation_runtime_capture(
         raise ValueError(
             "first context translation runtime capture counts do not match"
         )
+    expected_entry_count = value["expected_entry_count"]
     sequence_confirmed = (
-        counts["captured_entry_count"] >= 4
-        and counts["post_anchor_entry_count"] >= 3
-        and counts["same_selector_post_anchor_entry_count"] >= 3
+        counts["captured_entry_count"] == expected_entry_count
+        and counts["post_anchor_entry_count"] == expected_entry_count - 1
+        and counts["same_selector_post_anchor_entry_count"]
+        == expected_entry_count - 1
         and counts["different_selector_post_anchor_entry_count"] == 0
-        and counts["consecutive_same_selector_step_count"] >= 3
+        and counts["consecutive_same_selector_step_count"]
+        == expected_entry_count - 1
         and counts["nonconsecutive_same_selector_step_count"] == 0
-        and counts["distinct_screen_hash_count"] >= 4
+        and counts["distinct_screen_hash_count"] >= expected_entry_count
         and counts["runtime_initial_context_observation_count"]
-        == counts["captured_entry_count"]
+        == expected_entry_count
     )
     if (
         value["status"]
@@ -243,18 +259,24 @@ def validate_first_context_translation_runtime_capture(
 def _write_review(
     *,
     root: Path,
+    translations: list[str],
     screenshots: list[dict[str, object]],
 ) -> None:
+    if len(translations) != len(screenshots) or len(translations) < 4:
+        raise ValueError("first context review screen count disagrees")
+    if any(not translation for translation in translations):
+        raise ValueError("first context review translation is empty")
+    total = len(translations)
     cards = []
     for index, (translation, screenshot) in enumerate(
-        zip(EXPECTED_TRANSLATIONS, screenshots),
+        zip(translations, screenshots),
         start=1,
     ):
         path = Path(str(screenshot["file"])).resolve()
         relative = path.relative_to(root.resolve()).as_posix()
         cards.append(
             "<article><h2>대사 "
-            f"{index}/4</h2><p class=\"expected\">"
+            f"{index}/{total}</h2><p class=\"expected\">"
             f"{html.escape(translation)}</p>"
             f"<img src=\"../{html.escape(relative)}\" "
             f"alt=\"한글 대사 {index} 실행 화면\"></article>"
@@ -271,7 +293,7 @@ margin:0 0 18px;padding:20px}
 h1{font-size:1.7rem}.expected{font-size:1.35rem;color:#7de7ff}
 img{width:100%;height:auto;image-rendering:pixelated;border-radius:8px}
 </style></head><body><main>
-<header><h1>첫 한글 대사 4줄 실행 검토</h1>
+<header><h1>첫 한글 대사 실행 검토</h1>
 <p>실제 테스트 ROM을 콜드부팅해 자동 캡처했습니다.</p>
 <p>글자 깨짐, 잘림, 겹침, 잘못된 줄바꿈이 없는지 확인합니다.</p>
 </header>
@@ -292,6 +314,7 @@ def main() -> int:
         "rom": root / TEST_ROM_PATH,
         "build": root / TEST_BUILD_PATH,
         "source_sequence": root / SOURCE_SEQUENCE_PATH,
+        "local_approval": root / LOCAL_APPROVAL_PATH,
     }
     if not all(path.is_file() for path in paths.values()):
         if args.if_ready:
@@ -306,12 +329,25 @@ def main() -> int:
     source_sequence = json.loads(
         paths["source_sequence"].read_text(encoding="utf-8")
     )
-    if not isinstance(build, dict) or not isinstance(source_sequence, dict):
+    local_approval = json.loads(
+        paths["local_approval"].read_text(encoding="utf-8")
+    )
+    if (
+        not isinstance(build, dict)
+        or not isinstance(source_sequence, dict)
+        or not isinstance(local_approval, dict)
+    ):
         raise ValueError(
             "first context translation runtime capture inputs are invalid"
         )
     validate_first_context_translation_test_build(build)
     validate_source_target_runtime_sequence(source_sequence)
+    validate_local_first_context_translation_approval(local_approval)
+    approval_rows = local_approval.get("rows")
+    expected_entry_count = int(build["verification"]["context_entry_count"])
+    if not isinstance(approval_rows, list):
+        raise ValueError("first context runtime approval rows are missing")
+    translations = [str(row.get("target_text", "")) for row in approval_rows]
     if (
         build["status"] != "first-context-translation-static-build-ready"
         or source_sequence["status"]
@@ -319,6 +355,8 @@ def main() -> int:
         or sha256_file(paths["rom"]) != build["test_target_sha256"]
         or source_sequence["baseline_target_sha256"]
         != build["baseline_target_sha256"]
+        or local_approval["target_sha256"] != build["baseline_target_sha256"]
+        or len(translations) != expected_entry_count
     ):
         raise ValueError(
             "first context translation runtime capture identity disagrees"
@@ -363,13 +401,18 @@ def main() -> int:
                             paths["source_sequence"]
                         ),
                         local_capture_sha256=sha256_file(local_path),
+                        expected_entry_count=expected_entry_count,
                         runtime_sequence=existing_counts,
                         captured_utc=str(existing["captured_utc"]),
                     )
                 )
                 screens = existing_capture.get("screens")
                 if isinstance(screens, list):
-                    _write_review(root=root, screenshots=screens)
+                    _write_review(
+                        root=root,
+                        translations=translations,
+                        screenshots=screens,
+                    )
                 safe_path.write_text(
                     json.dumps(
                         refreshed,
@@ -419,7 +462,7 @@ def main() -> int:
         "observations": observations,
         "capture": local_capture,
         "review_path": str(root / LOCAL_REVIEW_PATH),
-        "expected_translations": list(EXPECTED_TRANSLATIONS),
+        "expected_translations": translations,
         "publication_policy": (
             "never-publish-screens-selectors-ordinals-registers-hit-order-"
             "or-source-and-target-text"
@@ -430,7 +473,11 @@ def main() -> int:
         raise RuntimeError(
             "first context translation runtime screenshots are missing"
         )
-    _write_review(root=root, screenshots=screens)
+    _write_review(
+        root=root,
+        translations=translations,
+        screenshots=screens,
+    )
     local_path.parent.mkdir(parents=True, exist_ok=True)
     local_path.write_text(
         json.dumps(local, ensure_ascii=False, indent=2) + "\n",
@@ -446,6 +493,7 @@ def main() -> int:
             paths["source_sequence"]
         ),
         local_capture_sha256=sha256_file(local_path),
+        expected_entry_count=expected_entry_count,
         runtime_sequence=counts,
         captured_utc=captured_utc,
     )

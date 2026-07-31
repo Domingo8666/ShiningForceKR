@@ -373,8 +373,43 @@ record_processed_head() {
   mv "$temp" "$last_head_file"
 }
 
+runtime_failure_is_retryable() {
+  diagnostic="$root/analysis/device/v5_1_latest_runtime_diagnostic.json"
+  [ -f "$diagnostic" ] || return 1
+  python - "$diagnostic" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+retryable = {
+    "subprocess-timeout",
+    "process-io",
+    "mcp-timeout",
+    "frame-step-timeout",
+    "instruction-step-timeout",
+    "mcp-error",
+    "tool-error",
+}
+try:
+    value = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    failure = value["runtime_failure"]
+    kind = failure["failure_kind"]
+except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+    raise SystemExit(1)
+raise SystemExit(0 if kind in retryable else 1)
+PY
+}
+
+runtime_diagnostic_sha() {
+  diagnostic="$root/analysis/device/v5_1_latest_runtime_diagnostic.json"
+  if [ -f "$diagnostic" ]; then
+    git hash-object -- "$diagnostic"
+  fi
+}
+
 run_current_head() {
   input_head="$(git rev-parse HEAD)"
+  diagnostic_before="$(runtime_diagnostic_sha)"
   log "starting S25U runtime stage for commit $input_head"
   timeout -k 30s "$runtime_timeout" \
     bash tools/run_s25u_runtime_stage.sh --source-rom "$source_rom"
@@ -389,8 +424,16 @@ run_current_head() {
     if [ "$post_head" = "$remote_head" ]; then
       if [ "$stage_status" -eq 0 ]; then
         record_processed_head "$post_head"
+      elif [ "$stage_status" -eq 124 ] || [ "$stage_status" -eq 137 ]; then
+        log "transient runtime timeout keeps commit $post_head eligible for retry"
+      elif [ -z "$(runtime_diagnostic_sha)" ] || \
+        [ "$(runtime_diagnostic_sha)" = "$diagnostic_before" ]; then
+        log "runtime stage produced no fresh diagnostic; keeping commit $post_head eligible for retry"
+      elif runtime_failure_is_retryable; then
+        log "transient runtime diagnostic keeps commit $post_head eligible for retry"
       else
-        log "runtime stage failed after publishing diagnostics; keeping commit $post_head eligible for retry"
+        record_processed_head "$post_head"
+        log "deterministic runtime diagnostic recorded; waiting for a new commit after $post_head"
       fi
     else
       log "runtime result is not synchronized with origin/main"

@@ -146,15 +146,16 @@ class S25UAutopilotTests(unittest.TestCase):
             RUNTIME_STAGE,
         )
 
-    def test_autopilot_bounds_and_retries_the_complete_runtime_stage(self) -> None:
+    def test_autopilot_retries_only_transient_runtime_failures(self) -> None:
         self.assertIn('SFKR_RUNTIME_TIMEOUT:-900', SCRIPT)
         self.assertIn('if [ "$runtime_timeout" -lt 300 ]', SCRIPT)
         self.assertIn('timeout -k 30s "$runtime_timeout"', SCRIPT)
-        self.assertIn(
-            "runtime stage failed after publishing diagnostics; "
-            "keeping commit $post_head eligible for retry",
-            SCRIPT,
-        )
+        self.assertIn("runtime_failure_is_retryable", SCRIPT)
+        self.assertIn('"mcp-timeout"', SCRIPT)
+        self.assertIn('"subprocess-timeout"', SCRIPT)
+        self.assertIn("transient runtime diagnostic", SCRIPT)
+        self.assertIn("deterministic runtime diagnostic recorded", SCRIPT)
+        self.assertIn('record_processed_head "$post_head"', SCRIPT)
         self.assertIn('if [ "$stage_status" -eq 0 ]', SCRIPT)
         self.assertNotIn(
             '"$stage_status" -eq 0 ] || [ "$post_head" != "$input_head"',

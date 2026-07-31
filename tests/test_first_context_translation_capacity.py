@@ -36,7 +36,7 @@ class FirstContextTranslationCapacityTests(unittest.TestCase):
         mask = (0x00, 0x44, 0xFC, 0x96, 0x64, 0x04, 0x40, 0x7C)
         self.assertEqual(tile_ink_mask(tile_bytes_from_ink_mask(mask)), mask)
 
-    def test_plans_one_verified_page_without_publishing_text(self) -> None:
+    def test_plans_verified_pages_without_publishing_text(self) -> None:
         source_rows = [
             _source(1, "source one!"),
             _source(2, "source two?"),
@@ -77,6 +77,7 @@ class FirstContextTranslationCapacityTests(unittest.TestCase):
             counts["missing_source_observed_non_hangul_count"], 0
         )
         self.assertEqual(len(local["assignments"]), 4)
+        self.assertEqual(local["custom_test_pages"], [242, 243])
         safe = build_first_context_translation_capacity(
             target_sha256=SHA_A,
             review_batch_sha256=SHA_B,
@@ -94,21 +95,51 @@ class FirstContextTranslationCapacityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fields do not match"):
             validate_first_context_translation_capacity(unsafe)
 
-    def test_rejects_more_than_one_page_of_hangul(self) -> None:
-        characters = [chr(0xAC00 + index) for index in range(32)]
-        with self.assertRaisesRegex(ValueError, "exceeds one test page"):
+    def test_spills_hangul_demand_to_a_second_test_page(self) -> None:
+        characters = [chr(0xAC00 + index) for index in range(35)]
+        counts, local = analyze_first_context_translation_capacity(
+            source_rows=[
+                _source(1, "x" * 40),
+                _source(2, "x" * 40),
+                _source(3, "x" * 40),
+                _source(4, "x" * 40),
+                _source(5, "x" * 40),
+            ],
+            target_rows=[
+                _target(1, "".join(characters[:7])),
+                _target(2, "".join(characters[7:14])),
+                _target(3, "".join(characters[14:21])),
+                _target(4, "".join(characters[21:28])),
+                _target(5, "".join(characters[28:])),
+            ],
+            font_catalog={"entries": []},
+            bdf_hangul={
+                ord(character): tuple([1] * 8)
+                for character in characters
+            },
+        )
+        self.assertEqual(counts["unique_hangul_syllable_count"], 35)
+        self.assertEqual(counts["custom_page_capacity"], 62)
+        self.assertEqual(
+            {assignment["page"] for assignment in local["assignments"]},
+            {242, 243},
+        )
+
+    def test_rejects_more_than_two_pages_of_hangul(self) -> None:
+        characters = [chr(0xAC00 + index) for index in range(63)]
+        with self.assertRaisesRegex(ValueError, "exceeds test pages"):
             analyze_first_context_translation_capacity(
                 source_rows=[
-                    _source(1, "x" * 40),
-                    _source(2, "x" * 40),
-                    _source(3, "x" * 40),
-                    _source(4, "x" * 40),
+                    _source(1, "x" * 70),
+                    _source(2, "x" * 70),
+                    _source(3, "x" * 70),
+                    _source(4, "x" * 70),
                 ],
                 target_rows=[
-                    _target(1, "".join(characters[:8])),
-                    _target(2, "".join(characters[8:16])),
-                    _target(3, "".join(characters[16:24])),
-                    _target(4, "".join(characters[24:])),
+                    _target(1, "".join(characters[:16])),
+                    _target(2, "".join(characters[16:32])),
+                    _target(3, "".join(characters[32:48])),
+                    _target(4, "".join(characters[48:])),
                 ],
                 font_catalog={"entries": []},
                 bdf_hangul={

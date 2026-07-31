@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Encode the approved first-context translation without writing a ROM.
 
-The stage assigns the approved visible characters to four test-only font pages,
-re-inserts every visually reviewed non-text glyph token, and proves each of the
-four resulting symbol streams roundtrips through the verified Korean Huffman
+The stage assigns each approved dialogue row to a test-only font page,
+re-inserts every visually reviewed non-text glyph token, and proves each
+resulting symbol stream roundtrips through the verified Korean Huffman
 trees.  Text, symbols, page coordinates, encoded bytes, and glyph positions
 remain in ignored phone-local files.
 """
@@ -139,7 +139,7 @@ except ImportError:  # pragma: no cover - direct script execution
 ARTIFACT_KIND = "sanitized-v5-1-first-context-translation-encoding"
 LOCAL_ARTIFACT_KIND = "local-v5-1-first-context-translation-encoding"
 SCHEMA_VERSION = 1
-ROW_FONT_PAGES = (240, 241, 242, 243)
+ROW_FONT_PAGES = (239, 240, 241, 242, 243)
 TARGET_PATH = Path("build/Final_Conflict_Korean_v5.1.gg")
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_translation_encoding.json"
@@ -966,7 +966,7 @@ def build_first_context_translation_encoding(
         and encoding["huffman_roundtrip_entry_count"]
         == encoding["context_entry_count"]
         and encoding["huffman_failure_entry_count"] == 0
-        and encoding["preserved_non_text_glyph_occurrence_count"] == 5
+        and encoding["preserved_non_text_glyph_occurrence_count"] > 0
         and encoding["custom_font_page_count"] == len(ROW_FONT_PAGES)
         and encoding["font_page_changed_byte_count"] > 0
         and encoding["runtime_initial_context_entry_count"]
@@ -1056,7 +1056,7 @@ def validate_first_context_translation_encoding(
         and counts["huffman_roundtrip_entry_count"]
         == counts["context_entry_count"]
         and counts["huffman_failure_entry_count"] == 0
-        and counts["preserved_non_text_glyph_occurrence_count"] == 5
+        and counts["preserved_non_text_glyph_occurrence_count"] > 0
         and counts["custom_font_page_count"] == len(ROW_FONT_PAGES)
         and counts["font_page_changed_byte_count"] > 0
         and counts["runtime_initial_context_entry_count"]

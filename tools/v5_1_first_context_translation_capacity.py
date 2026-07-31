@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plan the approved first-context Hangul page and screen its cell budget.
+"""Plan approved first-context Hangul pages and screen the cell budget.
 
 Approved target strings, source strings, glyph assignments, codepoints, tile
 masks, and patch coordinates stay in ignored phone-local files.  The tracked
@@ -85,7 +85,7 @@ except ImportError:  # pragma: no cover - direct script execution
 ARTIFACT_KIND = "sanitized-v5-1-first-context-translation-capacity"
 LOCAL_ARTIFACT_KIND = "local-v5-1-first-context-translation-capacity"
 SCHEMA_VERSION = 1
-CUSTOM_TEST_PAGE = 243
+CUSTOM_TEST_PAGES = (242, 243)
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_translation_capacity.json"
 )
@@ -225,11 +225,12 @@ def analyze_first_context_translation_capacity(
             if _is_hangul_syllable(character)
         )
     )
-    page_capacity = (
+    per_page_capacity = (
         FONT_GLYPH_LAST_SYMBOL - FONT_GLYPH_FIRST_SYMBOL + 1
     )
+    page_capacity = per_page_capacity * len(CUSTOM_TEST_PAGES)
     if len(unique_hangul) > page_capacity:
-        raise ValueError("first context Hangul demand exceeds one test page")
+        raise ValueError("first context Hangul demand exceeds test pages")
     missing_bdf = [
         character
         for character in unique_hangul
@@ -241,12 +242,13 @@ def analyze_first_context_translation_capacity(
     for index, character in enumerate(unique_hangul):
         mask = bdf_hangul[ord(character)]
         tile = tile_bytes_from_ink_mask(mask)
+        page_index, symbol_index = divmod(index, per_page_capacity)
         assignments.append(
             {
                 "character": character,
                 "codepoint": f"U+{ord(character):04X}",
-                "page": CUSTOM_TEST_PAGE,
-                "symbol": FONT_GLYPH_FIRST_SYMBOL + index,
+                "page": CUSTOM_TEST_PAGES[page_index],
+                "symbol": FONT_GLYPH_FIRST_SYMBOL + symbol_index,
                 "ink_mask": list(mask),
                 "tile_sha256": sha256_bytes(tile),
             }
@@ -313,7 +315,7 @@ def analyze_first_context_translation_capacity(
         "rows": rows,
         "assignments": assignments,
         "missing_source_observed_non_hangul": sorted(missing_non_hangul),
-        "custom_test_page": CUSTOM_TEST_PAGE,
+        "custom_test_pages": list(CUSTOM_TEST_PAGES),
         "publication_policy": (
             "never-publish-source-target-text-characters-codepoints-glyph-"
             "assignments-masks-symbols-pages-or-patch-coordinates"
@@ -526,26 +528,47 @@ def main() -> int:
     sparse = extract_bps_target_literals(patch)
     assignments = local_analysis["assignments"]
     assert isinstance(assignments, list)
-    first_offset = font_tile_offset(CUSTOM_TEST_PAGE, FONT_GLYPH_FIRST_SYMBOL)
-    after = b"".join(
-        tile_bytes_from_ink_mask(tuple(assignment["ink_mask"]))
-        for assignment in assignments
-    )
-    end = first_offset + len(after)
-    if any(value == 0 for value in sparse.known[first_offset:end]):
-        raise ValueError("first context font page contains source-dependent bytes")
-    write = ExpectedWrite(
-        writer="first-context-approved-font-page",
-        purpose="first-context-technical-test-only",
-        offset=first_offset,
-        before=sparse.data[first_offset:end],
-        after=after,
-        allowed_start=first_offset,
-        allowed_end_exclusive=end,
-    )
-    _, audit = apply_expected_writes(sparse.data, [write])
+    writes = []
+    for page in CUSTOM_TEST_PAGES:
+        page_assignments = [
+            assignment
+            for assignment in assignments
+            if assignment["page"] == page
+        ]
+        if not page_assignments:
+            continue
+        page_assignments.sort(key=lambda assignment: assignment["symbol"])
+        if [assignment["symbol"] for assignment in page_assignments] != list(
+            range(
+                FONT_GLYPH_FIRST_SYMBOL,
+                FONT_GLYPH_FIRST_SYMBOL + len(page_assignments),
+            )
+        ):
+            raise ValueError("first context font page assignments are not dense")
+        first_offset = font_tile_offset(page, FONT_GLYPH_FIRST_SYMBOL)
+        after = b"".join(
+            tile_bytes_from_ink_mask(tuple(assignment["ink_mask"]))
+            for assignment in page_assignments
+        )
+        end = first_offset + len(after)
+        if any(value == 0 for value in sparse.known[first_offset:end]):
+            raise ValueError(
+                "first context font page contains source-dependent bytes"
+            )
+        writes.append(
+            ExpectedWrite(
+                writer=f"first-context-approved-font-page-{page:02x}",
+                purpose="first-context-technical-test-only",
+                offset=first_offset,
+                before=sparse.data[first_offset:end],
+                after=after,
+                allowed_start=first_offset,
+                allowed_end_exclusive=end,
+            )
+        )
+    _, audit = apply_expected_writes(sparse.data, writes)
     counts["font_page_changed_byte_count"] = int(audit["changed_byte_count"])
-    overlay = expected_writes_to_ips([write])
+    overlay = expected_writes_to_ips(writes)
     overlay_path = root / LOCAL_FONT_OVERLAY_PATH
     overlay_path.parent.mkdir(parents=True, exist_ok=True)
     overlay_path.write_bytes(overlay)
