@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
 from tools.v5_1_source_target_runtime_sequence import (  # noqa: E402
     build_source_target_runtime_sequence,
     summarize_runtime_sequence,
+    validate_reusable_local_sequence,
     validate_source_target_runtime_sequence,
 )
 
@@ -113,6 +114,48 @@ class SourceTargetRuntimeSequenceTests(unittest.TestCase):
                 [_observation(2, 146, "1")],
                 advance_attempt_count=0,
             )
+
+    def test_reuses_capture_when_only_dependency_receipt_changes(
+        self,
+    ) -> None:
+        observations = [
+            _observation(2, 147, "1"),
+            _observation(2, 148, "2"),
+            _observation(2, 149, "3"),
+            _observation(2, 150, "4"),
+        ]
+        counts, status, first = summarize_runtime_sequence(
+            observations,
+            advance_attempt_count=3,
+        )
+        safe = build_source_target_runtime_sequence(
+            baseline_target_sha256="1" * 64,
+            test_target_sha256="2" * 64,
+            display_capture_sha256="3" * 64,
+            structural_corroboration_sha256="4" * 64,
+            local_sequence_sha256="5" * 64,
+            runtime_sequence=counts,
+            status=status,
+            first_post_anchor_step_consecutive=first,
+            captured_utc="2026-07-31T01:00:00Z",
+        )
+        local = {
+            "artifact_kind":
+                "local-v5-1-source-target-runtime-sequence",
+            "schema_version": 1,
+            "baseline_target_sha256": "1" * 64,
+            "test_target_sha256": "2" * 64,
+            "runtime_sequence": counts,
+            "observations": observations,
+        }
+        reused = validate_reusable_local_sequence(
+            safe=safe,
+            local=local,
+            baseline_target_sha256="1" * 64,
+            test_target_sha256="2" * 64,
+            local_sequence_sha256="5" * 64,
+        )
+        self.assertEqual(reused, (counts, status, first))
 
 
 if __name__ == "__main__":

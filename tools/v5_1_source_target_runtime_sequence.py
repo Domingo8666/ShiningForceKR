@@ -396,6 +396,47 @@ def validate_source_target_runtime_sequence(
         raise ValueError("runtime sequence policy is invalid")
 
 
+def validate_reusable_local_sequence(
+    *,
+    safe: dict[str, object],
+    local: dict[str, object],
+    baseline_target_sha256: str,
+    test_target_sha256: str,
+    local_sequence_sha256: str,
+) -> tuple[dict[str, int], str, bool]:
+    validate_source_target_runtime_sequence(safe)
+    if (
+        local.get("artifact_kind")
+        != "local-v5-1-source-target-runtime-sequence"
+        or local.get("schema_version") != SCHEMA_VERSION
+        or local.get("baseline_target_sha256") != baseline_target_sha256
+        or local.get("test_target_sha256") != test_target_sha256
+        or safe["baseline_target_sha256"] != baseline_target_sha256
+        or safe["test_target_sha256"] != test_target_sha256
+        or safe["local_sequence_sha256"] != local_sequence_sha256
+    ):
+        raise ValueError("reusable runtime sequence identity disagrees")
+    observations = local.get("observations")
+    attempts = local.get("runtime_sequence", {}).get(
+        "advance_attempt_count"
+    ) if isinstance(local.get("runtime_sequence"), dict) else None
+    if not isinstance(observations, list) or not isinstance(attempts, int):
+        raise ValueError("reusable runtime sequence payload is missing")
+    counts, status, first_consecutive = summarize_runtime_sequence(
+        observations,
+        advance_attempt_count=attempts,
+    )
+    if (
+        counts != safe["runtime_sequence"]
+        or counts != local.get("runtime_sequence")
+        or status != safe["status"]
+        or first_consecutive
+        is not safe["first_post_anchor_step_consecutive"]
+    ):
+        raise ValueError("reusable runtime sequence evidence disagrees")
+    return counts, status, first_consecutive
+
+
 def _entry_coordinates(state: dict[str, object]) -> tuple[int, int]:
     registers = state.get("registers")
     if not isinstance(registers, dict):
@@ -685,22 +726,78 @@ def main() -> int:
     if safe_path.is_file() and local_path.is_file():
         try:
             existing = _load_json_object(safe_path)
-            validate_source_target_runtime_sequence(existing)
+            existing_local = _load_json_object(local_path)
+            existing_counts, existing_status, existing_first = (
+                validate_reusable_local_sequence(
+                    safe=existing,
+                    local=existing_local,
+                    baseline_target_sha256=str(
+                        build_report["baseline_target_sha256"]
+                    ),
+                    test_target_sha256=str(
+                        build_report["test_target_sha256"]
+                    ),
+                    local_sequence_sha256=sha256_file(local_path),
+                )
+            )
+            current_display_sha256 = sha256_file(display_capture_path)
+            current_structural_sha256 = sha256_file(structural_path)
             if (
-                existing["test_target_sha256"]
-                == build_report["test_target_sha256"]
-                and existing["display_capture_sha256"]
-                == sha256_file(display_capture_path)
+                existing["display_capture_sha256"]
+                == current_display_sha256
                 and existing["structural_corroboration_sha256"]
-                == sha256_file(structural_path)
-                and existing["local_sequence_sha256"]
-                == sha256_file(local_path)
+                == current_structural_sha256
             ):
                 print(
                     "SFKR source-target runtime sequence: "
                     "reusing matching local capture"
                 )
                 return 0
+            existing_local["display_capture_sha256"] = (
+                current_display_sha256
+            )
+            existing_local["structural_corroboration_sha256"] = (
+                current_structural_sha256
+            )
+            local_path.write_text(
+                json.dumps(
+                    existing_local,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            refreshed = build_source_target_runtime_sequence(
+                baseline_target_sha256=str(
+                    build_report["baseline_target_sha256"]
+                ),
+                test_target_sha256=str(
+                    build_report["test_target_sha256"]
+                ),
+                display_capture_sha256=current_display_sha256,
+                structural_corroboration_sha256=
+                    current_structural_sha256,
+                local_sequence_sha256=sha256_file(local_path),
+                runtime_sequence=existing_counts,
+                status=existing_status,
+                first_post_anchor_step_consecutive=existing_first,
+                captured_utc=str(existing["captured_utc"]),
+            )
+            safe_path.write_text(
+                json.dumps(
+                    refreshed,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            print(
+                "SFKR source-target runtime sequence: "
+                "refreshed dependencies for matching local capture"
+            )
+            return 0
         except (OSError, ValueError, json.JSONDecodeError):
             pass
 
