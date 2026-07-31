@@ -148,7 +148,31 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 runtime_constraints=constraints,
             )
 
-        self.assertEqual(pages, (240, 241, 242, 243, 238))
+        self.assertEqual(pages, (240, 241, 242, 243, 89))
+
+    def test_replaces_an_unusable_preferred_page_for_the_first_row(self) -> None:
+        def solve(*, trees, initial_context, target_bits, page, visuals):
+            del trees, initial_context, target_bits, visuals
+            if page == 240:
+                raise ValueError("preferred page is not exact")
+            return [0x02], 0, [0x02]
+
+        with patch(
+            "tools.v5_1_first_context_translation_encoding."
+            "solve_exact_length_row_visual_symbols",
+            side_effect=solve,
+        ):
+            pages = select_row_font_pages(
+                trees={},
+                target_rows=[{"target_text": "가"}],
+                preserved_by_row=[[]],
+                runtime_constraints=[{
+                    "initial_context": 0xC9,
+                    "original_encoded_bits": 8,
+                    "original_record_length_bytes": 1,
+                }],
+            )
+        self.assertEqual(pages, (89,))
 
     def test_records_the_selected_exact_render_page(self) -> None:
         targets = [

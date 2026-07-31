@@ -141,9 +141,9 @@ except ImportError:  # pragma: no cover - direct script execution
 ARTIFACT_KIND = "sanitized-v5-1-first-context-translation-encoding"
 LOCAL_ARTIFACT_KIND = "local-v5-1-first-context-translation-encoding"
 SCHEMA_VERSION = 1
-# Preserve the four already runtime-proven row routes.  Later rows search the
-# remaining font pages because a page-select token that exists in the ROM is
-# not necessarily reachable at that row's exact Huffman bit length.
+# Preferred starting pages only.  Runtime visual review invalidated the old
+# assumption that these page routes were proven; selection now searches every
+# unused page and accepts only an exact original-bit-length route.
 PROVEN_ROW_FONT_PAGES = (240, 241, 242, 243)
 ROW_FONT_PAGES = PROVEN_ROW_FONT_PAGES + (239,)
 TARGET_PATH = Path("build/Final_Conflict_Korean_v5.1.gg")
@@ -1634,16 +1634,23 @@ def select_row_font_pages(
         visual_rows
     ):
         raise ValueError("first context runtime constraint count does not match")
-    if len(visual_rows) <= len(PROVEN_ROW_FONT_PAGES):
-        return PROVEN_ROW_FONT_PAGES[: len(visual_rows)]
-
-    pages = list(PROVEN_ROW_FONT_PAGES)
-    used_pages = set(pages)
+    pages: list[int] = []
+    used_pages: set[int] = set()
     constraints = runtime_constraints or [None] * len(visual_rows)
-    for row_index in range(len(PROVEN_ROW_FONT_PAGES), len(visual_rows)):
-        visuals = visual_rows[row_index]
-        constraint = constraints[row_index]
-        for page in range(FONT_PAGE_COUNT - 1, -1, -1):
+    for row_index, (visuals, constraint) in enumerate(
+        zip(visual_rows, constraints)
+    ):
+        preferred = (
+            ROW_FONT_PAGES[row_index]
+            if row_index < len(ROW_FONT_PAGES)
+            else FONT_PAGE_COUNT - 1 - row_index
+        )
+        candidate_pages = tuple(
+            dict.fromkeys(
+                (preferred, 89, *range(FONT_PAGE_COUNT - 1, -1, -1))
+            )
+        )
+        for page in candidate_pages:
             if page in used_pages:
                 continue
             try:
@@ -1667,10 +1674,6 @@ def select_row_font_pages(
             used_pages.add(page)
             break
         else:
-            if constraint is None:
-                raise ValueError(
-                    "first context row has no usable font page Huffman route"
-                )
             raise RowRouteError(len(visuals), 0)
     return tuple(pages)
 
