@@ -3,21 +3,21 @@
   "schema_version": 1,
   "status": "provisional-target-corpus-with-unresolved-glyphs",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "source_text_candidate_sha256": "03522b1c2091d276cd53406fbd58fbaf328f7cf6479b7065238eabb1816a54bf",
-  "source_fuzzy_glyph_sha256": "2f7ae0ef8faf62653fc51d5580547a33a9cb457d506f2c22079c491b65646cc9",
+  "source_text_candidate_sha256": "79dd034db08783013532c166d0da85e2d0cedd36571bda42855ec7fd3159ac25",
+  "source_fuzzy_glyph_sha256": "f28a9765354d6ac7c4fdc81318c221f35bc768f26097e116332c39542f576b42",
   "local_corpus_sha256": "d570b8712a8204e03931294de1be4fee7783b348000ab342cd71ea5ed52d2e7c",
-  "captured_utc": "2026-07-31T18:27:30.116114Z",
+  "captured_utc": "2026-07-31T23:41:01.772780Z",
   "group": {
     "selector": 2,
     "candidate_record_count": 120
   },
   "corpus": {
-    "unicode_character_count": 404,
-    "high_confidence_override_occurrence_count": 0,
-    "record_count": 120,
     "complete_unicode_record_count": 73,
+    "record_count": 120,
     "unresolved_glyph_occurrence_count": 65,
     "incomplete_unicode_record_count": 47,
+    "unicode_character_count": 404,
+    "high_confidence_override_occurrence_count": 0,
     "empty_text_record_count": 0,
     "control_token_count": 160
   },
