@@ -6,7 +6,7 @@
   "failure_stage": "first-context-runtime-capture-review-write",
   "failure_kind": "invalid-runtime-data",
   "mcp_method": null,
-  "captured_utc": "2026-07-31T17:56:27.403194Z",
+  "captured_utc": "2026-07-31T18:02:22.317448Z",
   "source_and_target_text_local_only": true,
   "next_checkpoint": "repair-first-context-translation-runtime-capture"
 }
