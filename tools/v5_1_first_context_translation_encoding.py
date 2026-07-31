@@ -142,10 +142,11 @@ ARTIFACT_KIND = "sanitized-v5-1-first-context-translation-encoding"
 LOCAL_ARTIFACT_KIND = "local-v5-1-first-context-translation-encoding"
 SCHEMA_VERSION = 1
 # Preferred starting pages only.  Runtime visual review invalidated the old
-# assumption that these page routes were proven; selection now searches every
-# unused page and accepts only an exact original-bit-length route.
+# assumption that these page routes were proven; selection now tests a bounded
+# representative page set and accepts only an exact original-bit-length route.
 PROVEN_ROW_FONT_PAGES = (240, 241, 242, 243)
 ROW_FONT_PAGES = PROVEN_ROW_FONT_PAGES + (239,)
+MAX_EXACT_FONT_PAGE_CANDIDATES = 8
 TARGET_PATH = Path("build/Final_Conflict_Korean_v5.1.gg")
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_translation_encoding.json"
@@ -2156,6 +2157,10 @@ def select_row_font_pages(
                 (preferred, 89, *range(FONT_PAGE_COUNT - 1, -1, -1))
             )
         )
+        if constraint is not None:
+            candidate_pages = candidate_pages[
+                :MAX_EXACT_FONT_PAGE_CANDIDATES
+            ]
         failed_pages: list[int] = []
         for page in candidate_pages:
             if page in used_pages:
