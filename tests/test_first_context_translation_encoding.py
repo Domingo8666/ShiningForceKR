@@ -19,6 +19,7 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     build_symbol_rows,
     exact_length_row_symbols,
     select_row_font_pages,
+    solve_bounded_length_row_visual_symbols,
     solve_exact_length_row_visual_symbols,
     solve_row_visual_symbols,
     validate_first_context_translation_encoding,
@@ -64,20 +65,16 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             for _ in range(5)
         ]
 
-        def solve(*, trees, page, visuals):
-            del trees
+        def solve(*, trees, initial_context, maximum_bits, page, visuals):
+            del trees, initial_context, maximum_bits
             if page == 239:
                 raise ValueError("unusable route")
-            return [0x02] * len(visuals)
+            return [0x02], 0, [0x02] * len(visuals)
 
         with patch(
             "tools.v5_1_first_context_translation_encoding."
-            "solve_row_visual_symbols",
+            "solve_bounded_length_row_visual_symbols",
             side_effect=solve,
-        ), patch(
-            "tools.v5_1_first_context_translation_encoding."
-            "bounded_length_row_symbols",
-            return_value=([0x02], 0),
         ):
             pages = select_row_font_pages(
                 trees={},
@@ -87,6 +84,33 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             )
 
         self.assertEqual(pages, (240, 241, 242, 243, 238))
+
+    def test_jointly_searches_a_bounded_visual_assignment(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x5F),
+            0x11: tree(0x11, 0x02, 0x11),
+            0x02: tree(0x02, 0x03, 0x04),
+            0x03: tree(0x03, 0x04, 0xC9),
+            0x04: tree(0x04, 0xC9, 0x03),
+        }
+        with patch(
+            "tools.v5_1_first_context_translation_encoding."
+            "solve_row_visual_symbols",
+            side_effect=ValueError("force joint search"),
+        ):
+            symbols, padding_count, assignments = (
+                solve_bounded_length_row_visual_symbols(
+                    trees=trees,
+                    initial_context=0xC9,
+                    maximum_bits=8,
+                    page=240,
+                    visuals=["text:가", "text:나"],
+                )
+            )
+        self.assertEqual(padding_count, 0)
+        self.assertEqual(assignments, [0x03, 0x04])
+        self.assertEqual(symbols, [0x5F, 0x11, 0x02, 0x03, 0x04, 0xC9])
 
     def test_jointly_searches_a_non_greedy_exact_length_assignment(self) -> None:
         trees = {
