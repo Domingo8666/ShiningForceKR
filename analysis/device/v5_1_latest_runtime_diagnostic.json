@@ -4,7 +4,7 @@
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
   "exit_code": 1,
-  "attempt_utc": "2026-07-31T08:57:36Z",
+  "attempt_utc": "2026-07-31T09:00:22Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -18,6 +18,11 @@
   },
   "failed_stage": "runtime-command",
   "runtime_observation_present": true,
-  "runtime_failure": null,
+  "runtime_failure": {
+    "schema_version": 1,
+    "failure_stage": "first-context-reinsertion-invalid-record-fields",
+    "failure_kind": "runtime-error",
+    "mcp_method": null
+  },
   "next_checkpoint": "repair-runtime-command"
 }
