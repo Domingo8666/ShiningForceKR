@@ -1043,19 +1043,21 @@ def _main() -> int:
                 raise ValueError(
                     "first context encoding font page has source-dependent bytes"
                 )
-            writes.append(
-                ExpectedWrite(
-                    writer=(
-                        f"first-context-row-{row_index}-font-{symbol:02x}"
-                    ),
-                    purpose="first-context-technical-test-only",
-                    offset=start,
-                    before=sparse.data[start:end],
-                    after=after,
-                    allowed_start=start,
-                    allowed_end_exclusive=end,
+            before = sparse.data[start:end]
+            if before != after:
+                writes.append(
+                    ExpectedWrite(
+                        writer=(
+                            f"first-context-row-{row_index}-font-{symbol:02x}"
+                        ),
+                        purpose="first-context-technical-test-only",
+                        offset=start,
+                        before=before,
+                        after=after,
+                        allowed_start=start,
+                        allowed_end_exclusive=end,
+                    )
                 )
-            )
             all_assignments.append(
                 {
                     "row_index": row_index,
