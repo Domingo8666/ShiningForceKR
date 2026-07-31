@@ -968,6 +968,44 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    first_context_translation_build_output="$(
+      python tools/v5_1_first_context_translation_test_build.py --if-ready 2>&1
+    )"
+    first_context_translation_build_status=$?
+    printf '%s\n' "$first_context_translation_build_output"
+    if [ "$first_context_translation_build_status" -ne 0 ]; then
+      stage_status="$first_context_translation_build_status"
+      diagnostic_trigger=probe
+      first_context_translation_build_failure_stage=first-context-translation-build
+      case "$first_context_translation_build_output" in
+        *"translation build identity"*)
+          first_context_translation_build_failure_stage=first-context-build-identity
+          ;;
+        *"font overlay"*|\
+        *"record write"*|\
+        *"expected-write"*)
+          first_context_translation_build_failure_stage=first-context-build-write
+          ;;
+        *"verification row"*|\
+        *"expected symbols"*|\
+        *"font assignment"*)
+          first_context_translation_build_failure_stage=first-context-build-verification
+          ;;
+        *"translation build input is missing"*|\
+        *"translation build rows are missing"*)
+          first_context_translation_build_failure_stage=first-context-build-input
+          ;;
+        *"translation build fields do not match"*|\
+        *"translation build counts do not match"*|\
+        *"translation build is inconsistent"*)
+          first_context_translation_build_failure_stage=first-context-build-validation
+          ;;
+      esac
+      record_stage_failure "$first_context_translation_build_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then

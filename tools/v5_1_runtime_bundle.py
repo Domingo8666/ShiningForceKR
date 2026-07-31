@@ -180,6 +180,11 @@ try:
         as FIRST_CONTEXT_RECORD_REINSERTION_RELATIVE_PATH,
         validate_first_context_record_reinsertion,
     )
+    from .v5_1_first_context_translation_test_build import (
+        PUBLISH_RELATIVE_PATH
+        as FIRST_CONTEXT_TRANSLATION_TEST_BUILD_RELATIVE_PATH,
+        validate_first_context_translation_test_build,
+    )
     from .v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -383,6 +388,11 @@ except ImportError:  # direct script execution
         as FIRST_CONTEXT_RECORD_REINSERTION_RELATIVE_PATH,
         validate_first_context_record_reinsertion,
     )
+    from v5_1_first_context_translation_test_build import (
+        PUBLISH_RELATIVE_PATH
+        as FIRST_CONTEXT_TRANSLATION_TEST_BUILD_RELATIVE_PATH,
+        validate_first_context_translation_test_build,
+    )
     from v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -516,6 +526,8 @@ SAFE_ARTIFACTS = {
         validate_first_context_translation_encoding_failure,
     FIRST_CONTEXT_RECORD_REINSERTION_RELATIVE_PATH:
         validate_first_context_record_reinsertion,
+    FIRST_CONTEXT_TRANSLATION_TEST_BUILD_RELATIVE_PATH:
+        validate_first_context_translation_test_build,
     GROUP_TEXT_CANDIDATE_RELATIVE_PATH:
         validate_group_text_candidate_resolution,
     UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH:
@@ -1273,6 +1285,20 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             )
         ):
             artifacts.pop(FIRST_CONTEXT_RECORD_REINSERTION_RELATIVE_PATH)
+    first_context_translation_test_build = artifacts.get(
+        FIRST_CONTEXT_TRANSLATION_TEST_BUILD_RELATIVE_PATH
+    )
+    if first_context_translation_test_build is not None:
+        if (
+            FIRST_CONTEXT_RECORD_REINSERTION_RELATIVE_PATH not in artifacts
+            or first_context_translation_test_build["baseline_target_sha256"]
+            != first_context_record_reinsertion["target_sha256"]
+            or first_context_translation_test_build[
+                "first_context_record_reinsertion_sha256"
+            ]
+            != sha256_file(root / FIRST_CONTEXT_RECORD_REINSERTION_RELATIVE_PATH)
+        ):
+            artifacts.pop(FIRST_CONTEXT_TRANSLATION_TEST_BUILD_RELATIVE_PATH)
     group_context_resolution = artifacts.get(
         GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH
     )
