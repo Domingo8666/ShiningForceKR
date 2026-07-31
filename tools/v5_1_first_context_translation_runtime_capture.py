@@ -121,6 +121,8 @@ def build_first_context_translation_runtime_capture(
         and runtime_sequence["consecutive_same_selector_step_count"] >= 3
         and runtime_sequence["nonconsecutive_same_selector_step_count"] == 0
         and runtime_sequence["distinct_screen_hash_count"] >= 4
+        and runtime_sequence["runtime_initial_context_observation_count"]
+        == runtime_sequence["captured_entry_count"]
     )
     value: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
@@ -208,6 +210,8 @@ def validate_first_context_translation_runtime_capture(
         and counts["consecutive_same_selector_step_count"] >= 3
         and counts["nonconsecutive_same_selector_step_count"] == 0
         and counts["distinct_screen_hash_count"] >= 4
+        and counts["runtime_initial_context_observation_count"]
+        == counts["captured_entry_count"]
     )
     if (
         value["status"]

@@ -15,11 +15,17 @@ from tools.v5_1_source_target_runtime_sequence import (  # noqa: E402
 )
 
 
-def _observation(selector: int, ordinal: int, digest: str) -> dict:
+def _observation(
+    selector: int,
+    ordinal: int,
+    digest: str,
+    initial_context: int = 0xC9,
+) -> dict:
     return {
         "selector": selector,
         "ordinal": ordinal,
         "png_sha256": digest * 64,
+        "initial_context": initial_context,
     }
 
 
@@ -142,7 +148,7 @@ class SourceTargetRuntimeSequenceTests(unittest.TestCase):
         local = {
             "artifact_kind":
                 "local-v5-1-source-target-runtime-sequence",
-            "schema_version": 1,
+            "schema_version": 2,
             "baseline_target_sha256": "1" * 64,
             "test_target_sha256": "2" * 64,
             "runtime_sequence": counts,

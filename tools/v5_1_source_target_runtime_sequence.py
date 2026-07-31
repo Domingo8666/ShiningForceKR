@@ -25,6 +25,10 @@ try:
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
+    from .run_s25u_renderer_probe import (
+        HUFFMAN_VECTOR_START,
+        _last_rom_read,
+    )
     from .v5_1_renderer_output_trace import _load_json_object
     from .v5_1_source_target_anchor import (
         CONFIRMED_ORDINAL,
@@ -58,6 +62,10 @@ except ImportError:  # pragma: no cover - direct script execution
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
+    from run_s25u_renderer_probe import (
+        HUFFMAN_VECTOR_START,
+        _last_rom_read,
+    )
     from v5_1_renderer_output_trace import _load_json_object
     from v5_1_source_target_anchor import (
         CONFIRMED_ORDINAL,
@@ -83,7 +91,7 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-v5-1-source-target-runtime-sequence"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_source_target_runtime_sequence.json"
 )
@@ -95,7 +103,9 @@ LOCAL_EVIDENCE_DIR = Path(
 )
 POST_ANCHOR_ENTRY_GOAL = 4
 POST_ANCHOR_ATTEMPT_LIMIT = 8
-POST_DECODE_CAPTURE_FRAMES = 60
+POST_DECODE_CAPTURE_FRAMES = 180
+VECTOR_READ_TIMEOUT_SECONDS = 4.0
+VECTOR_LOGICAL_RANGES = ((0x4100, 0x42FF), (0x8100, 0x82FF))
 REQUIRED_TOOLS = {
     "controller_button",
     "debug_continue",
@@ -125,6 +135,8 @@ COUNT_KEYS = {
     "nonconsecutive_same_selector_step_count",
     "distinct_screen_hash_count",
     "advance_attempt_count",
+    "runtime_initial_context_observation_count",
+    "runtime_initial_context_distinct_count",
 }
 
 SAFE_FIELDS = {
@@ -181,6 +193,7 @@ def summarize_runtime_sequence(
         raise ValueError("runtime sequence advance attempts are invalid")
 
     screen_hashes: set[str] = set()
+    initial_contexts: set[int] = set()
     previous_same_selector_ordinal: int | None = None
     post_anchor = 0
     same_selector = 0
@@ -195,10 +208,12 @@ def summarize_runtime_sequence(
         selector = observation.get("selector")
         ordinal = observation.get("ordinal")
         png_sha256 = observation.get("png_sha256")
+        initial_context = observation.get("initial_context")
         if (
             not _bounded_int(selector, 0, 0xFFFF)
             or not _bounded_int(ordinal, 0, 0xFF)
             or not _is_sha256(png_sha256)
+            or not _bounded_int(initial_context, 0, 0xFF)
         ):
             raise ValueError(
                 "runtime sequence observation fields are invalid"
@@ -206,7 +221,9 @@ def summarize_runtime_sequence(
         assert isinstance(selector, int)
         assert isinstance(ordinal, int)
         assert isinstance(png_sha256, str)
+        assert isinstance(initial_context, int)
         screen_hashes.add(png_sha256)
+        initial_contexts.add(initial_context)
         if index == 0:
             if (
                 selector != confirmed_selector
@@ -240,12 +257,16 @@ def summarize_runtime_sequence(
         "nonconsecutive_same_selector_step_count": nonconsecutive,
         "distinct_screen_hash_count": len(screen_hashes),
         "advance_attempt_count": advance_attempt_count,
+        "runtime_initial_context_observation_count": len(observations),
+        "runtime_initial_context_distinct_count": len(initial_contexts),
     }
     if (
         same_selector >= 3
         and consecutive == same_selector
         and nonconsecutive == 0
         and first_post_anchor_step_consecutive
+        and counts["runtime_initial_context_observation_count"]
+        == counts["captured_entry_count"]
     ):
         status = "runtime-sequence-corroboration-ready"
     elif same_selector >= 1:
@@ -357,6 +378,8 @@ def validate_source_target_runtime_sequence(
         + counts["nonconsecutive_same_selector_step_count"]
         or counts["distinct_screen_hash_count"] > captured
         or counts["advance_attempt_count"] < post_anchor
+        or counts["runtime_initial_context_observation_count"] != captured
+        or counts["runtime_initial_context_distinct_count"] > captured
     ):
         raise ValueError("runtime sequence aggregates are inconsistent")
 
@@ -366,6 +389,7 @@ def validate_source_target_runtime_sequence(
         and counts["consecutive_same_selector_step_count"] == same_selector
         and counts["nonconsecutive_same_selector_step_count"] == 0
         and first_consecutive is True
+        and counts["runtime_initial_context_observation_count"] == captured
     )
     expected_status = (
         "runtime-sequence-corroboration-ready"
@@ -468,6 +492,70 @@ def _capture_screen(
         "file": str(path),
         **metadata,
     }
+
+
+def _capture_runtime_initial_context(
+    client: McpStdioClient,
+    *,
+    rom_size: int,
+) -> tuple[int, dict[str, object]]:
+    ranges = [
+        (f"{start:04X}", f"{end:04X}")
+        for start, end in VECTOR_LOGICAL_RANGES
+    ]
+    for start, end in ranges:
+        client.call(
+            "set_breakpoint_range",
+            {
+                "start_address": start,
+                "end_address": end,
+                "memory_area": "rom_ram",
+                "execute": False,
+                "read": True,
+                "write": False,
+            },
+        )
+    try:
+        status = _continue_until_breakpoint(
+            client,
+            VECTOR_READ_TIMEOUT_SECONDS,
+        )
+        if status.get("at_breakpoint") is not True:
+            raise RuntimeError("runtime Huffman vector read was not reached")
+        state, evidence = _capture_state(client)
+        sample = _last_rom_read(state, evidence, rom_size)
+        if sample is None:
+            raise RuntimeError("runtime Huffman vector read was not parsed")
+        physical = sample.get("physical_file_offset")
+        if (
+            sample.get("classification") != "korean-huffman-vector"
+            or not isinstance(physical, int)
+            or isinstance(physical, bool)
+            or not HUFFMAN_VECTOR_START
+            <= physical
+            < HUFFMAN_VECTOR_START + 0x200
+            or (physical - HUFFMAN_VECTOR_START) % 2
+        ):
+            raise RuntimeError("runtime Huffman vector read is invalid")
+        initial_context = (physical - HUFFMAN_VECTOR_START) // 2
+        return initial_context, {
+            "sample": sample,
+            "evidence": evidence,
+        }
+    finally:
+        for start, end in ranges:
+            try:
+                client.call(
+                    "remove_breakpoint",
+                    {
+                        "address": start,
+                        "end_address": end,
+                        "memory_area": "rom_ram",
+                    },
+                )
+            except RuntimeError:
+                pass
+        _step_instruction_and_wait(client)
 
 
 def capture_runtime_sequence(
@@ -575,7 +663,14 @@ def capture_runtime_sequence(
             raise RuntimeError(
                 "runtime sequence confirmed anchor was not reached"
             )
-        _step_instruction_and_wait(client)
+        anchor_initial_context, anchor_vector_event = (
+            _capture_runtime_initial_context(
+                client,
+                rom_size=rom_size,
+            )
+        )
+        local["hits"][-1]["initial_context"] = anchor_initial_context
+        local["hits"][-1]["vector_event"] = anchor_vector_event
         _step_frames_and_wait(client, POST_DECODE_CAPTURE_FRAMES)
         anchor_screen = _capture_screen(
             client,
@@ -587,6 +682,7 @@ def capture_runtime_sequence(
                 "selector": CONFIRMED_SELECTOR,
                 "ordinal": CONFIRMED_ORDINAL,
                 "png_sha256": anchor_screen["png_sha256"],
+                "initial_context": anchor_initial_context,
             }
         )
 
@@ -622,7 +718,12 @@ def capture_runtime_sequence(
                 }
             )
             disarm_breakpoint()
-            _step_instruction_and_wait(client)
+            initial_context, vector_event = _capture_runtime_initial_context(
+                client,
+                rom_size=rom_size,
+            )
+            local["hits"][-1]["initial_context"] = initial_context
+            local["hits"][-1]["vector_event"] = vector_event
             _step_frames_and_wait(client, POST_DECODE_CAPTURE_FRAMES)
             screen = _capture_screen(
                 client,
@@ -636,6 +737,7 @@ def capture_runtime_sequence(
                     "selector": selector,
                     "ordinal": ordinal,
                     "png_sha256": screen["png_sha256"],
+                    "initial_context": initial_context,
                 }
             )
             same_selector_post_anchor += int(

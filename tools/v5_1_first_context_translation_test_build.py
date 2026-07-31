@@ -94,6 +94,7 @@ COUNT_KEYS = {
     "decoded_failure_entry_count",
     "font_glyph_assignment_count",
     "font_glyph_verified_count",
+    "encoded_length_exact_count",
 }
 SAFE_FIELDS = {
     "artifact_kind",
@@ -227,17 +228,24 @@ def verify_translation_build(
     roundtrips = 0
     failures = 0
     lengths_unchanged = 0
+    encoded_lengths_exact = 0
     for reinsertion, encoding in zip(reinsertion_rows, encoding_rows):
         length_offset = int(reinsertion["length_offset"])
         payload_start = int(reinsertion["payload_start"])
         original_length = int(reinsertion["original_length_bytes"])
         expected_symbols = encoding.get("symbols")
         expected_bits = encoding.get("encoded_bits")
+        target_bits = encoding.get("target_encoded_bits")
+        initial_context = encoding.get("initial_context")
         if not isinstance(expected_symbols, list) or not isinstance(
             expected_bits,
             int,
+        ) or not isinstance(target_bits, int) or not isinstance(
+            initial_context,
+            int,
         ):
             raise ValueError("first context build expected symbols are missing")
+        encoded_lengths_exact += int(expected_bits == target_bits)
         lengths_unchanged += int(
             test[length_offset] == baseline[length_offset] == original_length
         )
@@ -247,7 +255,7 @@ def verify_translation_build(
                 known,
                 trees,
                 payload_start,
-                initial_symbol=CANDIDATE_END_SYMBOL,
+                initial_symbol=initial_context,
                 end_symbol=CANDIDATE_END_SYMBOL,
                 max_symbols=len(expected_symbols),
                 max_bytes=original_length,
@@ -282,6 +290,7 @@ def verify_translation_build(
         "decoded_failure_entry_count": failures,
         "font_glyph_assignment_count": len(font_assignments),
         "font_glyph_verified_count": verified_glyphs,
+        "encoded_length_exact_count": encoded_lengths_exact,
     }
 
 
@@ -308,6 +317,8 @@ def build_first_context_translation_test_build(
         and verification["font_glyph_verified_count"]
         == verification["font_glyph_assignment_count"]
         and verification["changed_byte_count"] > 0
+        and verification["encoded_length_exact_count"]
+        == verification["context_entry_count"]
     )
     value: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
@@ -393,6 +404,8 @@ def validate_first_context_translation_test_build(
         and verification["font_glyph_verified_count"]
         == verification["font_glyph_assignment_count"]
         and verification["changed_byte_count"] > 0
+        and verification["encoded_length_exact_count"]
+        == verification["context_entry_count"]
     )
     if (
         value["status"]

@@ -65,6 +65,8 @@ COUNT_KEYS = {
     "total_slack_byte_count",
     "minimum_slack_byte_count",
     "maximum_slack_byte_count",
+    "exact_encoded_length_entry_count",
+    "original_encoded_bit_count",
 }
 SAFE_FIELDS = {
     "artifact_kind",
@@ -153,6 +155,7 @@ def build_reinsertion_rows(
         encoded_hex = encoding_row.get("encoded_hex")
         encoded_bits = encoding_row.get("encoded_bits")
         encoded_bytes = encoding_row.get("encoded_bytes")
+        original_encoded_bits = encoding_row.get("target_encoded_bits")
         if (
             not isinstance(length_offset, int)
             or isinstance(length_offset, bool)
@@ -168,6 +171,8 @@ def build_reinsertion_rows(
             or isinstance(encoded_bits, bool)
             or not isinstance(encoded_bytes, int)
             or isinstance(encoded_bytes, bool)
+            or not isinstance(original_encoded_bits, int)
+            or isinstance(original_encoded_bits, bool)
         ):
             raise ValueError("first context reinsertion record fields are invalid")
         alias_keys = []
@@ -200,6 +205,7 @@ def build_reinsertion_rows(
             or not 0 <= payload_start <= payload_end <= len(target)
             or len(payload) != encoded_bytes
             or not 1 <= encoded_bits <= encoded_bytes * 8
+            or encoded_bits != original_encoded_bits
         ):
             raise ValueError("first context reinsertion record bounds disagree")
         rows.append(
@@ -212,6 +218,8 @@ def build_reinsertion_rows(
                 "encoded_payload_hex": encoded_hex,
                 "encoded_payload_bytes": encoded_bytes,
                 "encoded_payload_bits": encoded_bits,
+                "original_encoded_bits": original_encoded_bits,
+                "encoded_length_exact": encoded_bits == original_encoded_bits,
                 "slack_bytes": original_length - encoded_bytes,
                 "fits_in_place": encoded_bytes <= original_length,
                 "alias_count": len(aliases),
@@ -277,6 +285,12 @@ def summarize_reinsertion_rows(
         "total_slack_byte_count": sum(slacks),
         "minimum_slack_byte_count": min(slacks),
         "maximum_slack_byte_count": max(slacks),
+        "exact_encoded_length_entry_count": sum(
+            bool(row["encoded_length_exact"]) for row in rows
+        ),
+        "original_encoded_bit_count": sum(
+            int(row["original_encoded_bits"]) for row in rows
+        ),
     }
 
 
@@ -310,6 +324,10 @@ def build_first_context_record_reinsertion(
         and distinct
         and fits
         and aliases_clear
+        and capacity["exact_encoded_length_entry_count"]
+        == capacity["context_entry_count"]
+        and capacity["original_encoded_bit_count"]
+        == capacity["encoded_payload_bit_count"]
     )
     value: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
@@ -399,6 +417,10 @@ def validate_first_context_record_reinsertion(
         and distinct
         and fits
         and aliases_clear
+        and capacity["exact_encoded_length_entry_count"]
+        == capacity["context_entry_count"]
+        and capacity["original_encoded_bit_count"]
+        == capacity["encoded_payload_bit_count"]
     )
     if (
         value["status"]

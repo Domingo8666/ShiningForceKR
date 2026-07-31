@@ -61,6 +61,7 @@ class FirstContextRecordReinsertionTests(unittest.TestCase):
                     "review_index": index,
                     "encoded_hex": payload.hex().upper(),
                     "encoded_bits": 20,
+                    "target_encoded_bits": 20,
                     "encoded_bytes": len(payload),
                 }
             )

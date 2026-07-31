@@ -67,6 +67,7 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
             "decoded_failure_entry_count": 0,
             "font_glyph_assignment_count": 55,
             "font_glyph_verified_count": 55,
+            "encoded_length_exact_count": 4,
         }
         safe = build_first_context_translation_test_build(
             baseline_target_sha256=SHA_A,

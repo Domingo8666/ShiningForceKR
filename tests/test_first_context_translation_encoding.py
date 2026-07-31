@@ -11,8 +11,10 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     build_character_assignments,
     build_first_context_translation_encoding,
     build_first_context_translation_encoding_failure,
+    build_runtime_codec_constraints,
     build_row_visuals,
     build_symbol_rows,
+    exact_length_row_symbols,
     solve_row_visual_symbols,
     validate_first_context_translation_encoding,
     validate_first_context_translation_encoding_failure,
@@ -43,6 +45,39 @@ def tree(previous: int, left: int, right: int) -> ParsedTree:
 
 
 class FirstContextTranslationEncodingTests(unittest.TestCase):
+    def test_adds_invisible_page_select_padding_to_exact_bit_length(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x02, 0x11),
+            0x11: tree(0x11, 0x02, 0x11),
+            0x02: ParsedTree(
+                previous_symbol=0x02,
+                pointer=0,
+                structure_offset=0,
+                structure_bits=5,
+                leaf_count=3,
+                symbol_offset=0,
+                root=HuffmanNode(
+                    left=HuffmanNode(symbol=0x02),
+                    right=HuffmanNode(
+                        left=HuffmanNode(symbol=0x5F),
+                        right=HuffmanNode(symbol=0x03),
+                    ),
+                ),
+            ),
+            0x03: tree(0x03, 0xC9, 0x03),
+        }
+        symbols, padding_count = exact_length_row_symbols(
+            trees=trees,
+            initial_context=0xC9,
+            target_bits=10,
+            page=240,
+            assignments=[0x03],
+        )
+        self.assertEqual(padding_count, 1)
+        self.assertEqual(symbols[:3], [0x5F, 0x02, 0x02])
+        self.assertEqual(symbols[-1], 0xC9)
+
     def test_builds_two_page_symbols_and_preserves_insertions(self) -> None:
         targets = [
             {"review_index": 1, "target_text": "가!"},
@@ -109,6 +144,40 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         )
         self.assertEqual(assignments, [0x03, 0x04])
 
+        symbols, padding_count = exact_length_row_symbols(
+            trees=trees,
+            initial_context=0xC9,
+            target_bits=6,
+            page=240,
+            assignments=assignments,
+        )
+        self.assertEqual(symbols, [0x5F, 0x11, 0x02, 0x03, 0x04, 0xC9])
+        self.assertEqual(padding_count, 0)
+
+        constraints = build_runtime_codec_constraints(
+            target=b"\x01\x00",
+            trees=trees,
+            context_rows=[
+                {
+                    "mapping_status": "unique",
+                    "source_section_index": 1,
+                    "source_line_index": 2,
+                    "observation": {"initial_context": 0xC9},
+                }
+            ],
+            projection_pairs=[
+                {
+                    "source_section_index": 1,
+                    "source_line_index": 2,
+                    "target_record": {
+                        "length_offset": 0,
+                        "record_length_bytes": 1,
+                    },
+                }
+            ],
+        )
+        self.assertEqual(constraints[0]["original_encoded_bits"], 6)
+
     def test_builds_safe_ready_receipt_without_local_payload(self) -> None:
         counts = {
             "context_entry_count": 4,
@@ -135,6 +204,10 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             "glyph_symbol_terminator_exit_count": 8,
             "initial_page_token_failure_entry_count": 0,
             "post_initial_page_token_failure_entry_count": 0,
+            "runtime_initial_context_entry_count": 4,
+            "runtime_initial_context_distinct_count": 1,
+            "exact_encoded_length_entry_count": 4,
+            "page_select_padding_count": 8,
         }
         safe = build_first_context_translation_encoding(
             target_sha256=SHA_A,

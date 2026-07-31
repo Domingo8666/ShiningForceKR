@@ -24,6 +24,8 @@ class FirstContextTranslationRuntimeCaptureTests(unittest.TestCase):
             "nonconsecutive_same_selector_step_count": 0,
             "distinct_screen_hash_count": 4,
             "advance_attempt_count": 8,
+            "runtime_initial_context_observation_count": 4,
+            "runtime_initial_context_distinct_count": 1,
         }
 
     def _build(self, counts: dict[str, int]) -> dict[str, object]:
@@ -70,6 +72,7 @@ class FirstContextTranslationRuntimeCaptureTests(unittest.TestCase):
                 "consecutive_same_selector_step_count": 4,
                 "distinct_screen_hash_count": 5,
                 "advance_attempt_count": 7,
+                "runtime_initial_context_observation_count": 5,
             }
         )
         value = self._build(counts)

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Encode the approved first-context translation without writing a ROM.
 
-The stage assigns the approved visible characters to two test-only font pages,
+The stage assigns the approved visible characters to four test-only font pages,
 re-inserts every visually reviewed non-text glyph token, and proves each of the
 four resulting symbol streams roundtrips through the verified Korean Huffman
 trees.  Text, symbols, page coordinates, encoded bytes, and glyph positions
@@ -11,6 +11,7 @@ remain in ignored phone-local files.
 from __future__ import annotations
 
 import argparse
+from collections import deque
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -66,9 +67,11 @@ try:
         LOCAL_REPORT_PATH as LOCAL_PROJECTION_PATH,
     )
     from .v5_1_test_phrase import (
+        FONT_PAGE_COUNT,
         FONT_GLYPH_FIRST_SYMBOL,
         FONT_GLYPH_LAST_SYMBOL,
         FONT_TILE_BYTES,
+        _code_lengths,
         font_tile_offset,
         page_select_symbols,
     )
@@ -123,9 +126,11 @@ except ImportError:  # pragma: no cover - direct script execution
         LOCAL_REPORT_PATH as LOCAL_PROJECTION_PATH,
     )
     from v5_1_test_phrase import (
+        FONT_PAGE_COUNT,
         FONT_GLYPH_FIRST_SYMBOL,
         FONT_GLYPH_LAST_SYMBOL,
         FONT_TILE_BYTES,
+        _code_lengths,
         font_tile_offset,
         page_select_symbols,
     )
@@ -135,6 +140,7 @@ ARTIFACT_KIND = "sanitized-v5-1-first-context-translation-encoding"
 LOCAL_ARTIFACT_KIND = "local-v5-1-first-context-translation-encoding"
 SCHEMA_VERSION = 1
 ROW_FONT_PAGES = (240, 241, 242, 243)
+TARGET_PATH = Path("build/Final_Conflict_Korean_v5.1.gg")
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_translation_encoding.json"
 )
@@ -172,6 +178,10 @@ COUNT_KEYS = {
     "glyph_symbol_terminator_exit_count",
     "initial_page_token_failure_entry_count",
     "post_initial_page_token_failure_entry_count",
+    "runtime_initial_context_entry_count",
+    "runtime_initial_context_distinct_count",
+    "exact_encoded_length_entry_count",
+    "page_select_padding_count",
 }
 SAFE_FIELDS = {
     "artifact_kind",
@@ -550,6 +560,100 @@ def build_row_visuals(
     return output
 
 
+def _bits_equal(left: bytes, right: bytes, bit_count: int) -> bool:
+    return all(
+        ((left[index >> 3] >> (7 - (index & 7))) & 1)
+        == ((right[index >> 3] >> (7 - (index & 7))) & 1)
+        for index in range(bit_count)
+    )
+
+
+def build_runtime_codec_constraints(
+    *,
+    target: bytes,
+    trees: dict[int, object],
+    context_rows: list[dict[str, object]],
+    projection_pairs: list[dict[str, object]],
+) -> list[dict[str, int]]:
+    pair_index = {
+        (pair.get("source_section_index"), pair.get("source_line_index")): pair
+        for pair in projection_pairs
+        if isinstance(pair, dict)
+    }
+    constraints = []
+    known = bytes((1,)) * len(target)
+    for context_row in context_rows:
+        if (
+            not isinstance(context_row, dict)
+            or context_row.get("mapping_status") != "unique"
+        ):
+            raise ValueError("first context runtime codec row is invalid")
+        observation = context_row.get("observation")
+        if not isinstance(observation, dict):
+            raise ValueError("first context runtime observation is missing")
+        initial_context = observation.get("initial_context")
+        pair = pair_index.get(
+            (
+                context_row.get("source_section_index"),
+                context_row.get("source_line_index"),
+            )
+        )
+        target_record = None if pair is None else pair.get("target_record")
+        if not isinstance(target_record, dict):
+            raise ValueError("first context runtime target record is missing")
+        length_offset = target_record.get("length_offset")
+        record_length = target_record.get("record_length_bytes")
+        if (
+            not isinstance(initial_context, int)
+            or isinstance(initial_context, bool)
+            or not 0 <= initial_context <= 0xFF
+            or not isinstance(length_offset, int)
+            or isinstance(length_offset, bool)
+            or not isinstance(record_length, int)
+            or isinstance(record_length, bool)
+            or not 0 <= length_offset < len(target)
+            or target[length_offset] != record_length
+        ):
+            raise ValueError("first context runtime codec fields are invalid")
+        payload_start = length_offset + 1
+        payload_end = payload_start + record_length
+        if not (0 < record_length and payload_end <= len(target)):
+            raise ValueError("first context runtime record bounds are invalid")
+        symbols, encoded_bits = decode_symbols(
+            target,
+            known,
+            trees,
+            payload_start,
+            initial_symbol=initial_context,
+            end_symbol=CANDIDATE_END_SYMBOL,
+            max_symbols=0x1000,
+            max_bytes=record_length,
+        )
+        reencoded, reencoded_bits = encode_symbols(
+            trees,
+            symbols,
+            initial_symbol=initial_context,
+            end_symbol=CANDIDATE_END_SYMBOL,
+            max_bits=record_length * 8,
+        )
+        payload = target[payload_start:payload_end]
+        if (
+            symbols.count(CANDIDATE_END_SYMBOL) != 1
+            or encoded_bits != reencoded_bits
+            or not _bits_equal(payload, reencoded, encoded_bits)
+        ):
+            raise ValueError("first context runtime codec roundtrip disagrees")
+        constraints.append(
+            {
+                "initial_context": initial_context,
+                "original_encoded_bits": encoded_bits,
+                "original_record_length_bytes": record_length,
+                "original_symbol_count": len(symbols),
+            }
+        )
+    return constraints
+
+
 def solve_row_visual_symbols(
     *,
     trees: dict[int, object],
@@ -609,11 +713,76 @@ def solve_row_visual_symbols(
     return assignments
 
 
+def exact_length_row_symbols(
+    *,
+    trees: dict[int, object],
+    initial_context: int,
+    target_bits: int,
+    page: int,
+    assignments: list[int],
+) -> tuple[list[int], int]:
+    if (
+        not 0 <= initial_context <= 0xFF
+        or not 1 <= target_bits <= 0x7FFF
+        or not assignments
+    ):
+        raise ValueError("first context exact-length row inputs are invalid")
+    lengths = _code_lengths(trees)
+
+    def transition(
+        previous: int,
+        symbols: tuple[int, ...],
+    ) -> tuple[int, int] | None:
+        bits = 0
+        for symbol in symbols:
+            code_length = lengths.get(previous, {}).get(symbol)
+            if code_length is None:
+                return None
+            bits += code_length
+            previous = symbol
+        return bits, previous
+
+    visible_suffix = tuple(
+        page_select_symbols(page) + assignments + [CANDIDATE_END_SYMBOL]
+    )
+    page_tokens = []
+    for candidate_page in range(FONT_PAGE_COUNT):
+        token = tuple(page_select_symbols(candidate_page))
+        page_tokens.append(token)
+
+    start = (0, initial_context)
+    queue = deque([start])
+    paths: dict[tuple[int, int], tuple[int, ...]] = {start: ()}
+    while queue:
+        bits, previous = queue.popleft()
+        suffix = transition(previous, visible_suffix)
+        if suffix is not None and bits + suffix[0] == target_bits:
+            prefix = paths[(bits, previous)]
+            return list(prefix + visible_suffix), len(prefix) // 3
+
+        unique_transitions: dict[tuple[int, int], tuple[int, ...]] = {}
+        for token in page_tokens:
+            encoded = transition(previous, token)
+            if encoded is None or bits + encoded[0] >= target_bits:
+                continue
+            unique_transitions.setdefault((encoded[0], encoded[1]), token)
+        for (added_bits, next_previous), token in sorted(
+            unique_transitions.items()
+        ):
+            candidate = (bits + added_bits, next_previous)
+            if candidate in paths:
+                continue
+            paths[candidate] = paths[(bits, previous)] + token
+            queue.append(candidate)
+    raise ValueError("first context row has no exact-length Huffman route")
+
+
 def build_single_page_symbol_rows(
     *,
     trees: dict[int, object],
     target_rows: list[dict[str, object]],
     preserved_by_row: list[list[dict[str, int]]],
+    runtime_constraints: list[dict[str, int]] | None = None,
     pages: tuple[int, ...] = ROW_FONT_PAGES,
 ) -> tuple[
     dict[str, int],
@@ -626,10 +795,15 @@ def build_single_page_symbol_rows(
     )
     if len(visual_rows) != len(pages):
         raise ValueError("first context row font page count does not match")
+    if runtime_constraints is not None and len(runtime_constraints) != len(
+        visual_rows
+    ):
+        raise ValueError("first context runtime constraint count does not match")
     rows = []
     assignments_by_row = []
-    for expected_index, (target_row, visuals, page) in enumerate(
-        zip(target_rows, visual_rows, pages),
+    constraints = runtime_constraints or [None] * len(visual_rows)
+    for expected_index, (target_row, visuals, page, constraint) in enumerate(
+        zip(target_rows, visual_rows, pages, constraints),
         start=1,
     ):
         assignments = solve_row_visual_symbols(
@@ -637,16 +811,33 @@ def build_single_page_symbol_rows(
             page=page,
             visuals=visuals,
         )
-        symbols = page_select_symbols(page)
-        symbols.extend(assignments)
-        symbols.append(CANDIDATE_END_SYMBOL)
+        if constraint is None:
+            symbols = page_select_symbols(page)
+            symbols.extend(assignments)
+            symbols.append(CANDIDATE_END_SYMBOL)
+            padding_count = 0
+            initial_context = CANDIDATE_END_SYMBOL
+            target_bits = 0
+        else:
+            initial_context = int(constraint["initial_context"])
+            target_bits = int(constraint["original_encoded_bits"])
+            symbols, padding_count = exact_length_row_symbols(
+                trees=trees,
+                initial_context=initial_context,
+                target_bits=target_bits,
+                page=page,
+                assignments=assignments,
+            )
         rows.append(
             {
                 "review_index": expected_index,
                 "target_text": target_row["target_text"],
                 "visuals": visuals,
                 "symbols": symbols,
-                "page_select_count": 1,
+                "page_select_count": 1 + padding_count,
+                "page_select_padding_count": padding_count,
+                "initial_context": initial_context,
+                "target_encoded_bits": target_bits,
                 "visible_symbol_count": len(visuals),
                 "preserved_non_text_glyph_count": sum(
                     visual.startswith("preserved:") for visual in visuals
@@ -667,10 +858,15 @@ def build_single_page_symbol_rows(
     )
     return {
         "planned_visible_symbol_count": visible_count,
-        "planned_page_select_count": len(rows),
+        "planned_page_select_count": sum(
+            int(row["page_select_count"]) for row in rows
+        ),
         "preserved_non_text_glyph_occurrence_count": preserved_count,
         "planned_terminator_count": len(rows),
         "planned_total_symbol_count": sum(len(row["symbols"]) for row in rows),
+        "page_select_padding_count": sum(
+            int(row["page_select_padding_count"]) for row in rows
+        ),
     }, rows, assignments_by_row
 
 
@@ -773,6 +969,11 @@ def build_first_context_translation_encoding(
         and encoding["preserved_non_text_glyph_occurrence_count"] == 5
         and encoding["custom_font_page_count"] == len(ROW_FONT_PAGES)
         and encoding["font_page_changed_byte_count"] > 0
+        and encoding["runtime_initial_context_entry_count"]
+        == encoding["context_entry_count"]
+        and encoding["runtime_initial_context_distinct_count"] > 0
+        and encoding["exact_encoded_length_entry_count"]
+        == encoding["context_entry_count"]
     )
     value: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
@@ -858,6 +1059,11 @@ def validate_first_context_translation_encoding(
         and counts["preserved_non_text_glyph_occurrence_count"] == 5
         and counts["custom_font_page_count"] == len(ROW_FONT_PAGES)
         and counts["font_page_changed_byte_count"] > 0
+        and counts["runtime_initial_context_entry_count"]
+        == counts["context_entry_count"]
+        and counts["runtime_initial_context_distinct_count"] > 0
+        and counts["exact_encoded_length_entry_count"]
+        == counts["context_entry_count"]
     )
     if (
         value["status"]
@@ -905,6 +1111,7 @@ def _main() -> int:
         "local_projection": root / LOCAL_PROJECTION_PATH,
         "patch": root / PATCH_PATH,
         "bdf": root / LOCAL_BDF_PATH,
+        "target": root / TARGET_PATH,
     }
     if not all(path.is_file() for path in paths.values()):
         if args.if_ready:
@@ -964,6 +1171,9 @@ def _main() -> int:
     ACTIVE_FAILURE_CATEGORY = "font-input"
     patch = paths["patch"].read_bytes()
     bdf = paths["bdf"].read_bytes()
+    target = paths["target"].read_bytes()
+    if sha256_bytes(target) != capacity["target_sha256"]:
+        raise ValueError("first context translation target identity disagrees")
     analyze_patch(patch)
     sparse = extract_bps_target_literals(patch)
     reference_glyphs = parse_bdf_glyphs(bdf)
@@ -992,6 +1202,12 @@ def _main() -> int:
         KO_TREE_BANK_BASE,
         KO_VECTOR_ENTRIES,
     )
+    runtime_constraints = build_runtime_codec_constraints(
+        target=target,
+        trees=trees,
+        context_rows=context_rows,
+        projection_pairs=projection_pairs,
+    )
     ACTIVE_FAILURE_CATEGORY = "row-route"
     (
         symbol_counts,
@@ -1001,6 +1217,7 @@ def _main() -> int:
         trees=trees,
         target_rows=target_rows,
         preserved_by_row=preserved_by_row,
+        runtime_constraints=runtime_constraints,
     )
     custom_pages = set(ROW_FONT_PAGES)
     ACTIVE_FAILURE_CATEGORY = "font-input"
@@ -1083,20 +1300,37 @@ def _main() -> int:
     maximum_bits = 0
     initial_page_failures = 0
     later_failures = 0
+    exact_length_entries = 0
+    runtime_initial_contexts: set[int] = set()
     for row in symbol_rows:
         symbols = row["symbols"]
         assert isinstance(symbols, list)
+        initial_context = int(row["initial_context"])
+        target_bits = int(row["target_encoded_bits"])
+        runtime_initial_contexts.add(initial_context)
         try:
-            encoded, bits = encode_symbols(trees, symbols)
+            encoded, bits = encode_symbols(
+                trees,
+                symbols,
+                initial_symbol=initial_context,
+                end_symbol=CANDIDATE_END_SYMBOL,
+                max_bits=target_bits,
+            )
             decoded, decoded_bits = decode_symbols(
                 encoded,
                 bytes((1,)) * len(encoded),
                 trees,
                 0,
+                initial_symbol=initial_context,
+                end_symbol=CANDIDATE_END_SYMBOL,
                 max_symbols=len(symbols),
                 max_bytes=len(encoded),
             )
-            if decoded != symbols or decoded_bits != bits:
+            if (
+                decoded != symbols
+                or decoded_bits != bits
+                or bits != target_bits
+            ):
                 raise PatchError("first context Huffman roundtrip disagrees")
         except PatchError as error:
             failures += 1
@@ -1111,6 +1345,7 @@ def _main() -> int:
         row["encoded_bits"] = bits
         row["encoded_bytes"] = len(encoded)
         roundtrips += 1
+        exact_length_entries += int(bits == target_bits)
         encoded_bits += bits
         encoded_bytes += len(encoded)
         maximum_bits = max(maximum_bits, bits)
@@ -1134,6 +1369,11 @@ def _main() -> int:
         **measure_huffman_route_capacity(trees),
         "initial_page_token_failure_entry_count": initial_page_failures,
         "post_initial_page_token_failure_entry_count": later_failures,
+        "runtime_initial_context_entry_count": len(symbol_rows),
+        "runtime_initial_context_distinct_count": len(
+            runtime_initial_contexts
+        ),
+        "exact_encoded_length_entry_count": exact_length_entries,
     }
     captured_utc = datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"
