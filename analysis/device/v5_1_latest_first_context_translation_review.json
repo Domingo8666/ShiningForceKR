@@ -1,0 +1,29 @@
+{
+  "artifact_kind": "sanitized-v5-1-first-context-translation-review",
+  "schema_version": 1,
+  "status": "first-context-translation-review-ready",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_target_runtime_context_sha256": "3dde7163a9011752dfb1816c1b4cf0e99f1f75d555e4980e9cebbc7e958d8fed",
+  "runtime_context_glyph_preservation_sha256": "4e8857b882609a5c01086f15dcdf34b701083f37d06db03da09b7eae8ffcbdbe",
+  "local_review_packet_sha256": "e218145019cf40b09befad3839a789c8689464f50c84a8b66c201046f33b8c99",
+  "captured_utc": "2026-07-31T06:34:38.119843Z",
+  "review": {
+    "context_entry_count": 4,
+    "uniquely_mapped_entry_count": 4,
+    "speaker_labeled_entry_count": 4,
+    "narration_entry_count": 0,
+    "distinct_speaker_count": 2,
+    "consecutive_source_line_step_count": 3,
+    "preserved_non_text_glyph_occurrence_count": 5,
+    "translation_draft_entry_count": 0,
+    "human_translation_required_entry_count": 4
+  },
+  "context_pairing_complete": true,
+  "non_text_glyph_preservation_complete": true,
+  "translation_generated_by_mechanical_stage": false,
+  "human_translation_review_required": true,
+  "hancharacter_contract_mode": "translator_declared",
+  "local_payload_policy": "source-text-speakers-target-text-selectors-ordinals-indices-screens-translations-and-review-cards-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "human-share-first-context-translation-review"
+}

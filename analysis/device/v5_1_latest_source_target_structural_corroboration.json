@@ -3,9 +3,9 @@
   "schema_version": 1,
   "status": "structural-corroboration-insufficient",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "source_section_projection_sha256": "45e5dd6b5cdf7c174596498e3dcd768b9dff558e3711687c9a5158bfc2169d13",
-  "local_analysis_sha256": "9d9ca788a676f812e22a311219d634e1ef7308ee513f752b580184bd2852bd14",
-  "captured_utc": "2026-07-31T06:28:44.156747Z",
+  "source_section_projection_sha256": "504ed86f84d01ba3d008a7959be0efc9cacdf21d4a20f24ee063fdb2b09f5dd3",
+  "local_analysis_sha256": "7534f7c55506f3bf1058a863ec665ec14f80afb6879fdb36b6f28df177fbfbc0",
+  "captured_utc": "2026-07-31T06:34:36.556953Z",
   "corroboration": {
     "pair_count": 79,
     "adjacent_pair_boundary_count": 78,
