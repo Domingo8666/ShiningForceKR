@@ -349,24 +349,36 @@ def _main() -> int:
         raise SystemExit(
             "first context translation runtime capture input is missing"
         )
-    ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-validation"
+    ACTIVE_CAPTURE_FAILURE_STAGE = (
+        "first-context-runtime-capture-build-validation"
+    )
     build = json.loads(paths["build"].read_text(encoding="utf-8"))
+    if not isinstance(build, dict):
+        raise ValueError(
+            "first context translation runtime build input is invalid"
+        )
+    validate_first_context_translation_test_build(build)
+    ACTIVE_CAPTURE_FAILURE_STAGE = (
+        "first-context-runtime-capture-source-sequence-validation"
+    )
     source_sequence = json.loads(
         paths["source_sequence"].read_text(encoding="utf-8")
+    )
+    if not isinstance(source_sequence, dict):
+        raise ValueError(
+            "first context translation runtime sequence input is invalid"
+        )
+    validate_source_target_runtime_sequence(source_sequence)
+    ACTIVE_CAPTURE_FAILURE_STAGE = (
+        "first-context-runtime-capture-approval-validation"
     )
     local_approval = json.loads(
         paths["local_approval"].read_text(encoding="utf-8")
     )
-    if (
-        not isinstance(build, dict)
-        or not isinstance(source_sequence, dict)
-        or not isinstance(local_approval, dict)
-    ):
+    if not isinstance(local_approval, dict):
         raise ValueError(
-            "first context translation runtime capture inputs are invalid"
+            "first context translation runtime approval input is invalid"
         )
-    validate_first_context_translation_test_build(build)
-    validate_source_target_runtime_sequence(source_sequence)
     validate_local_first_context_translation_approval(local_approval)
     approval_rows = local_approval.get("rows")
     expected_entry_count = int(build["verification"]["context_entry_count"])
@@ -471,6 +483,9 @@ def _main() -> int:
             evidence_dir=evidence_dir,
         )
     )
+    ACTIVE_CAPTURE_FAILURE_STAGE = (
+        "first-context-runtime-capture-summary-validation"
+    )
     counts, status, first_consecutive = summarize_runtime_sequence(
         observations,
         advance_attempt_count=advance_attempt_count,
@@ -478,7 +493,9 @@ def _main() -> int:
     captured_utc = datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"
     )
-    ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-validation"
+    ACTIVE_CAPTURE_FAILURE_STAGE = (
+        "first-context-runtime-capture-output-validation"
+    )
     local = {
         "artifact_kind":
             "local-v5-1-first-context-translation-runtime-capture",
