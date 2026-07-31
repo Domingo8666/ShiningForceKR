@@ -4,7 +4,7 @@
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
   "exit_code": 1,
-  "attempt_utc": "2026-07-31T13:27:19Z",
+  "attempt_utc": "2026-07-31T13:32:22Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -21,7 +21,7 @@
   "runtime_failure": {
     "schema_version": 1,
     "failure_stage": "source-target-runtime-sequence",
-    "failure_kind": "runtime-error",
+    "failure_kind": "runtime-huffman-read-unparsed",
     "mcp_method": "debug_get_status"
   },
   "next_checkpoint": "repair-runtime-command"
