@@ -3,10 +3,10 @@
   "schema_version": 1,
   "status": "first-context-translation-runtime-capture-failed",
   "pipeline_stage": "first-context-translation-runtime-capture",
-  "failure_stage": "first-context-runtime-capture-validation",
+  "failure_stage": "first-context-runtime-capture-output-validation",
   "failure_kind": "invalid-runtime-data",
   "mcp_method": null,
-  "captured_utc": "2026-07-31T17:38:42.875945Z",
+  "captured_utc": "2026-07-31T17:44:38.198419Z",
   "source_and_target_text_local_only": true,
   "next_checkpoint": "repair-first-context-translation-runtime-capture"
 }
