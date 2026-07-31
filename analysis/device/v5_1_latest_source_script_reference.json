@@ -3,14 +3,14 @@
   "schema_version": 1,
   "status": "source-script-reference-collected",
   "source_host": "www.shiningforcecentral.com",
-  "local_reference_sha256": "909b64bf5772127d5724e2c274d01b03606cd539f66f773fe419cd3ebef0adfe",
-  "captured_utc": "2026-07-31T15:02:37.186763Z",
+  "local_reference_sha256": "a46cac4ed420af3b7d58b43d83a29982735a39548ef672b8fe5e4a63695f0449",
+  "captured_utc": "2026-07-31T15:04:41.221625Z",
   "reference": {
-    "speaker_label_count": 627,
-    "unique_speaker_count": 53,
-    "section_count": 25,
     "script_line_count": 1409,
-    "narration_line_count": 40
+    "unique_speaker_count": 53,
+    "speaker_label_count": 627,
+    "narration_line_count": 40,
+    "section_count": 25
   },
   "local_payload_policy": "source-urls-html-dialogue-speaker-names-and-annotations-local-only",
   "source_pairing_complete": false,
