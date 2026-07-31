@@ -44,6 +44,23 @@ except ImportError:  # pragma: no cover - direct script execution
         validate_source_target_runtime_sequence,
     )
 
+try:
+    from .run_s25u_runtime_probe import (
+        _runtime_failure_kind,
+        _write_runtime_failure_receipt,
+    )
+    from .v5_1_runtime_stage_failure import (
+        build_first_context_runtime_capture_failure,
+    )
+except ImportError:  # pragma: no cover - direct script execution
+    from run_s25u_runtime_probe import (
+        _runtime_failure_kind,
+        _write_runtime_failure_receipt,
+    )
+    from v5_1_runtime_stage_failure import (
+        build_first_context_runtime_capture_failure,
+    )
+
 
 ARTIFACT_KIND = (
     "sanitized-v5-1-first-context-translation-runtime-capture"
@@ -69,6 +86,7 @@ FAILURE_PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/"
     "v5_1_latest_first_context_translation_runtime_capture_failure.json"
 )
+ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-input"
 SAFE_FIELDS = {
     "artifact_kind",
     "schema_version",
@@ -309,7 +327,9 @@ img{width:100%;height:auto;image-rendering:pixelated;border-radius:8px}
     review_path.write_text(document, encoding="utf-8")
 
 
-def main() -> int:
+def _main() -> int:
+    global ACTIVE_CAPTURE_FAILURE_STAGE
+    ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-input"
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--if-ready", action="store_true")
@@ -329,6 +349,7 @@ def main() -> int:
         raise SystemExit(
             "first context translation runtime capture input is missing"
         )
+    ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-validation"
     build = json.loads(paths["build"].read_text(encoding="utf-8"))
     source_sequence = json.loads(
         paths["source_sequence"].read_text(encoding="utf-8")
@@ -352,6 +373,7 @@ def main() -> int:
     if not isinstance(approval_rows, list):
         raise ValueError("first context runtime approval rows are missing")
     translations = [str(row.get("target_text", "")) for row in approval_rows]
+    ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-identity"
     if (
         build["status"] != "first-context-translation-static-build-ready"
         or source_sequence["status"]
@@ -365,6 +387,7 @@ def main() -> int:
         raise ValueError(
             "first context translation runtime capture identity disagrees"
         )
+    ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-validation"
     safe_path = root / PUBLISH_RELATIVE_PATH
     local_path = root / LOCAL_REPORT_PATH
     if safe_path.is_file() and local_path.is_file():
@@ -434,6 +457,7 @@ def main() -> int:
                 return 0
         except (OSError, ValueError, json.JSONDecodeError):
             pass
+    ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-sequence"
     evidence_dir = (
         root
         / LOCAL_EVIDENCE_DIR
@@ -454,6 +478,7 @@ def main() -> int:
     captured_utc = datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"
     )
+    ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-validation"
     local = {
         "artifact_kind":
             "local-v5-1-first-context-translation-runtime-capture",
@@ -510,6 +535,35 @@ def main() -> int:
     (root / FAILURE_PUBLISH_RELATIVE_PATH).unlink(missing_ok=True)
     print(f"SFKR first context translation runtime capture: {safe_path}")
     return 0
+
+
+def main() -> int:
+    try:
+        return _main()
+    except Exception as error:
+        root = Path(__file__).resolve().parents[1]
+        captured_utc = datetime.now(timezone.utc).isoformat().replace(
+            "+00:00", "Z"
+        )
+        runtime_failure: dict[str, object] = {
+            "schema_version": 1,
+            "failure_stage": ACTIVE_CAPTURE_FAILURE_STAGE,
+            "failure_kind": _runtime_failure_kind(error),
+            "mcp_method": None,
+        }
+        _write_runtime_failure_receipt(root, runtime_failure)
+        safe_failure = build_first_context_runtime_capture_failure(
+            pipeline_stage=ACTIVE_CAPTURE_FAILURE_STAGE,
+            runtime_failure=runtime_failure,
+            captured_utc=captured_utc,
+        )
+        failure_path = root / FAILURE_PUBLISH_RELATIVE_PATH
+        failure_path.parent.mkdir(parents=True, exist_ok=True)
+        failure_path.write_text(
+            json.dumps(safe_failure, ensure_ascii=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        raise
 
 
 if __name__ == "__main__":
