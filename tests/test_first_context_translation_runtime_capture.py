@@ -12,8 +12,10 @@ from tools.v5_1_first_context_translation_runtime_capture import (  # noqa: E402
     CONFIRMED_ORDINAL,
     CONFIRMED_SELECTOR,
     LOCAL_REVIEW_PATH,
+    RUNTIME_CAPTURE_POLICY_VERSION,
     _write_review,
     build_first_context_translation_runtime_capture,
+    reusable_runtime_capture_policy_matches,
     select_target_runtime_sequence,
     validate_first_context_translation_runtime_capture,
 )
@@ -169,6 +171,26 @@ class FirstContextTranslationRuntimeCaptureTests(unittest.TestCase):
             self.assertIn("캡처된 목표 화면: 2/5", document)
             self.assertIn("대사 2/5", document)
             self.assertNotIn("대사 3/5", document)
+
+    def test_rejects_capture_from_older_runtime_policy(self) -> None:
+        self.assertFalse(reusable_runtime_capture_policy_matches({}))
+        self.assertFalse(
+            reusable_runtime_capture_policy_matches(
+                {
+                    "capture_policy_version":
+                        RUNTIME_CAPTURE_POLICY_VERSION - 1,
+                    "capture_attempt_limit": 20,
+                }
+            )
+        )
+        self.assertTrue(
+            reusable_runtime_capture_policy_matches(
+                {
+                    "capture_policy_version": RUNTIME_CAPTURE_POLICY_VERSION,
+                    "capture_attempt_limit": 20,
+                }
+            )
+        )
 
 
 if __name__ == "__main__":

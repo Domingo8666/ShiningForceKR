@@ -21,6 +21,7 @@ try:
     )
     from .v5_1_source_target_runtime_sequence import (
         COUNT_KEYS,
+        POST_ANCHOR_ATTEMPT_LIMIT,
         PUBLISH_RELATIVE_PATH as SOURCE_SEQUENCE_PATH,
         capture_runtime_sequence,
         summarize_runtime_sequence,
@@ -42,6 +43,7 @@ except ImportError:  # pragma: no cover - direct script execution
     )
     from v5_1_source_target_runtime_sequence import (
         COUNT_KEYS,
+        POST_ANCHOR_ATTEMPT_LIMIT,
         PUBLISH_RELATIVE_PATH as SOURCE_SEQUENCE_PATH,
         capture_runtime_sequence,
         summarize_runtime_sequence,
@@ -74,6 +76,7 @@ ARTIFACT_KIND = (
     "sanitized-v5-1-first-context-translation-runtime-capture"
 )
 SCHEMA_VERSION = 1
+RUNTIME_CAPTURE_POLICY_VERSION = 2
 TEST_ROM_PATH = Path(
     "build/Final_Conflict_Korean_first_context_translation_test.gg"
 )
@@ -371,6 +374,17 @@ def select_target_runtime_sequence(
     return selected_observations, selected_screens
 
 
+def reusable_runtime_capture_policy_matches(
+    existing_local: dict[str, object],
+) -> bool:
+    return (
+        existing_local.get("capture_policy_version")
+        == RUNTIME_CAPTURE_POLICY_VERSION
+        and existing_local.get("capture_attempt_limit")
+        == POST_ANCHOR_ATTEMPT_LIMIT
+    )
+
+
 def _main() -> int:
     global ACTIVE_CAPTURE_FAILURE_STAGE
     ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-input"
@@ -459,6 +473,7 @@ def _main() -> int:
                 == build["baseline_target_sha256"]
                 and existing["local_capture_sha256"]
                 == sha256_file(local_path)
+                and reusable_runtime_capture_policy_matches(existing_local)
             ):
                 existing_counts = existing_local.get("runtime_sequence")
                 existing_capture = existing_local.get("capture")
@@ -554,6 +569,8 @@ def _main() -> int:
         "artifact_kind":
             "local-v5-1-first-context-translation-runtime-capture",
         "schema_version": SCHEMA_VERSION,
+        "capture_policy_version": RUNTIME_CAPTURE_POLICY_VERSION,
+        "capture_attempt_limit": POST_ANCHOR_ATTEMPT_LIMIT,
         "baseline_target_sha256": build["baseline_target_sha256"],
         "test_target_sha256": build["test_target_sha256"],
         "captured_utc": captured_utc,
