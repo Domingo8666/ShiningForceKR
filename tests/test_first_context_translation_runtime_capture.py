@@ -1,6 +1,7 @@
 from copy import deepcopy
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -10,6 +11,8 @@ if str(ROOT) not in sys.path:
 from tools.v5_1_first_context_translation_runtime_capture import (  # noqa: E402
     CONFIRMED_ORDINAL,
     CONFIRMED_SELECTOR,
+    LOCAL_REVIEW_PATH,
+    _write_review,
     build_first_context_translation_runtime_capture,
     select_target_runtime_sequence,
     validate_first_context_translation_runtime_capture,
@@ -149,6 +152,23 @@ class FirstContextTranslationRuntimeCaptureTests(unittest.TestCase):
         )
         self.assertEqual(len(selected_observations), 2)
         self.assertEqual(len(selected_screens), 2)
+
+    def test_writes_partial_review_with_expected_total(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            screenshots = [
+                {"file": str(root / "capture" / f"screen-{index}.png")}
+                for index in range(2)
+            ]
+            _write_review(
+                root=root,
+                translations=[f"번역 {index}" for index in range(5)],
+                screenshots=screenshots,
+            )
+            document = (root / LOCAL_REVIEW_PATH).read_text(encoding="utf-8")
+            self.assertIn("캡처된 목표 화면: 2/5", document)
+            self.assertIn("대사 2/5", document)
+            self.assertNotIn("대사 3/5", document)
 
 
 if __name__ == "__main__":

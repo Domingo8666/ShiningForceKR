@@ -294,14 +294,15 @@ def _write_review(
 ) -> None:
     global ACTIVE_CAPTURE_FAILURE_STAGE
     ACTIVE_CAPTURE_FAILURE_STAGE = "first-context-runtime-capture-review-count"
-    if len(translations) != len(screenshots) or len(translations) < 4:
+    if not translations or not screenshots:
         raise ValueError("first context review screen count disagrees")
     if any(not translation for translation in translations):
         raise ValueError("first context review translation is empty")
-    total = len(translations)
+    expected_total = len(translations)
+    captured_total = min(len(translations), len(screenshots))
     cards = []
     for index, (translation, screenshot) in enumerate(
-        zip(translations, screenshots),
+        zip(translations[:captured_total], screenshots[:captured_total]),
         start=1,
     ):
         ACTIVE_CAPTURE_FAILURE_STAGE = (
@@ -314,7 +315,7 @@ def _write_review(
             relative = path.resolve().relative_to(root.resolve()).as_posix()
         cards.append(
             "<article><h2>대사 "
-            f"{index}/{total}</h2><p class=\"expected\">"
+            f"{index}/{expected_total}</h2><p class=\"expected\">"
             f"{html.escape(translation)}</p>"
             f"<img src=\"../{html.escape(relative)}\" "
             f"alt=\"한글 대사 {index} 실행 화면\"></article>"
@@ -333,6 +334,7 @@ img{width:100%;height:auto;image-rendering:pixelated;border-radius:8px}
 </style></head><body><main>
 <header><h1>첫 한글 대사 실행 검토</h1>
 <p>실제 테스트 ROM을 콜드부팅해 자동 캡처했습니다.</p>
+<p>캡처된 목표 화면: """ + f"{captured_total}/{expected_total}" + """</p>
 <p>글자 깨짐, 잘림, 겹침, 잘못된 줄바꿈이 없는지 확인합니다.</p>
 </header>
 """ + "\n".join(cards) + """
