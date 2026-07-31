@@ -893,6 +893,41 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    first_context_translation_encoding_output="$(
+      python tools/v5_1_first_context_translation_encoding.py --if-ready 2>&1
+    )"
+    first_context_translation_encoding_status=$?
+    printf '%s\n' "$first_context_translation_encoding_output"
+    if [ "$first_context_translation_encoding_status" -ne 0 ]; then
+      stage_status="$first_context_translation_encoding_status"
+      diagnostic_trigger=probe
+      first_context_translation_encoding_failure_stage=first-context-translation-encoding
+      case "$first_context_translation_encoding_output" in
+        *"translation encoding identity"*)
+          first_context_translation_encoding_failure_stage=first-context-encoding-identity
+          ;;
+        *"preserved glyph"*|\
+        *"custom font page"*|\
+        *"target character is unmapped"*|\
+        *"Huffman roundtrip"*)
+          first_context_translation_encoding_failure_stage=first-context-encoding-plan
+          ;;
+        *"translation encoding input is missing"*|\
+        *"translation encoding rows are missing"*|\
+        *"source tokens are missing"*)
+          first_context_translation_encoding_failure_stage=first-context-encoding-input
+          ;;
+        *"translation encoding fields do not match"*|\
+        *"translation encoding counts do not match"*|\
+        *"translation encoding is inconsistent"*)
+          first_context_translation_encoding_failure_stage=first-context-encoding-validation
+          ;;
+      esac
+      record_stage_failure "$first_context_translation_encoding_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then
