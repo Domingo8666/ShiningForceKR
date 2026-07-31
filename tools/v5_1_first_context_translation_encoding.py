@@ -144,6 +144,9 @@ LOCAL_REPORT_PATH = Path(
 LOCAL_COMBINED_FONT_OVERLAY_PATH = Path(
     "build/Final_Conflict_Korean_first_context_font_pages.ips"
 )
+FAILURE_PUBLISH_RELATIVE_PATH = Path(
+    "analysis/device/v5_1_latest_first_context_translation_encoding_failure.json"
+)
 COUNT_KEYS = {
     "context_entry_count",
     "target_character_count",
@@ -194,6 +197,27 @@ SAFE_FIELDS = {
     "translation_build_eligible",
     "next_checkpoint",
 }
+FAILURE_FIELDS = {
+    "artifact_kind",
+    "schema_version",
+    "status",
+    "category",
+    "captured_utc",
+    "source_and_target_text_local_only",
+    "next_checkpoint",
+}
+FAILURE_CATEGORIES = {
+    "identity",
+    "input",
+    "row-capacity",
+    "page-route",
+    "row-route",
+    "font-input",
+    "font-destination",
+    "font-overlay",
+    "validation",
+    "unexpected",
+}
 
 
 def _is_sha256(value: object) -> bool:
@@ -216,6 +240,78 @@ def _is_utc_timestamp(value: object) -> bool:
 
 def _is_hangul_syllable(character: str) -> bool:
     return "\uac00" <= character <= "\ud7a3"
+
+
+def build_first_context_translation_encoding_failure(
+    *,
+    category: str,
+    captured_utc: str,
+) -> dict[str, object]:
+    value: dict[str, object] = {
+        "artifact_kind":
+            "sanitized-v5-1-first-context-translation-encoding-failure",
+        "schema_version": 1,
+        "status": "first-context-translation-encoding-failed",
+        "category": category,
+        "captured_utc": captured_utc,
+        "source_and_target_text_local_only": True,
+        "next_checkpoint": f"repair-first-context-{category}",
+    }
+    validate_first_context_translation_encoding_failure(value)
+    return value
+
+
+def validate_first_context_translation_encoding_failure(
+    value: dict[str, object],
+) -> None:
+    if set(value) != FAILURE_FIELDS:
+        raise ValueError(
+            "first context translation encoding failure fields do not match"
+        )
+    if (
+        value["artifact_kind"]
+        != "sanitized-v5-1-first-context-translation-encoding-failure"
+        or value["schema_version"] != 1
+        or value["status"] != "first-context-translation-encoding-failed"
+        or value["category"] not in FAILURE_CATEGORIES
+        or not _is_utc_timestamp(value["captured_utc"])
+        or value["source_and_target_text_local_only"] is not True
+        or value["next_checkpoint"]
+        != f"repair-first-context-{value['category']}"
+    ):
+        raise ValueError(
+            "first context translation encoding failure is inconsistent"
+        )
+
+
+def classify_encoding_failure(error: BaseException) -> str:
+    message = str(error).lower()
+    if "identity" in message:
+        return "identity"
+    if "input is missing" in message or "rows are missing" in message:
+        return "input"
+    if "exceeds one font page" in message or "page count" in message:
+        return "row-capacity"
+    if "font page is not encodable" in message:
+        return "page-route"
+    if "no huffman assignment" in message:
+        return "row-route"
+    if (
+        "target character tile is missing" in message
+        or "preserved visual depends on source bytes" in message
+    ):
+        return "font-input"
+    if "font page has source-dependent bytes" in message:
+        return "font-destination"
+    if "expected write" in message or "ips" in message:
+        return "font-overlay"
+    if (
+        "fields do not match" in message
+        or "counts do not match" in message
+        or "inconsistent" in message
+    ):
+        return "validation"
+    return "unexpected"
 
 
 def measure_huffman_route_capacity(
@@ -789,7 +885,7 @@ def validate_first_context_translation_encoding(
         raise ValueError("first context translation encoding is inconsistent")
 
 
-def main() -> int:
+def _main() -> int:
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--if-ready", action="store_true")
@@ -1075,6 +1171,35 @@ def main() -> int:
     )
     print(f"SFKR first context translation encoding: {safe_path}")
     return 0
+
+
+def main() -> int:
+    root = Path(__file__).resolve().parents[1]
+    failure_path = root / FAILURE_PUBLISH_RELATIVE_PATH
+    try:
+        result = _main()
+    except (AssertionError, PatchError, ValueError) as error:
+        captured_utc = datetime.now(timezone.utc).isoformat().replace(
+            "+00:00", "Z"
+        )
+        category = classify_encoding_failure(error)
+        failure = build_first_context_translation_encoding_failure(
+            category=category,
+            captured_utc=captured_utc,
+        )
+        failure_path.parent.mkdir(parents=True, exist_ok=True)
+        failure_path.write_text(
+            json.dumps(failure, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        print(
+            "SFKR first context translation encoding failed safely: "
+            f"{category}"
+        )
+        return 1
+    if failure_path.is_file():
+        failure_path.unlink()
+    return result
 
 
 if __name__ == "__main__":

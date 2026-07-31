@@ -247,6 +247,7 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_first_context_translation_approval.json|\
     analysis/device/v5_1_latest_first_context_translation_capacity.json|\
     analysis/device/v5_1_latest_first_context_translation_encoding.json|\
+    analysis/device/v5_1_latest_first_context_translation_encoding_failure.json|\
     analysis/device/v5_1_latest_group_context_resolution.json|\
     analysis/device/v5_1_latest_group_runtime_context.json|\
     analysis/device/v5_1_latest_group_source_delta.json|\

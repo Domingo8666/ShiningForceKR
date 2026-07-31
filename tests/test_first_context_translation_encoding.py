@@ -10,10 +10,12 @@ if str(ROOT) not in sys.path:
 from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     build_character_assignments,
     build_first_context_translation_encoding,
+    build_first_context_translation_encoding_failure,
     build_row_visuals,
     build_symbol_rows,
     solve_row_visual_symbols,
     validate_first_context_translation_encoding,
+    validate_first_context_translation_encoding_failure,
 )
 from tools.sfgfc_huffman import HuffmanNode, ParsedTree  # noqa: E402
 
@@ -155,3 +157,15 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         unsafe["encoded_bytes"] = "private"
         with self.assertRaisesRegex(ValueError, "fields do not match"):
             validate_first_context_translation_encoding(unsafe)
+
+    def test_builds_sanitized_failure_category(self) -> None:
+        failure = build_first_context_translation_encoding_failure(
+            category="row-route",
+            captured_utc=STAMP,
+        )
+        self.assertEqual(failure["category"], "row-route")
+        self.assertNotIn("error", failure)
+        unsafe = deepcopy(failure)
+        unsafe["category"] = "private-detail"
+        with self.assertRaisesRegex(ValueError, "inconsistent"):
+            validate_first_context_translation_encoding_failure(unsafe)
