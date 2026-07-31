@@ -186,9 +186,14 @@ try:
         validate_first_context_translation_test_build,
     )
     from .v5_1_first_context_translation_runtime_capture import (
+        FAILURE_PUBLISH_RELATIVE_PATH
+        as FIRST_CONTEXT_TRANSLATION_RUNTIME_CAPTURE_FAILURE_RELATIVE_PATH,
         PUBLISH_RELATIVE_PATH
         as FIRST_CONTEXT_TRANSLATION_RUNTIME_CAPTURE_RELATIVE_PATH,
         validate_first_context_translation_runtime_capture,
+    )
+    from .v5_1_runtime_stage_failure import (
+        validate_first_context_runtime_capture_failure,
     )
     from .v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
@@ -399,9 +404,14 @@ except ImportError:  # direct script execution
         validate_first_context_translation_test_build,
     )
     from v5_1_first_context_translation_runtime_capture import (
+        FAILURE_PUBLISH_RELATIVE_PATH
+        as FIRST_CONTEXT_TRANSLATION_RUNTIME_CAPTURE_FAILURE_RELATIVE_PATH,
         PUBLISH_RELATIVE_PATH
         as FIRST_CONTEXT_TRANSLATION_RUNTIME_CAPTURE_RELATIVE_PATH,
         validate_first_context_translation_runtime_capture,
+    )
+    from v5_1_runtime_stage_failure import (
+        validate_first_context_runtime_capture_failure,
     )
     from v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
@@ -540,6 +550,8 @@ SAFE_ARTIFACTS = {
         validate_first_context_translation_test_build,
     FIRST_CONTEXT_TRANSLATION_RUNTIME_CAPTURE_RELATIVE_PATH:
         validate_first_context_translation_runtime_capture,
+    FIRST_CONTEXT_TRANSLATION_RUNTIME_CAPTURE_FAILURE_RELATIVE_PATH:
+        validate_first_context_runtime_capture_failure,
     GROUP_TEXT_CANDIDATE_RELATIVE_PATH:
         validate_group_text_candidate_resolution,
     UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH:

@@ -1,0 +1,12 @@
+{
+  "artifact_kind": "sanitized-v5-1-first-context-translation-runtime-capture-failure",
+  "schema_version": 1,
+  "status": "first-context-translation-runtime-capture-failed",
+  "pipeline_stage": "first-context-translation-runtime-capture",
+  "failure_stage": "first-context-translation-runtime-capture",
+  "failure_kind": "runtime-error",
+  "mcp_method": null,
+  "captured_utc": "2026-07-31T17:07:40Z",
+  "source_and_target_text_local_only": true,
+  "next_checkpoint": "repair-first-context-translation-runtime-capture"
+}

@@ -251,6 +251,7 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_first_context_record_reinsertion.json|\
     analysis/device/v5_1_latest_first_context_translation_test_build.json|\
     analysis/device/v5_1_latest_first_context_translation_runtime_capture.json|\
+    analysis/device/v5_1_latest_first_context_translation_runtime_capture_failure.json|\
     analysis/device/v5_1_latest_group_context_resolution.json|\
     analysis/device/v5_1_latest_group_runtime_context.json|\
     analysis/device/v5_1_latest_group_source_delta.json|\
