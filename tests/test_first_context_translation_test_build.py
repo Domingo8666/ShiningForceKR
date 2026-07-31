@@ -39,6 +39,7 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
             reinsertion_rows=[
                 {
                     "review_index": 1,
+                    "length_offset": 49,
                     "payload_start": 50,
                     "payload_end": 56,
                     "encoded_payload_hex": "AABBCC",
@@ -52,8 +53,9 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
         record_write = next(
             write for write in writes if "record" in write.writer
         )
-        self.assertEqual(record_write.after[:3], b"\xAA\xBB\xCC")
-        self.assertEqual(record_write.after[3:], target[53:56])
+        self.assertEqual(record_write.offset, 49)
+        self.assertEqual(record_write.after[:4], b"\x03\xAA\xBB\xCC")
+        self.assertEqual(record_write.after[4:], target[53:56])
 
     def test_builds_safe_static_verification_receipt(self) -> None:
         verification = {
@@ -62,7 +64,8 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
             "font_write_count": 40,
             "write_count": 44,
             "changed_byte_count": 800,
-            "record_length_unchanged_count": 4,
+            "record_length_field_verified_count": 4,
+            "record_length_changed_count": 4,
             "decoded_roundtrip_entry_count": 4,
             "decoded_failure_entry_count": 0,
             "font_glyph_assignment_count": 55,
@@ -83,6 +86,7 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
             "first-context-translation-static-build-ready",
         )
         self.assertTrue(safe["static_translation_build_confirmed"])
+        self.assertTrue(safe["record_length_fields_verified"])
         self.assertFalse(safe["translation_build_eligible"])
         non_exact = deepcopy(verification)
         non_exact["encoded_length_exact_count"] = 3

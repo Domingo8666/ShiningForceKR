@@ -70,7 +70,7 @@ except ImportError:  # pragma: no cover - direct script execution
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-translation-test-build"
 LOCAL_ARTIFACT_KIND = "local-v5-1-first-context-translation-test-build"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_translation_test_build.json"
 )
@@ -89,7 +89,8 @@ COUNT_KEYS = {
     "font_write_count",
     "write_count",
     "changed_byte_count",
-    "record_length_unchanged_count",
+    "record_length_field_verified_count",
+    "record_length_changed_count",
     "decoded_roundtrip_entry_count",
     "decoded_failure_entry_count",
     "font_glyph_assignment_count",
@@ -108,7 +109,7 @@ SAFE_FIELDS = {
     "captured_utc",
     "verification",
     "expected_write_audit_complete",
-    "record_lengths_unchanged",
+    "record_length_fields_verified",
     "huffman_roundtrip_complete",
     "font_tiles_verified",
     "static_translation_build_confirmed",
@@ -169,25 +170,29 @@ def build_translation_writes(
     font_write_count = len(writes)
     record_write_count = 0
     for row in reinsertion_rows:
+        length_offset = row.get("length_offset")
         start = row.get("payload_start")
         end = row.get("payload_end")
         encoded_hex = row.get("encoded_payload_hex")
         fits = row.get("fits_in_place")
         if (
-            not isinstance(start, int)
+            not isinstance(length_offset, int)
+            or isinstance(length_offset, bool)
+            or not isinstance(start, int)
             or isinstance(start, bool)
             or not isinstance(end, int)
             or isinstance(end, bool)
             or not isinstance(encoded_hex, str)
             or fits is not True
-            or not 0 <= start < end <= len(target)
+            or not 0 <= length_offset < start < end <= len(target)
+            or start != length_offset + 1
         ):
             raise ValueError("first context record write row is invalid")
         encoded = bytes.fromhex(encoded_hex)
-        if len(encoded) > end - start:
+        if not 1 <= len(encoded) <= min(0xFF, end - start):
             raise ValueError("first context record write exceeds its payload")
-        before = target[start:end]
-        after = encoded + before[len(encoded):]
+        before = target[length_offset:end]
+        after = bytes((len(encoded),)) + encoded + before[1 + len(encoded):]
         if before == after:
             raise ValueError("first context record write changes no bytes")
         writes.append(
@@ -196,10 +201,10 @@ def build_translation_writes(
                     f"first-context-record-{int(row['review_index']):02d}"
                 ),
                 purpose="first-context-static-translation-build",
-                offset=start,
+                offset=length_offset,
                 before=before,
                 after=after,
-                allowed_start=start,
+                allowed_start=length_offset,
                 allowed_end_exclusive=end,
             )
         )
@@ -227,7 +232,8 @@ def verify_translation_build(
     )
     roundtrips = 0
     failures = 0
-    lengths_unchanged = 0
+    length_fields_verified = 0
+    length_fields_changed = 0
     encoded_lengths_exact = 0
     for reinsertion, encoding in zip(reinsertion_rows, encoding_rows):
         length_offset = int(reinsertion["length_offset"])
@@ -235,19 +241,32 @@ def verify_translation_build(
         original_length = int(reinsertion["original_length_bytes"])
         expected_symbols = encoding.get("symbols")
         expected_bits = encoding.get("encoded_bits")
+        expected_bytes = encoding.get("encoded_bytes")
         target_bits = encoding.get("target_encoded_bits")
         initial_context = encoding.get("initial_context")
         if not isinstance(expected_symbols, list) or not isinstance(
             expected_bits,
             int,
-        ) or not isinstance(target_bits, int) or not isinstance(
+        ) or not isinstance(expected_bytes, int) or isinstance(
+            expected_bytes,
+            bool,
+        ) or not isinstance(
+            target_bits,
+            int,
+        ) or not isinstance(
             initial_context,
             int,
         ):
             raise ValueError("first context build expected symbols are missing")
         encoded_lengths_exact += int(expected_bits == target_bits)
-        lengths_unchanged += int(
-            test[length_offset] == baseline[length_offset] == original_length
+        length_fields_verified += int(
+            baseline[length_offset] == original_length
+            and test[length_offset] == expected_bytes
+            and expected_bytes == int(reinsertion["encoded_payload_bytes"])
+            and 1 <= expected_bytes <= original_length
+        )
+        length_fields_changed += int(
+            test[length_offset] != baseline[length_offset]
         )
         try:
             decoded, decoded_bits = decode_symbols(
@@ -258,7 +277,7 @@ def verify_translation_build(
                 initial_symbol=initial_context,
                 end_symbol=CANDIDATE_END_SYMBOL,
                 max_symbols=len(expected_symbols),
-                max_bytes=original_length,
+                max_bytes=expected_bytes,
             )
         except PatchError:
             failures += 1
@@ -285,7 +304,8 @@ def verify_translation_build(
         )
     return {
         "context_entry_count": len(encoding_rows),
-        "record_length_unchanged_count": lengths_unchanged,
+        "record_length_field_verified_count": length_fields_verified,
+        "record_length_changed_count": length_fields_changed,
         "decoded_roundtrip_entry_count": roundtrips,
         "decoded_failure_entry_count": failures,
         "font_glyph_assignment_count": len(font_assignments),
@@ -308,8 +328,9 @@ def build_first_context_translation_test_build(
         verification["context_entry_count"] >= 4
         and verification["record_write_count"]
         == verification["context_entry_count"]
-        and verification["record_length_unchanged_count"]
+        and verification["record_length_field_verified_count"]
         == verification["context_entry_count"]
+        and verification["record_length_changed_count"] > 0
         and verification["decoded_roundtrip_entry_count"]
         == verification["context_entry_count"]
         and verification["decoded_failure_entry_count"] == 0
@@ -335,7 +356,7 @@ def build_first_context_translation_test_build(
         "captured_utc": captured_utc,
         "verification": verification,
         "expected_write_audit_complete": complete,
-        "record_lengths_unchanged": complete,
+        "record_length_fields_verified": complete,
         "huffman_roundtrip_complete": complete,
         "font_tiles_verified": complete,
         "static_translation_build_confirmed": complete,
@@ -393,8 +414,9 @@ def validate_first_context_translation_test_build(
         verification["context_entry_count"] >= 4
         and verification["record_write_count"]
         == verification["context_entry_count"]
-        and verification["record_length_unchanged_count"]
+        and verification["record_length_field_verified_count"]
         == verification["context_entry_count"]
+        and verification["record_length_changed_count"] > 0
         and verification["decoded_roundtrip_entry_count"]
         == verification["context_entry_count"]
         and verification["decoded_failure_entry_count"] == 0
@@ -411,7 +433,7 @@ def validate_first_context_translation_test_build(
             else "first-context-translation-static-build-incomplete"
         )
         or value["expected_write_audit_complete"] is not complete
-        or value["record_lengths_unchanged"] is not complete
+        or value["record_length_fields_verified"] is not complete
         or value["huffman_roundtrip_complete"] is not complete
         or value["font_tiles_verified"] is not complete
         or value["static_translation_build_confirmed"] is not complete

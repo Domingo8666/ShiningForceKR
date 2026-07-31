@@ -2,9 +2,9 @@
   "artifact_kind": "sanitized-v5-1-first-context-translation-runtime-visual-review",
   "schema_version": 1,
   "status": "first-context-translation-runtime-visual-fail",
-  "runtime_capture_sha256": "10a1dfbfe82ab560d1766b4c1dd39eeef324ca5adad7d9c868a427d6c3ecdb8e",
-  "review_evidence_sha256": "3ac649f231d4321c2a37ad707bcf0026e4ed5a0834b0eb5b45b41420987bf42d",
-  "captured_utc": "2026-07-31T20:01:26.211Z",
+  "runtime_capture_sha256": "b67a1d9ad0bff6eac026183442715bebf316f4bf806edb33f9f3768012953459",
+  "review_evidence_sha256": "d7d9d72f361b24b460118c99042845af978ea710c3741d34980084a5c572b109",
+  "captured_utc": "2026-07-31T23:47:52.292Z",
   "review": {
     "expected_screen_count": 5,
     "reviewed_screen_count": 5,
