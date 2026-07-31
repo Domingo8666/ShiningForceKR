@@ -218,6 +218,7 @@ FAILURE_CATEGORIES = {
     "validation",
     "unexpected",
 }
+ACTIVE_FAILURE_CATEGORY = "unexpected"
 
 
 def _is_sha256(value: object) -> bool:
@@ -886,6 +887,8 @@ def validate_first_context_translation_encoding(
 
 
 def _main() -> int:
+    global ACTIVE_FAILURE_CATEGORY
+    ACTIVE_FAILURE_CATEGORY = "input"
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--if-ready", action="store_true")
@@ -921,6 +924,7 @@ def _main() -> int:
     validate_first_context_translation_approval(approval)
     validate_local_first_context_translation_approval(local_approval)
     validate_runtime_context_glyph_preservation(preservation)
+    ACTIVE_FAILURE_CATEGORY = "identity"
     if (
         capacity["target_sha256"] != approval["target_sha256"]
         or capacity["review_batch_sha256"] != approval["review_batch_sha256"]
@@ -957,6 +961,7 @@ def _main() -> int:
     assert isinstance(preservation_records, list)
     assert isinstance(hangul_assignments, list)
 
+    ACTIVE_FAILURE_CATEGORY = "font-input"
     patch = paths["patch"].read_bytes()
     bdf = paths["bdf"].read_bytes()
     analyze_patch(patch)
@@ -973,6 +978,7 @@ def _main() -> int:
         )
         for assignment in character_assignments
     }
+    ACTIVE_FAILURE_CATEGORY = "input"
     preserved_by_row = locate_preserved_occurrences(
         context_rows=context_rows,
         projection_pairs=projection_pairs,
@@ -986,6 +992,7 @@ def _main() -> int:
         KO_TREE_BANK_BASE,
         KO_VECTOR_ENTRIES,
     )
+    ACTIVE_FAILURE_CATEGORY = "row-route"
     (
         symbol_counts,
         symbol_rows,
@@ -996,6 +1003,7 @@ def _main() -> int:
         preserved_by_row=preserved_by_row,
     )
     custom_pages = set(ROW_FONT_PAGES)
+    ACTIVE_FAILURE_CATEGORY = "font-input"
     writes = []
     all_assignments = []
     for row_index, (page, assignments) in enumerate(
@@ -1058,12 +1066,14 @@ def _main() -> int:
                     "tile_sha256": sha256_bytes(after),
                 }
             )
+    ACTIVE_FAILURE_CATEGORY = "font-overlay"
     _, font_audit = apply_expected_writes(sparse.data, writes)
     font_overlay = expected_writes_to_ips(writes)
     overlay_path = root / LOCAL_COMBINED_FONT_OVERLAY_PATH
     overlay_path.parent.mkdir(parents=True, exist_ok=True)
     overlay_path.write_bytes(font_overlay)
 
+    ACTIVE_FAILURE_CATEGORY = "row-route"
     roundtrips = 0
     failures = 0
     encoded_bits = 0
@@ -1149,6 +1159,7 @@ def _main() -> int:
         json.dumps(local, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    ACTIVE_FAILURE_CATEGORY = "validation"
     safe = build_first_context_translation_encoding(
         target_sha256=str(capacity["target_sha256"]),
         review_batch_sha256=str(capacity["review_batch_sha256"]),
@@ -1178,11 +1189,21 @@ def main() -> int:
     failure_path = root / FAILURE_PUBLISH_RELATIVE_PATH
     try:
         result = _main()
-    except (AssertionError, PatchError, ValueError) as error:
+    except (
+        AssertionError,
+        IndexError,
+        KeyError,
+        PatchError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+    ) as error:
         captured_utc = datetime.now(timezone.utc).isoformat().replace(
             "+00:00", "Z"
         )
         category = classify_encoding_failure(error)
+        if category == "unexpected":
+            category = ACTIVE_FAILURE_CATEGORY
         failure = build_first_context_translation_encoding_failure(
             category=category,
             captured_utc=captured_utc,
