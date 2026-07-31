@@ -56,6 +56,39 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
     def test_keeps_proven_four_row_pages_before_the_fifth_page(self) -> None:
         self.assertEqual(ROW_FONT_PAGES, (240, 241, 242, 243, 239))
 
+    def test_builds_a_proven_row_with_the_joint_exact_solver(self) -> None:
+        target = [{"review_index": 1, "target_text": "가"}]
+        constraints = [{
+            "initial_context": 0xC9,
+            "original_encoded_bits": 8,
+            "original_record_length_bytes": 1,
+        }]
+        with (
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_row_visual_symbols",
+                side_effect=AssertionError("must not pre-solve a proven row"),
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_exact_length_row_visual_symbols",
+                return_value=([0x5F, 0x11, 0x02, 0x03, 0xC9], 0, [0x03]),
+            ) as exact_solver,
+        ):
+            _, rows, assignments = build_single_page_symbol_rows(
+                trees={},
+                target_rows=target,
+                preserved_by_row=[[]],
+                runtime_constraints=constraints,
+                pages=(240,),
+            )
+
+        exact_solver.assert_called_once()
+        self.assertEqual(rows[0]["symbols"], [0x5F, 0x11, 0x02, 0x03, 0xC9])
+        self.assertEqual(assignments[0], [
+            {"visual": "text:가", "page": 240, "symbol": 0x03}
+        ])
+
     def test_searches_past_an_unusable_extra_row_page(self) -> None:
         targets = [{"target_text": "가"} for _ in range(5)]
         constraints = [

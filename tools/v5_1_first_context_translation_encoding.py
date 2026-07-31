@@ -1614,23 +1614,22 @@ def build_single_page_symbol_rows(
             assignment_pages = [page] * len(assignments)
         elif expected_index <= len(PROVEN_ROW_FONT_PAGES):
             ACTIVE_FAILURE_DETAIL = "solve-proven-row"
-            assignments = solve_row_visual_symbols(
-                trees=trees,
-                page=page,
-                visuals=visuals,
-            )
             initial_context = int(constraint["initial_context"])
             target_bits = int(constraint["original_encoded_bits"])
             storage_capacity_bits = (
                 int(constraint["original_record_length_bytes"]) * 8
             )
             route_capacity_bits = storage_capacity_bits
-            symbols, padding_count = exact_length_row_symbols(
+            (
+                symbols,
+                padding_count,
+                assignments,
+            ) = solve_exact_length_row_visual_symbols(
                 trees=trees,
                 initial_context=initial_context,
                 target_bits=target_bits,
                 page=page,
-                assignments=assignments,
+                visuals=visuals,
             )
             assignment_pages = [page] * len(assignments)
         else:
