@@ -3,10 +3,10 @@
   "schema_version": 1,
   "status": "runtime-group-context-partial-coverage",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "source_group_extract_sha256": "eeda9c8b7139e4295a1f01b8bb6dc359cc18a6b0f7adf0fd2c72ada68eb484e0",
-  "source_context_resolution_sha256": "de02c10d0bf476d0fe940ea741f5b5628d5224725084633f1ed92c01e3d2225b",
+  "source_group_extract_sha256": "687f49eb11e64596b153adea0ca8f49ed91b4429618e098997bdb039f552da07",
+  "source_context_resolution_sha256": "c0272363d30eaf6041f5f085686308cc993a4350a9c2add4e3e295cd9b4bbad6",
   "source_renderer_observation_sha256": "b86e487b138d44cd9ea89fb8c1a18fee55b688769ec5d90809e814578e1ee6d8",
-  "captured_utc": "2026-07-31T07:56:56.215574Z",
+  "captured_utc": "2026-07-31T08:24:35.818585Z",
   "group": {
     "selector": 2,
     "declared_record_count": 148,
@@ -15,8 +15,8 @@
   "runtime_evidence": {
     "selected_record_compatible": true,
     "runtime_context_matches_unique_best": false,
-    "first_vector_access_resolved": true,
-    "runtime_context_is_available_tree": true
+    "runtime_context_is_available_tree": true,
+    "first_vector_access_resolved": true
   },
   "coverage": {
     "runtime_context_exact_entry_count": 88,
