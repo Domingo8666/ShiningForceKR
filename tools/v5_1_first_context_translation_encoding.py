@@ -1438,12 +1438,6 @@ def solve_exact_length_row_visual_symbols(
         range(FONT_GLYPH_FIRST_SYMBOL, FONT_GLYPH_LAST_SYMBOL + 1)
     )
     glyph_symbol_set = set(glyph_symbols)
-    visual_ids_by_value: dict[str, int] = {}
-    visual_ids = tuple(
-        visual_ids_by_value.setdefault(visual, len(visual_ids_by_value))
-        for visual in visuals
-    )
-    unassigned_visuals = (-1,) * len(visual_ids_by_value)
     expanded_state_count = 0
     maximum_expanded_states = 500_000
 
@@ -1573,7 +1567,6 @@ def solve_exact_length_row_visual_symbols(
     def search_visible(
         previous: int,
         used_mask: int,
-        assignments_by_visual: tuple[int, ...],
         depth: int,
         bits: int,
     ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
@@ -1598,53 +1591,37 @@ def solve_exact_length_row_visual_symbols(
                 (reselection_bits, reselection_symbols, page_token[-1])
             )
         for route_bits, route_symbols, route_previous in routes:
-            visual_id = visual_ids[depth]
-            assigned_symbol = assignments_by_visual[visual_id]
-            if assigned_symbol >= 0:
-                candidates = (
-                    (assigned_symbol,)
-                    if assigned_symbol in lengths.get(route_previous, {})
-                    else ()
-                )
-            else:
-                candidates = tuple(
-                    sorted(
-                        (
-                            symbol
-                            for symbol in glyph_symbols
-                            if not used_mask
-                            & (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL))
-                            and symbol in lengths.get(route_previous, {})
+            candidates = tuple(
+                sorted(
+                    (
+                        symbol
+                        for symbol in glyph_symbols
+                        if not used_mask
+                        & (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL))
+                        and symbol in lengths.get(route_previous, {})
+                    ),
+                    key=lambda symbol: (
+                        CANDIDATE_END_SYMBOL
+                        not in lengths.get(symbol, {}),
+                        -len(
+                            set(lengths.get(symbol, {}))
+                            & glyph_symbol_set
                         ),
-                        key=lambda symbol: (
-                            CANDIDATE_END_SYMBOL
-                            not in lengths.get(symbol, {}),
-                            -len(
-                                set(lengths.get(symbol, {}))
-                                & glyph_symbol_set
-                            ),
-                            symbol,
-                        ),
-                    )
+                        symbol,
+                    ),
                 )
+            )
             for symbol in candidates:
                 added_bits = lengths[route_previous][symbol]
                 next_bits = bits + route_bits + added_bits
                 if next_bits >= target_bits:
                     continue
-                next_assignments = assignments_by_visual
-                next_used_mask = used_mask
-                if assigned_symbol < 0:
-                    mutable_assignments = list(assignments_by_visual)
-                    mutable_assignments[visual_id] = symbol
-                    next_assignments = tuple(mutable_assignments)
-                    next_used_mask |= 1 << (
-                        symbol - FONT_GLYPH_FIRST_SYMBOL
-                    )
+                next_used_mask = used_mask | 1 << (
+                    symbol - FONT_GLYPH_FIRST_SYMBOL
+                )
                 suffix = search_visible(
                     symbol,
                     next_used_mask,
-                    next_assignments,
                     depth + 1,
                     next_bits,
                 )
@@ -1665,7 +1642,6 @@ def solve_exact_length_row_visual_symbols(
             visible_suffix = search_visible(
                 selected[1],
                 0,
-                unassigned_visuals,
                 0,
                 prefix_bits + selected[0],
             )
@@ -1734,12 +1710,6 @@ def solve_exact_length_row_multi_page_visual_symbols(
         range(FONT_GLYPH_FIRST_SYMBOL, FONT_GLYPH_LAST_SYMBOL + 1)
     )
     glyph_symbol_set = set(glyph_symbols)
-    visual_ids_by_value: dict[str, int] = {}
-    visual_ids = tuple(
-        visual_ids_by_value.setdefault(visual, len(visual_ids_by_value))
-        for visual in visuals
-    )
-    unassigned_visuals = (-1,) * len(visual_ids_by_value)
     expanded_state_count = 0
     maximum_expanded_states = 500_000
 
@@ -1907,7 +1877,6 @@ def solve_exact_length_row_multi_page_visual_symbols(
         previous: int,
         current_page: int,
         used_mask: int,
-        assignments_by_visual: tuple[int, ...],
         depth: int,
         bits: int,
     ) -> tuple[
@@ -1933,72 +1902,51 @@ def solve_exact_length_row_multi_page_visual_symbols(
             return (
                 (terminator, (), ()) if terminator is not None else None
             )
-        visual_id = visual_ids[depth]
-        assigned_coordinate = assignments_by_visual[visual_id]
         for route_bits, route_symbols, route_page, route_previous in (
             visible_routes(previous, current_page)
         ):
-            if assigned_coordinate >= 0:
-                assigned_page, assigned_symbol = divmod(
-                    assigned_coordinate, 0x100
-                )
-                candidates = (
-                    (assigned_symbol,)
-                    if assigned_page == route_page
-                    and assigned_symbol in lengths.get(route_previous, {})
-                    else ()
-                )
-            else:
-                candidates = tuple(
-                    sorted(
-                        (
-                            symbol
-                            for symbol in glyph_symbols
-                            if not used_mask
-                            & (
-                                1
-                                << (
-                                    page_priority[route_page] * capacity
-                                    + symbol
-                                    - FONT_GLYPH_FIRST_SYMBOL
-                                )
+            candidates = tuple(
+                sorted(
+                    (
+                        symbol
+                        for symbol in glyph_symbols
+                        if not used_mask
+                        & (
+                            1
+                            << (
+                                page_priority[route_page] * capacity
+                                + symbol
+                                - FONT_GLYPH_FIRST_SYMBOL
                             )
-                            and symbol in lengths.get(route_previous, {})
+                        )
+                        and symbol in lengths.get(route_previous, {})
+                    ),
+                    key=lambda symbol: (
+                        CANDIDATE_END_SYMBOL
+                        not in lengths.get(symbol, {}),
+                        -len(
+                            set(lengths.get(symbol, {}))
+                            & glyph_symbol_set
                         ),
-                        key=lambda symbol: (
-                            CANDIDATE_END_SYMBOL
-                            not in lengths.get(symbol, {}),
-                            -len(
-                                set(lengths.get(symbol, {}))
-                                & glyph_symbol_set
-                            ),
-                            symbol,
-                        ),
-                    )
+                        symbol,
+                    ),
                 )
+            )
             for symbol in candidates:
                 added_bits = lengths[route_previous][symbol]
                 next_bits = bits + route_bits + added_bits
                 if next_bits >= target_bits:
                     continue
-                next_assignments = assignments_by_visual
-                next_used_mask = used_mask
-                if assigned_coordinate < 0:
-                    coordinate = route_page * 0x100 + symbol
-                    slot_index = (
-                        page_priority[route_page] * capacity
-                        + symbol
-                        - FONT_GLYPH_FIRST_SYMBOL
-                    )
-                    mutable_assignments = list(assignments_by_visual)
-                    mutable_assignments[visual_id] = coordinate
-                    next_assignments = tuple(mutable_assignments)
-                    next_used_mask |= 1 << slot_index
+                slot_index = (
+                    page_priority[route_page] * capacity
+                    + symbol
+                    - FONT_GLYPH_FIRST_SYMBOL
+                )
+                next_used_mask = used_mask | 1 << slot_index
                 suffix = search_visible(
                     symbol,
                     route_page,
                     next_used_mask,
-                    next_assignments,
                     depth + 1,
                     next_bits,
                 )
@@ -2028,7 +1976,6 @@ def solve_exact_length_row_multi_page_visual_symbols(
                 selected[1],
                 candidate_page,
                 0,
-                unassigned_visuals,
                 0,
                 prefix_bits + selected[0],
             )

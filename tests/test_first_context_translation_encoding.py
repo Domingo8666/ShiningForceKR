@@ -360,7 +360,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x11, 0x02, 0x04, 0xC9],
         )
 
-    def test_reuses_one_font_slot_for_a_repeated_exact_visual(self) -> None:
+    def test_may_duplicate_a_repeated_visual_for_an_exact_route(self) -> None:
         trees = {
             0xC9: tree(0xC9, 0x5F, 0xC9),
             0x5F: tree(0x5F, 0x11, 0x5F),
@@ -381,10 +381,10 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 page=240,
                 visuals=["text:가", "text:가"],
             )
-        self.assertEqual(assignments, [0x03, 0x03])
+        self.assertEqual(assignments, [0x03, 0x04])
         self.assertEqual(
             symbols,
-            [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x11, 0x02, 0x03, 0xC9],
+            [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x11, 0x02, 0x04, 0xC9],
         )
 
     def test_switches_font_pages_between_bounded_visible_glyphs(self) -> None:
