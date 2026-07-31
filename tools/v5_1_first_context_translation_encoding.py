@@ -1730,6 +1730,12 @@ def solve_exact_length_row_visual_symbols(
     raise ValueError("first context visual row has no exact-length Huffman route")
 
 
+def exact_multi_page_state_limit(page_count: int) -> int:
+    if not 1 <= page_count <= FONT_PAGE_COUNT:
+        raise ValueError("first context exact page count is invalid")
+    return 500_000 if page_count <= 2 else 50_000
+
+
 def solve_exact_length_row_multi_page_visual_symbols(
     *,
     trees: dict[int, object],
@@ -1768,7 +1774,9 @@ def solve_exact_length_row_multi_page_visual_symbols(
     )
     glyph_symbol_set = set(glyph_symbols)
     expanded_state_count = 0
-    maximum_expanded_states = 500_000
+    maximum_expanded_states = exact_multi_page_state_limit(
+        len(candidate_pages)
+    )
 
     def transition(
         previous: int,

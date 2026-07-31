@@ -20,6 +20,7 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     build_single_page_symbol_rows,
     build_symbol_rows,
     diagnose_bounded_candidate_bit_count,
+    exact_multi_page_state_limit,
     exact_length_row_symbols,
     select_row_font_pages,
     solve_bounded_length_row_visual_symbols,
@@ -312,6 +313,11 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             )
 
         self.assertEqual(bits, 137)
+
+    def test_bounds_large_exact_page_group_searches(self) -> None:
+        self.assertEqual(exact_multi_page_state_limit(2), 500_000)
+        self.assertEqual(exact_multi_page_state_limit(4), 50_000)
+        self.assertEqual(exact_multi_page_state_limit(8), 50_000)
 
     def test_records_exact_multi_page_assignments(self) -> None:
         with patch(
