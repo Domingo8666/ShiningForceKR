@@ -35,13 +35,16 @@ try:
         validate_source_target_structural_corroboration,
     )
     from .v5_1_test_display_capture import (
+        ATTRACT_CAPTURE_TIMEOUT_SECONDS,
         ATTRACT_CAPTURE_SCHEDULE,
         DECODER_ENTRY_LOGICAL,
         DEFAULT_BUILD_REPORT,
         DEFAULT_TEST_ROM,
         MAX_REJECTED_TARGET_HITS,
         PUBLISH_RELATIVE_PATH as DISPLAY_CAPTURE_PATH,
+        _continue_until_breakpoint,
         _parse_screenshot,
+        _set_unlimited_fast_forward,
         _write_bytes_atomic,
         validate_display_capture,
     )
@@ -66,13 +69,16 @@ except ImportError:  # pragma: no cover - direct script execution
         validate_source_target_structural_corroboration,
     )
     from v5_1_test_display_capture import (
+        ATTRACT_CAPTURE_TIMEOUT_SECONDS,
         ATTRACT_CAPTURE_SCHEDULE,
         DECODER_ENTRY_LOGICAL,
         DEFAULT_BUILD_REPORT,
         DEFAULT_TEST_ROM,
         MAX_REJECTED_TARGET_HITS,
         PUBLISH_RELATIVE_PATH as DISPLAY_CAPTURE_PATH,
+        _continue_until_breakpoint,
         _parse_screenshot,
+        _set_unlimited_fast_forward,
         _write_bytes_atomic,
         validate_display_capture,
     )
@@ -94,6 +100,7 @@ POST_ANCHOR_ATTEMPT_LIMIT = 8
 POST_DECODE_CAPTURE_FRAMES = 60
 REQUIRED_TOOLS = {
     "controller_button",
+    "debug_continue",
     "debug_get_status",
     "debug_pause",
     "debug_reset",
@@ -109,6 +116,8 @@ REQUIRED_TOOLS = {
     "read_memory",
     "remove_breakpoint",
     "set_breakpoint_range",
+    "set_fast_forward_speed",
+    "toggle_fast_forward",
 }
 
 COUNT_KEYS = {
@@ -473,6 +482,7 @@ def capture_runtime_sequence(
 ) -> tuple[list[dict[str, object]], int, dict[str, object]]:
     client = McpStdioClient(_default_command())
     breakpoint_armed = False
+    fast_forward_enabled = False
     local: dict[str, object] = {
         "rom": str(rom_path),
         "hits": [],
@@ -531,37 +541,41 @@ def capture_runtime_sequence(
         client.call("debug_pause")
         arm_breakpoint()
         anchor_state: dict[str, object] | None = None
-        for frames, button in ATTRACT_CAPTURE_SCHEDULE:
-            if button is not None:
-                raise RuntimeError(
-                    "runtime sequence attract schedule must be passive"
-                )
-            for _ in range(MAX_REJECTED_TARGET_HITS):
-                status = _step_frames_and_wait(client, frames)
-                if status.get("at_breakpoint") is not True:
-                    break
-                state, hit_evidence = _capture_state(client)
-                selector, ordinal = _entry_coordinates(state)
-                local["hits"].append(
-                    {
-                        "phase": "anchor-search",
-                        "selector": selector,
-                        "ordinal": ordinal,
-                        "state": state,
-                        "evidence": hit_evidence,
-                    }
-                )
-                disarm_breakpoint()
-                if (
-                    selector == CONFIRMED_SELECTOR
-                    and ordinal == CONFIRMED_ORDINAL
-                ):
-                    anchor_state = state
-                    break
-                _step_instruction_and_wait(client)
-                arm_breakpoint()
-            if anchor_state is not None:
+        if any(button is not None for _, button in ATTRACT_CAPTURE_SCHEDULE):
+            raise RuntimeError(
+                "runtime sequence attract schedule must be passive"
+            )
+        _set_unlimited_fast_forward(client, True)
+        fast_forward_enabled = True
+        for _ in range(MAX_REJECTED_TARGET_HITS):
+            status = _continue_until_breakpoint(
+                client,
+                ATTRACT_CAPTURE_TIMEOUT_SECONDS,
+            )
+            if status.get("at_breakpoint") is not True:
                 break
+            state, hit_evidence = _capture_state(client)
+            selector, ordinal = _entry_coordinates(state)
+            local["hits"].append(
+                {
+                    "phase": "anchor-search",
+                    "selector": selector,
+                    "ordinal": ordinal,
+                    "state": state,
+                    "evidence": hit_evidence,
+                }
+            )
+            disarm_breakpoint()
+            if (
+                selector == CONFIRMED_SELECTOR
+                and ordinal == CONFIRMED_ORDINAL
+            ):
+                anchor_state = state
+                break
+            _step_instruction_and_wait(client)
+            arm_breakpoint()
+        _set_unlimited_fast_forward(client, False)
+        fast_forward_enabled = False
         if anchor_state is None:
             raise RuntimeError(
                 "runtime sequence confirmed anchor was not reached"
@@ -588,6 +602,8 @@ def capture_runtime_sequence(
         ):
             advance_attempt_count += 1
             arm_breakpoint()
+            _set_unlimited_fast_forward(client, True)
+            fast_forward_enabled = True
             client.call(
                 "controller_button",
                 {
@@ -596,7 +612,9 @@ def capture_runtime_sequence(
                     "action": "press_and_release",
                 },
             )
-            status = _step_frames_and_wait(client, 180)
+            status = _continue_until_breakpoint(client, 4.0)
+            _set_unlimited_fast_forward(client, False)
+            fast_forward_enabled = False
             if status.get("at_breakpoint") is not True:
                 disarm_breakpoint()
                 continue
@@ -644,6 +662,11 @@ def capture_runtime_sequence(
         )
         raise
     finally:
+        if fast_forward_enabled:
+            try:
+                _set_unlimited_fast_forward(client, False)
+            except RuntimeError:
+                pass
         if breakpoint_armed:
             try:
                 client.call(

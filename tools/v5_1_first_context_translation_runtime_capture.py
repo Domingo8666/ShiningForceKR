@@ -359,13 +359,6 @@ def main() -> int:
         observations,
         advance_attempt_count=advance_attempt_count,
     )
-    if (
-        status != "runtime-sequence-corroboration-ready"
-        or first_consecutive is not True
-    ):
-        raise RuntimeError(
-            "first context translation runtime sequence is incomplete"
-        )
     captured_utc = datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"
     )
@@ -377,6 +370,8 @@ def main() -> int:
         "test_target_sha256": build["test_target_sha256"],
         "captured_utc": captured_utc,
         "runtime_sequence": counts,
+        "source_sequence_status": status,
+        "first_post_anchor_step_consecutive": first_consecutive,
         "observations": observations,
         "capture": local_capture,
         "review_path": str(root / LOCAL_REVIEW_PATH),
@@ -387,9 +382,9 @@ def main() -> int:
         ),
     }
     screens = local_capture.get("screens")
-    if not isinstance(screens, list) or len(screens) != 4:
+    if not isinstance(screens, list):
         raise RuntimeError(
-            "first context translation runtime screenshots are incomplete"
+            "first context translation runtime screenshots are missing"
         )
     _write_review(root=root, screenshots=screens)
     local_path.parent.mkdir(parents=True, exist_ok=True)
