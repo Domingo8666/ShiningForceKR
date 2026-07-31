@@ -1494,6 +1494,49 @@ def solve_exact_length_row_visual_symbols(
         return best_target
 
     @lru_cache(maxsize=None)
+    def relaxed_can_finish(
+        previous: int,
+        depth: int,
+        remaining_bits: int,
+    ) -> bool:
+        """Reject exact-length states that cannot finish even without slots.
+
+        The full search must remember which visual owns each glyph slot, which
+        is necessarily combinatorial.  This cheaper relaxation ignores those
+        ownership and uniqueness constraints while preserving the real
+        Huffman transitions, visible-glyph count, page reselection route, and
+        exact terminator length.  A false result therefore proves that the
+        corresponding full state is impossible and can be discarded safely.
+        """
+
+        if remaining_bits <= 0:
+            return False
+        if depth == len(visuals):
+            return (
+                lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
+                == remaining_bits
+            )
+        routes = [(0, previous)]
+        reselection = shortest_page_reselection(previous)
+        if reselection is not None:
+            routes.append((reselection[0], page_token[-1]))
+        for route_bits, route_previous in routes:
+            for symbol in glyph_symbols:
+                symbol_bits = lengths.get(route_previous, {}).get(symbol)
+                if symbol_bits is None:
+                    continue
+                consumed = route_bits + symbol_bits
+                if consumed >= remaining_bits:
+                    continue
+                if relaxed_can_finish(
+                    symbol,
+                    depth + 1,
+                    remaining_bits - consumed,
+                ):
+                    return True
+        return False
+
+    @lru_cache(maxsize=None)
     def search_visible(
         previous: int,
         used_mask: int,
@@ -1507,6 +1550,8 @@ def solve_exact_length_row_visual_symbols(
             raise ValueError(
                 "first context exact-length search state limit exceeded"
             )
+        if not relaxed_can_finish(previous, depth, target_bits - bits):
+            return None
         if depth == len(visuals):
             end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
             if end_length is not None and bits + end_length == target_bits:
