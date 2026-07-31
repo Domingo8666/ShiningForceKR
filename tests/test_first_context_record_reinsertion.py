@@ -46,6 +46,8 @@ class FirstContextRecordReinsertionTests(unittest.TestCase):
                 {
                     "source_section_index": index,
                     "source_line_index": index + 10,
+                    "target_selector": index,
+                    "target_ordinal": index,
                     "target_record": {
                         "length_offset": offset,
                         "record_length_bytes": length,
@@ -76,6 +78,61 @@ class FirstContextRecordReinsertionTests(unittest.TestCase):
         self.assertEqual(counts["in_place_fit_entry_count"], 4)
         self.assertEqual(counts["overflow_entry_count"], 0)
         self.assertEqual(counts["distinct_target_record_count"], 4)
+        self.assertEqual(counts["logical_alias_reference_count"], 4)
+        self.assertEqual(counts["duplicate_alias_reference_count"], 0)
+        self.assertEqual(counts["selected_alias_missing_entry_count"], 0)
+
+    def test_accepts_disjoint_shared_aliases(self) -> None:
+        target, contexts, projections, encodings = self._rows()
+        for index, projection in enumerate(projections, start=1):
+            projection["target_record"]["aliases"].append(
+                {"selector": index + 10, "ordinal": index + 20}
+            )
+        counts = summarize_reinsertion_rows(
+            build_reinsertion_rows(
+                target=bytes(target),
+                context_rows=contexts,
+                projection_pairs=projections,
+                encoding_rows=encodings,
+            )
+        )
+        safe = build_first_context_record_reinsertion(
+            target_sha256=SHA_A,
+            review_batch_sha256=SHA_B,
+            first_context_translation_encoding_sha256=SHA_C,
+            local_reinsertion_sha256=SHA_D,
+            capacity=counts,
+            captured_utc=STAMP,
+        )
+        self.assertEqual(counts["shared_alias_entry_count"], 4)
+        self.assertEqual(counts["logical_alias_reference_count"], 8)
+        self.assertTrue(safe["shared_alias_impact_clear"])
+        self.assertTrue(safe["record_storage_capacity_confirmed"])
+
+    def test_blocks_alias_reference_collision(self) -> None:
+        target, contexts, projections, encodings = self._rows()
+        projections[1]["target_record"]["aliases"].append(
+            {"selector": 1, "ordinal": 1}
+        )
+        counts = summarize_reinsertion_rows(
+            build_reinsertion_rows(
+                target=bytes(target),
+                context_rows=contexts,
+                projection_pairs=projections,
+                encoding_rows=encodings,
+            )
+        )
+        safe = build_first_context_record_reinsertion(
+            target_sha256=SHA_A,
+            review_batch_sha256=SHA_B,
+            first_context_translation_encoding_sha256=SHA_C,
+            local_reinsertion_sha256=SHA_D,
+            capacity=counts,
+            captured_utc=STAMP,
+        )
+        self.assertEqual(counts["duplicate_alias_reference_count"], 1)
+        self.assertFalse(safe["shared_alias_impact_clear"])
+        self.assertFalse(safe["record_storage_capacity_confirmed"])
 
     def test_builds_safe_plan_without_private_record_data(self) -> None:
         target, contexts, projections, encodings = self._rows()

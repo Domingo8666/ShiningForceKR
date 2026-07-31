@@ -54,6 +54,10 @@ COUNT_KEYS = {
     "in_place_fit_entry_count",
     "overflow_entry_count",
     "shared_alias_entry_count",
+    "logical_alias_reference_count",
+    "duplicate_alias_reference_count",
+    "malformed_alias_entry_count",
+    "selected_alias_missing_entry_count",
     "original_payload_byte_count",
     "encoded_payload_byte_count",
     "available_payload_bit_count",
@@ -144,6 +148,8 @@ def build_reinsertion_rows(
         length_offset = target_record.get("length_offset")
         original_length = target_record.get("record_length_bytes")
         aliases = target_record.get("aliases")
+        target_selector = pair.get("target_selector")
+        target_ordinal = pair.get("target_ordinal")
         encoded_hex = encoding_row.get("encoded_hex")
         encoded_bits = encoding_row.get("encoded_bits")
         encoded_bytes = encoding_row.get("encoded_bytes")
@@ -153,6 +159,10 @@ def build_reinsertion_rows(
             or not isinstance(original_length, int)
             or isinstance(original_length, bool)
             or not isinstance(aliases, list)
+            or not isinstance(target_selector, int)
+            or isinstance(target_selector, bool)
+            or not isinstance(target_ordinal, int)
+            or isinstance(target_ordinal, bool)
             or not isinstance(encoded_hex, str)
             or not isinstance(encoded_bits, int)
             or isinstance(encoded_bits, bool)
@@ -160,6 +170,27 @@ def build_reinsertion_rows(
             or isinstance(encoded_bytes, bool)
         ):
             raise ValueError("first context reinsertion record fields are invalid")
+        alias_keys = []
+        aliases_well_formed = True
+        for alias in aliases:
+            if not isinstance(alias, dict):
+                aliases_well_formed = False
+                continue
+            selector = alias.get("selector")
+            ordinal = alias.get("ordinal")
+            if (
+                not isinstance(selector, int)
+                or isinstance(selector, bool)
+                or not isinstance(ordinal, int)
+                or isinstance(ordinal, bool)
+            ):
+                aliases_well_formed = False
+                continue
+            alias_keys.append((selector, ordinal))
+        selected_alias_present = (
+            target_selector,
+            target_ordinal,
+        ) in alias_keys
         payload = bytes.fromhex(encoded_hex)
         payload_start = length_offset + 1
         payload_end = payload_start + original_length
@@ -184,6 +215,9 @@ def build_reinsertion_rows(
                 "slack_bytes": original_length - encoded_bytes,
                 "fits_in_place": encoded_bytes <= original_length,
                 "alias_count": len(aliases),
+                "alias_keys": alias_keys,
+                "aliases_well_formed": aliases_well_formed,
+                "selected_alias_present": selected_alias_present,
                 "original_payload_sha256": sha256_bytes(
                     target[payload_start:payload_end]
                 ),
@@ -199,6 +233,11 @@ def summarize_reinsertion_rows(
     if not rows:
         raise ValueError("first context reinsertion rows are missing")
     slacks = [int(row["slack_bytes"]) for row in rows]
+    alias_keys = [
+        alias_key
+        for row in rows
+        for alias_key in row["alias_keys"]
+    ]
     return {
         "context_entry_count": len(rows),
         "distinct_target_record_count": len(
@@ -212,6 +251,16 @@ def summarize_reinsertion_rows(
         ),
         "shared_alias_entry_count": sum(
             int(row["alias_count"]) > 1 for row in rows
+        ),
+        "logical_alias_reference_count": len(alias_keys),
+        "duplicate_alias_reference_count": (
+            len(alias_keys) - len(set(alias_keys))
+        ),
+        "malformed_alias_entry_count": sum(
+            not bool(row["aliases_well_formed"]) for row in rows
+        ),
+        "selected_alias_missing_entry_count": sum(
+            not bool(row["selected_alias_present"]) for row in rows
         ),
         "original_payload_byte_count": sum(
             int(row["original_length_bytes"]) for row in rows
@@ -249,7 +298,13 @@ def build_first_context_record_reinsertion(
         == capacity["context_entry_count"]
         and capacity["overflow_entry_count"] == 0
     )
-    aliases_clear = capacity["shared_alias_entry_count"] == 0
+    aliases_clear = (
+        capacity["logical_alias_reference_count"]
+        >= capacity["context_entry_count"]
+        and capacity["duplicate_alias_reference_count"] == 0
+        and capacity["malformed_alias_entry_count"] == 0
+        and capacity["selected_alias_missing_entry_count"] == 0
+    )
     ready = (
         capacity["context_entry_count"] >= 4
         and distinct
@@ -332,7 +387,13 @@ def validate_first_context_record_reinsertion(
         == capacity["context_entry_count"]
         and capacity["overflow_entry_count"] == 0
     )
-    aliases_clear = capacity["shared_alias_entry_count"] == 0
+    aliases_clear = (
+        capacity["logical_alias_reference_count"]
+        >= capacity["context_entry_count"]
+        and capacity["duplicate_alias_reference_count"] == 0
+        and capacity["malformed_alias_entry_count"] == 0
+        and capacity["selected_alias_missing_entry_count"] == 0
+    )
     ready = (
         capacity["context_entry_count"] >= 4
         and distinct
