@@ -2095,24 +2095,25 @@ def diagnose_bounded_candidate_bit_count(
         )
     )
     for maximum_bits in limits:
-        try:
-            symbols, _, _, _ = solve_bounded_length_row_multi_page_visual_symbols(
-                trees=trees,
-                initial_context=initial_context,
-                maximum_bits=maximum_bits,
-                pages=pages,
-                visuals=visuals,
-            )
-            _, encoded_bits = encode_symbols(
-                trees,
-                symbols,
-                initial_symbol=initial_context,
-                end_symbol=CANDIDATE_END_SYMBOL,
-                max_bits=maximum_bits,
-            )
-        except (PatchError, ValueError):
-            continue
-        return encoded_bits
+        for page in pages:
+            try:
+                symbols, _, _ = solve_bounded_length_row_visual_symbols(
+                    trees=trees,
+                    initial_context=initial_context,
+                    maximum_bits=maximum_bits,
+                    page=page,
+                    visuals=visuals,
+                )
+                _, encoded_bits = encode_symbols(
+                    trees,
+                    symbols,
+                    initial_symbol=initial_context,
+                    end_symbol=CANDIDATE_END_SYMBOL,
+                    max_bits=maximum_bits,
+                )
+            except (PatchError, ValueError):
+                continue
+            return encoded_bits
     return 0
 
 

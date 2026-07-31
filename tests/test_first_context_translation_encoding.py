@@ -19,6 +19,7 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     build_row_visuals,
     build_single_page_symbol_rows,
     build_symbol_rows,
+    diagnose_bounded_candidate_bit_count,
     exact_length_row_symbols,
     select_row_font_pages,
     solve_bounded_length_row_visual_symbols,
@@ -283,6 +284,34 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(caught.exception.target_bits, 150)
         self.assertEqual(caught.exception.candidate_bits, 137)
         diagnostic.assert_called_once()
+
+    def test_diagnoses_candidate_bits_with_fast_single_page_routes(self) -> None:
+        def solve_bounded(*, page, **kwargs):
+            del kwargs
+            if page == 240:
+                raise ValueError("first page has no route")
+            return [0x5F, 0x11, 0x02, 0x03, 0xC9], 0, [0x03]
+
+        with (
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_bounded_length_row_visual_symbols",
+                side_effect=solve_bounded,
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding.encode_symbols",
+                return_value=(b"", 137),
+            ),
+        ):
+            bits = diagnose_bounded_candidate_bit_count(
+                trees={},
+                initial_context=0xC9,
+                target_bits=150,
+                pages=(240, 89),
+                visuals=["가"],
+            )
+
+        self.assertEqual(bits, 137)
 
     def test_records_exact_multi_page_assignments(self) -> None:
         with patch(
