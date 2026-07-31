@@ -22,6 +22,7 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     select_row_font_pages,
     solve_bounded_length_row_visual_symbols,
     solve_bounded_length_row_multi_page_visual_symbols,
+    solve_exact_length_row_multi_page_visual_symbols,
     solve_exact_length_row_visual_symbols,
     solve_row_visual_symbols,
     validate_first_context_translation_encoding,
@@ -173,6 +174,68 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 }],
             )
         self.assertEqual(pages, (89,))
+
+    def test_falls_back_to_an_exact_two_page_row(self) -> None:
+        with (
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_exact_length_row_visual_symbols",
+                side_effect=ValueError("single page is not exact"),
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_exact_length_row_multi_page_visual_symbols",
+                return_value=(
+                    [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x11, 0x02, 0x04, 0xC9],
+                    1,
+                    [0x03, 0x04],
+                    [240, 89],
+                ),
+            ) as multi_solver,
+        ):
+            pages = select_row_font_pages(
+                trees={},
+                target_rows=[{"target_text": "가나"}],
+                preserved_by_row=[[]],
+                runtime_constraints=[{
+                    "initial_context": 0xC9,
+                    "original_encoded_bits": 9,
+                    "original_record_length_bytes": 2,
+                }],
+            )
+
+        self.assertEqual(pages, ((240, 89),))
+        multi_solver.assert_called_once()
+
+    def test_records_exact_multi_page_assignments(self) -> None:
+        with patch(
+            "tools.v5_1_first_context_translation_encoding."
+            "solve_exact_length_row_multi_page_visual_symbols",
+            return_value=(
+                [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x11, 0x02, 0x04, 0xC9],
+                1,
+                [0x03, 0x04],
+                [240, 89],
+            ),
+        ):
+            counts, rows, assignments = build_single_page_symbol_rows(
+                trees={},
+                target_rows=[{"review_index": 1, "target_text": "가나"}],
+                preserved_by_row=[[]],
+                runtime_constraints=[{
+                    "initial_context": 0xC9,
+                    "original_encoded_bits": 9,
+                    "original_record_length_bytes": 2,
+                }],
+                pages=((240, 89),),
+            )
+
+        self.assertEqual(counts["planned_page_select_count"], 2)
+        self.assertEqual(rows[0]["page_select_padding_count"], 1)
+        self.assertEqual(assignments[0], [
+            {"visual": "text:가", "page": 240, "symbol": 0x03},
+            {"visual": "text:나", "page": 89, "symbol": 0x04},
+        ])
 
     def test_records_the_selected_exact_render_page(self) -> None:
         targets = [
@@ -343,6 +406,36 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             trees=trees,
             initial_context=0xC9,
             maximum_bits=9,
+            pages=(240, 239),
+            visuals=["text:가", "text:나"],
+        )
+        self.assertEqual(padding_count, 1)
+        self.assertEqual(assignments, [0x03, 0x04])
+        self.assertEqual(assignment_pages, [240, 239])
+        self.assertEqual(
+            symbols,
+            [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x10, 0x11, 0x04, 0xC9],
+        )
+
+    def test_switches_font_pages_at_the_exact_original_length(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x10),
+            0x10: tree(0x10, 0x11, 0x10),
+            0x11: tree(0x11, 0x02, 0x04),
+            0x02: tree(0x02, 0x03, 0x02),
+            0x03: tree(0x03, 0x5F, 0x03),
+            0x04: tree(0x04, 0xC9, 0x04),
+        }
+        (
+            symbols,
+            padding_count,
+            assignments,
+            assignment_pages,
+        ) = solve_exact_length_row_multi_page_visual_symbols(
+            trees=trees,
+            initial_context=0xC9,
+            target_bits=9,
             pages=(240, 239),
             visuals=["text:가", "text:나"],
         )
