@@ -268,7 +268,9 @@ FAILURE_KINDS = {
 FAILURE_DETAILS = {
     "none",
     "solve-unconstrained-row",
-    "solve-proven-row",
+    "solve-proven-exact-row",
+    "solve-proven-bounded-row",
+    "solve-proven-multi-page-row",
     "solve-extra-single-page-row",
     "solve-extra-multi-page-row",
     "validate-row-assignments",
@@ -1591,6 +1593,8 @@ def build_single_page_symbol_rows(
         for constraint in constraints
         if constraint is not None
     )
+    primary_pages = set(pages)
+    dynamic_pages: set[int] = set()
     for expected_index, (target_row, visuals, page, constraint) in enumerate(
         zip(target_rows, visual_rows, pages, constraints),
         start=1,
@@ -1613,25 +1617,65 @@ def build_single_page_symbol_rows(
             route_capacity_bits = 0
             assignment_pages = [page] * len(assignments)
         elif expected_index <= len(PROVEN_ROW_FONT_PAGES):
-            ACTIVE_FAILURE_DETAIL = "solve-proven-row"
             initial_context = int(constraint["initial_context"])
             target_bits = int(constraint["original_encoded_bits"])
             storage_capacity_bits = (
                 int(constraint["original_record_length_bytes"]) * 8
             )
-            route_capacity_bits = storage_capacity_bits
-            (
-                symbols,
-                padding_count,
-                assignments,
-            ) = solve_exact_length_row_visual_symbols(
-                trees=trees,
-                initial_context=initial_context,
-                target_bits=target_bits,
-                page=page,
-                visuals=visuals,
-            )
-            assignment_pages = [page] * len(assignments)
+            route_capacity_bits = group_capacity_bits
+            try:
+                ACTIVE_FAILURE_DETAIL = "solve-proven-exact-row"
+                (
+                    symbols,
+                    padding_count,
+                    assignments,
+                ) = solve_exact_length_row_visual_symbols(
+                    trees=trees,
+                    initial_context=initial_context,
+                    target_bits=target_bits,
+                    page=page,
+                    visuals=visuals,
+                )
+                assignment_pages = [page] * len(assignments)
+            except ValueError:
+                try:
+                    ACTIVE_FAILURE_DETAIL = "solve-proven-bounded-row"
+                    (
+                        symbols,
+                        padding_count,
+                        assignments,
+                    ) = solve_bounded_length_row_visual_symbols(
+                        trees=trees,
+                        initial_context=initial_context,
+                        maximum_bits=route_capacity_bits,
+                        page=page,
+                        visuals=visuals,
+                    )
+                    assignment_pages = [page] * len(assignments)
+                except ValueError:
+                    ACTIVE_FAILURE_DETAIL = "solve-proven-multi-page-row"
+                    unavailable_pages = (
+                        (primary_pages - {page}) | dynamic_pages
+                    )
+                    available_pages = tuple(
+                        candidate_page
+                        for candidate_page in range(
+                            FONT_PAGE_COUNT - 1, -1, -1
+                        )
+                        if candidate_page not in unavailable_pages
+                    )
+                    (
+                        symbols,
+                        padding_count,
+                        assignments,
+                        assignment_pages,
+                    ) = solve_bounded_length_row_multi_page_visual_symbols(
+                        trees=trees,
+                        initial_context=initial_context,
+                        maximum_bits=route_capacity_bits,
+                        pages=available_pages,
+                        visuals=visuals,
+                    )
         else:
             initial_context = int(constraint["initial_context"])
             target_bits = int(constraint["original_encoded_bits"])
@@ -1655,14 +1699,15 @@ def build_single_page_symbol_rows(
                 assignment_pages = [page] * len(assignments)
             except ValueError:
                 ACTIVE_FAILURE_DETAIL = "solve-extra-multi-page-row"
+                unavailable_pages = (
+                    (primary_pages - {page}) | dynamic_pages
+                )
                 available_pages = tuple(
                     candidate_page
                     for candidate_page in range(
                         FONT_PAGE_COUNT - 1, -1, -1
                     )
-                    if candidate_page not in set(
-                        pages[: len(PROVEN_ROW_FONT_PAGES)]
-                    )
+                    if candidate_page not in unavailable_pages
                 )
                 (
                     symbols,
@@ -1676,6 +1721,11 @@ def build_single_page_symbol_rows(
                     pages=available_pages,
                     visuals=visuals,
                 )
+        dynamic_pages.update(
+            assignment_page
+            for assignment_page in assignment_pages
+            if assignment_page not in primary_pages
+        )
         ACTIVE_FAILURE_DETAIL = "validate-row-assignments"
         if (
             len(assignments) != len(visuals)

@@ -89,6 +89,44 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             {"visual": "text:가", "page": 240, "symbol": 0x03}
         ])
 
+    def test_borrows_group_capacity_when_a_proven_row_length_changes(self) -> None:
+        target = [{"review_index": 1, "target_text": "가"}]
+        constraints = [{
+            "initial_context": 0xC9,
+            "original_encoded_bits": 4,
+            "original_record_length_bytes": 1,
+        }]
+        with (
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_exact_length_row_visual_symbols",
+                side_effect=ValueError("exact route unavailable"),
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_bounded_length_row_visual_symbols",
+                return_value=([0x5F, 0x11, 0x02, 0x03, 0xC9], 0, [0x03]),
+            ) as bounded_solver,
+        ):
+            counts, rows, assignments = build_single_page_symbol_rows(
+                trees={},
+                target_rows=target,
+                preserved_by_row=[[]],
+                runtime_constraints=constraints,
+                pages=(240,),
+            )
+
+        bounded_solver.assert_called_once_with(
+            trees={},
+            initial_context=0xC9,
+            maximum_bits=8,
+            page=240,
+            visuals=["text:가"],
+        )
+        self.assertEqual(counts["planned_visible_symbol_count"], 1)
+        self.assertEqual(rows[0]["route_capacity_bits"], 8)
+        self.assertEqual(assignments[0][0]["page"], 240)
+
     def test_searches_past_an_unusable_extra_row_page(self) -> None:
         targets = [{"target_text": "가"} for _ in range(5)]
         constraints = [
