@@ -114,6 +114,61 @@ def _bounded_int(value: object, minimum: int, maximum: int) -> bool:
     )
 
 
+def attach_record_storage(
+    corpus: list[dict[str, object]],
+    source_records: list[dict[str, object]],
+) -> None:
+    source_by_id: dict[str, dict[str, object]] = {}
+    for source_record in source_records:
+        if not isinstance(source_record, dict):
+            raise ValueError(
+                "expanded target corpus source record is invalid"
+            )
+        entry_id = source_record.get("entry_id")
+        if not isinstance(entry_id, str) or entry_id in source_by_id:
+            raise ValueError(
+                "expanded target corpus source record identity is invalid"
+            )
+        source_by_id[entry_id] = source_record
+    for record in corpus:
+        if not isinstance(record, dict):
+            raise ValueError("expanded target corpus record is invalid")
+        entry_id = record.get("entry_id")
+        source_record = (
+            source_by_id.get(entry_id)
+            if isinstance(entry_id, str)
+            else None
+        )
+        if source_record is None:
+            raise ValueError(
+                "expanded target corpus record storage is missing"
+            )
+        length_offset = source_record.get("length_offset")
+        record_length = source_record.get("record_length_bytes")
+        payload_sha256 = source_record.get("payload_sha256")
+        aliases = source_record.get("aliases")
+        if (
+            not isinstance(length_offset, int)
+            or isinstance(length_offset, bool)
+            or not isinstance(record_length, int)
+            or isinstance(record_length, bool)
+            or not _is_sha256(payload_sha256)
+            or not isinstance(aliases, list)
+        ):
+            raise ValueError(
+                "expanded target corpus record storage is missing"
+            )
+        record.update(
+            {
+                "length_offset": length_offset,
+                "record_length_bytes": record_length,
+                "payload_sha256": payload_sha256,
+                "aliases": aliases,
+            }
+        )
+        record["population_superset"] = True
+
+
 def build_target_group_expanded_corpus(
     *,
     target_sha256: str,
@@ -152,7 +207,7 @@ def build_target_group_expanded_corpus(
         "source_pairing_complete": False,
         "speaker_assignment_complete": False,
         "local_payload_policy": (
-            "text-symbols-glyphs-controls-selectors-ordinals-aliases-source-and-speakers-local-only"
+            "text-symbols-glyphs-controls-selectors-ordinals-aliases-record-coordinates-payload-hashes-source-and-speakers-local-only"
         ),
         "translation_build_eligible": False,
         "next_checkpoint": (
@@ -231,7 +286,7 @@ def validate_target_group_expanded_corpus(
         or value["source_pairing_complete"] is not False
         or value["speaker_assignment_complete"] is not False
         or value["local_payload_policy"]
-        != "text-symbols-glyphs-controls-selectors-ordinals-aliases-source-and-speakers-local-only"
+        != "text-symbols-glyphs-controls-selectors-ordinals-aliases-record-coordinates-payload-hashes-source-and-speakers-local-only"
         or value["translation_build_eligible"] is not False
     ):
         raise ValueError("expanded target corpus result is inconsistent")
@@ -299,11 +354,6 @@ def main() -> int:
             print("Expanded target group corpus has no resolved records")
             return 0
         raise ValueError("expanded target corpus records are missing")
-    aliases_by_id = {
-        str(record.get("entry_id")): record.get("aliases", [])
-        for record in source_records
-        if isinstance(record, dict)
-    }
     overrides = local_expanded_glyphs.get("analysis", {}).get(
         "high_confidence_overrides"
     )
@@ -366,12 +416,7 @@ def main() -> int:
     counts["exact_non_hangul_override_occurrence_count"] = (
         exact_non_hangul_occurrences
     )
-    for record in corpus:
-        record["aliases"] = aliases_by_id.get(
-            str(record.get("entry_id")),
-            [],
-        )
-        record["population_superset"] = True
+    attach_record_storage(corpus, source_records)
     if counts["record_count"] != safe_decode["decode"][
         "unique_best_text_record_count"
     ]:
@@ -409,7 +454,7 @@ def main() -> int:
         "jsonl_path": str(local_jsonl_path),
         "jsonl_sha256": local_corpus_sha256,
         "publication_policy": (
-            "never-publish-text-symbols-glyphs-controls-selectors-ordinals-aliases-source-or-speakers"
+            "never-publish-text-symbols-glyphs-controls-selectors-ordinals-aliases-record-coordinates-payload-hashes-source-or-speakers"
         ),
     }
     safe_path = root / PUBLISH_RELATIVE_PATH

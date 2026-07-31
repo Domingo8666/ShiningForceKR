@@ -8,12 +8,46 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.v5_1_target_group_expanded_corpus import (  # noqa: E402
+    attach_record_storage,
     build_target_group_expanded_corpus,
     validate_target_group_expanded_corpus,
 )
 
 
 class TargetGroupExpandedCorpusTests(unittest.TestCase):
+    def test_attaches_private_record_storage_for_reinsertion(self) -> None:
+        corpus = [{"entry_id": "population-record-0001"}]
+        aliases = [{"selector": 2, "ordinal": 147}]
+        attach_record_storage(
+            corpus,
+            [
+                {
+                    "entry_id": "population-record-0001",
+                    "length_offset": 0x12345,
+                    "record_length_bytes": 17,
+                    "payload_sha256": "a" * 64,
+                    "aliases": aliases,
+                }
+            ],
+        )
+        self.assertEqual(corpus[0]["length_offset"], 0x12345)
+        self.assertEqual(corpus[0]["record_length_bytes"], 17)
+        self.assertEqual(corpus[0]["payload_sha256"], "a" * 64)
+        self.assertEqual(corpus[0]["aliases"], aliases)
+        self.assertTrue(corpus[0]["population_superset"])
+
+    def test_rejects_missing_private_record_storage(self) -> None:
+        with self.assertRaisesRegex(ValueError, "storage is missing"):
+            attach_record_storage(
+                [{"entry_id": "population-record-0001"}],
+                [
+                    {
+                        "entry_id": "population-record-0001",
+                        "aliases": [],
+                    }
+                ],
+            )
+
     def test_builds_safe_incomplete_corpus(self) -> None:
         artifact = build_target_group_expanded_corpus(
             target_sha256="1" * 64,
