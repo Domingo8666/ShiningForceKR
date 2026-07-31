@@ -9,6 +9,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
+    MAX_BOUNDED_SINGLE_PAGE_STATES,
     MAX_EXACT_FONT_PAGE_CANDIDATES,
     MAX_EXACT_SINGLE_PAGE_STATES,
     RowRouteError,
@@ -63,6 +64,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(ROW_FONT_PAGES, (240, 241, 242, 243, 239))
         self.assertEqual(MAX_EXACT_FONT_PAGE_CANDIDATES, 8)
         self.assertEqual(MAX_EXACT_SINGLE_PAGE_STATES, 5_000)
+        self.assertEqual(MAX_BOUNDED_SINGLE_PAGE_STATES, 5_000)
 
     def test_builds_a_proven_row_with_the_joint_exact_solver(self) -> None:
         target = [{"review_index": 1, "target_text": "가"}]

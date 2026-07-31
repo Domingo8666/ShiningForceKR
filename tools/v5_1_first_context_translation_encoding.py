@@ -148,6 +148,7 @@ PROVEN_ROW_FONT_PAGES = (240, 241, 242, 243)
 ROW_FONT_PAGES = PROVEN_ROW_FONT_PAGES + (239,)
 MAX_EXACT_FONT_PAGE_CANDIDATES = 8
 MAX_EXACT_SINGLE_PAGE_STATES = 5_000
+MAX_BOUNDED_SINGLE_PAGE_STATES = 5_000
 TARGET_PATH = Path("build/Final_Conflict_Korean_v5.1.gg")
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_translation_encoding.json"
@@ -1037,6 +1038,7 @@ def solve_bounded_length_row_visual_symbols(
     glyph_symbols = tuple(
         range(FONT_GLYPH_FIRST_SYMBOL, FONT_GLYPH_LAST_SYMBOL + 1)
     )
+    expanded_state_count = 0
     queue = deque([(0, initial_context)])
     prefix_paths: dict[tuple[int, int], tuple[int, ...]] = {
         (0, initial_context): ()
@@ -1096,6 +1098,12 @@ def solve_bounded_length_row_visual_symbols(
         depth: int,
         bits: int,
     ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+        nonlocal expanded_state_count
+        expanded_state_count += 1
+        if expanded_state_count > MAX_BOUNDED_SINGLE_PAGE_STATES:
+            raise ValueError(
+                "first context bounded-length search state limit exceeded"
+            )
         if depth == len(visuals):
             end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
             if end_length is not None and bits + end_length <= maximum_bits:
