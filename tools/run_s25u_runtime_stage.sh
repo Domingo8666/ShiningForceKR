@@ -601,6 +601,46 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    source_target_runtime_context_output="$(
+      python tools/v5_1_source_target_runtime_context.py --if-ready 2>&1
+    )"
+    source_target_runtime_context_status=$?
+    printf '%s\n' "$source_target_runtime_context_output"
+    if [ "$source_target_runtime_context_status" -ne 0 ]; then
+      stage_status="$source_target_runtime_context_status"
+      diagnostic_trigger=probe
+      source_target_runtime_context_failure_stage=source-target-runtime-context
+      case "$source_target_runtime_context_output" in
+        *"runtime context input identity disagrees"*|\
+        *"runtime context identity is invalid"*)
+          source_target_runtime_context_failure_stage=runtime-context-identity
+          ;;
+        *"runtime context observation"*|\
+        *"runtime context projection pair"*|\
+        *"runtime context projection coordinates"*|\
+        *"runtime context mapped pair"*|\
+        *"runtime context speaker"*|\
+        *"runtime context quality tier"*|\
+        *"runtime context target text"*)
+          source_target_runtime_context_failure_stage=runtime-context-mapping
+          ;;
+        *"runtime context local projection is missing"*|\
+        *"runtime context local inputs are missing"*|\
+        *"runtime context input is missing"*)
+          source_target_runtime_context_failure_stage=runtime-context-input
+          ;;
+        *"runtime context fields do not match"*|\
+        *"runtime context counts do not match"*|\
+        *"runtime context aggregates are inconsistent"*|\
+        *"runtime context policy is invalid"*)
+          source_target_runtime_context_failure_stage=runtime-context-validation
+          ;;
+      esac
+      record_stage_failure "$source_target_runtime_context_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then
