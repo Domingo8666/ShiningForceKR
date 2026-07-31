@@ -225,6 +225,31 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x10, 0x11, 0x04, 0xC9],
         )
 
+    def test_reuses_a_glyph_slot_on_a_different_font_page(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x10),
+            0x10: tree(0x10, 0x11, 0x10),
+            0x11: tree(0x11, 0x02, 0x03),
+            0x02: tree(0x02, 0x03, 0x02),
+            0x03: tree(0x03, 0x5F, 0xC9),
+        }
+        (
+            _,
+            padding_count,
+            assignments,
+            assignment_pages,
+        ) = solve_bounded_length_row_multi_page_visual_symbols(
+            trees=trees,
+            initial_context=0xC9,
+            maximum_bits=9,
+            pages=(240, 239),
+            visuals=["text:가", "text:나"],
+        )
+        self.assertEqual(padding_count, 1)
+        self.assertEqual(assignments, [0x03, 0x03])
+        self.assertEqual(len(set(assignment_pages)), 2)
+
     def test_jointly_searches_a_non_greedy_exact_length_assignment(self) -> None:
         trees = {
             0xC9: tree(0xC9, 0x5F, 0xC9),

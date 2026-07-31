@@ -1070,7 +1070,7 @@ def solve_bounded_length_row_multi_page_visual_symbols(
     if any(not 0 <= page < FONT_PAGE_COUNT for page in candidate_pages):
         raise ValueError("first context multi-page row page is invalid")
     capacity = FONT_GLYPH_LAST_SYMBOL - FONT_GLYPH_FIRST_SYMBOL + 1
-    if len(visuals) > capacity:
+    if len(visuals) > capacity * len(candidate_pages):
         raise ValueError("first context visual row exceeds glyph search capacity")
 
     lengths = _code_lengths(trees)
@@ -1102,7 +1102,9 @@ def solve_bounded_length_row_multi_page_visual_symbols(
     ) -> tuple[tuple[int, tuple[int, ...], int, int], ...]:
         queue: list[tuple[int, tuple[int, ...], int]] = [(0, (), previous)]
         best_context = {previous: 0}
-        best_target: dict[int, tuple[int, tuple[int, ...], int, int]] = {}
+        best_target: dict[
+            tuple[int, int], tuple[int, tuple[int, ...], int, int]
+        ] = {}
         while queue:
             bits, path, current = heappop(queue)
             if bits != best_context.get(current):
@@ -1123,11 +1125,12 @@ def solve_bounded_length_row_multi_page_visual_symbols(
                         candidate_page,
                         next_previous,
                     )
+                    target_key = (next_previous, candidate_page)
                     if target < best_target.get(
-                        next_previous,
+                        target_key,
                         (maximum_bits + 1, (), FONT_PAGE_COUNT, 0x100),
                     ):
-                        best_target[next_previous] = target
+                        best_target[target_key] = target
                 if total_bits >= best_context.get(
                     next_previous, maximum_bits + 1
                 ):
@@ -1137,21 +1140,30 @@ def solve_bounded_length_row_multi_page_visual_symbols(
                     queue,
                     (total_bits, candidate_path, next_previous),
                 )
-        return tuple(sorted(best_target.values()))
+        retained: dict[int, list[tuple[int, tuple[int, ...], int, int]]] = {}
+        for target in sorted(best_target.values()):
+            targets = retained.setdefault(target[3], [])
+            if len(targets) < len(visuals):
+                targets.append(target)
+        return tuple(
+            sorted(target for targets in retained.values() for target in targets)
+        )
 
-    best_visible_bits: dict[tuple[int, int, int, int], int] = {}
+    best_visible_bits: dict[
+        tuple[int, int, frozenset[tuple[int, int]], int], int
+    ] = {}
 
     @lru_cache(maxsize=None)
     def search_visible(
         previous: int,
         current_page: int,
-        used_mask: int,
+        used_assignments: frozenset[tuple[int, int]],
         depth: int,
         bits: int,
     ) -> tuple[
         tuple[int, ...], tuple[int, ...], tuple[int, ...]
     ] | None:
-        state = (previous, current_page, used_mask, depth)
+        state = (previous, current_page, used_assignments, depth)
         if bits >= best_visible_bits.get(state, maximum_bits + 1):
             return None
         best_visible_bits[state] = bits
@@ -1169,8 +1181,7 @@ def solve_bounded_length_row_multi_page_visual_symbols(
                 (
                     symbol
                     for symbol in glyph_symbols
-                    if not used_mask
-                    & (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL))
+                    if (route_page, symbol) not in used_assignments
                     and symbol in lengths.get(route_previous, {})
                 ),
                 key=lambda symbol: (
@@ -1187,7 +1198,7 @@ def solve_bounded_length_row_multi_page_visual_symbols(
                 suffix = search_visible(
                     symbol,
                     route_page,
-                    used_mask | (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL)),
+                    used_assignments | {(route_page, symbol)},
                     depth + 1,
                     next_bits,
                 )
@@ -1201,7 +1212,7 @@ def solve_bounded_length_row_multi_page_visual_symbols(
                 )
         return None
 
-    result = search_visible(initial_context, -1, 0, 0, 0)
+    result = search_visible(initial_context, -1, frozenset(), 0, 0)
     if result is None:
         raise ValueError("first context visual row exceeds multi-page capacity")
     symbols, assignments, assignment_pages = result
