@@ -1734,7 +1734,7 @@ def solve_exact_length_row_visual_symbols(
 def exact_multi_page_state_limit(page_count: int) -> int:
     if not 1 <= page_count <= FONT_PAGE_COUNT:
         raise ValueError("first context exact page count is invalid")
-    return 50_000
+    return 5_000
 
 
 def solve_exact_length_row_multi_page_visual_symbols(
