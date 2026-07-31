@@ -223,6 +223,8 @@ FAILURE_FIELDS = {
     "category",
     "failure_step",
     "failure_kind",
+    "failure_row_index",
+    "failure_detail",
     "required_visible_symbol_count",
     "maximum_routable_visible_symbol_count",
     "captured_utc",
@@ -243,6 +245,8 @@ FAILURE_CATEGORIES = {
 }
 ACTIVE_FAILURE_CATEGORY = "unexpected"
 ACTIVE_FAILURE_STEP = "input"
+ACTIVE_FAILURE_ROW_INDEX = 0
+ACTIVE_FAILURE_DETAIL = "none"
 FAILURE_STEPS = {
     "input",
     "select-row-font-pages",
@@ -260,6 +264,14 @@ FAILURE_KINDS = {
     "RuntimeError",
     "TypeError",
     "ValueError",
+}
+FAILURE_DETAILS = {
+    "none",
+    "solve-unconstrained-row",
+    "solve-proven-row",
+    "solve-extra-single-page-row",
+    "solve-extra-multi-page-row",
+    "validate-row-assignments",
 }
 
 
@@ -300,6 +312,8 @@ def build_first_context_translation_encoding_failure(
     maximum_routable_visible_symbol_count: int = 0,
     failure_step: str = "input",
     failure_kind: str = "ValueError",
+    failure_row_index: int = 0,
+    failure_detail: str = "none",
 ) -> dict[str, object]:
     value: dict[str, object] = {
         "artifact_kind":
@@ -309,6 +323,8 @@ def build_first_context_translation_encoding_failure(
         "category": category,
         "failure_step": failure_step,
         "failure_kind": failure_kind,
+        "failure_row_index": failure_row_index,
+        "failure_detail": failure_detail,
         "required_visible_symbol_count": required_visible_symbol_count,
         "maximum_routable_visible_symbol_count":
             maximum_routable_visible_symbol_count,
@@ -335,6 +351,10 @@ def validate_first_context_translation_encoding_failure(
         or value["category"] not in FAILURE_CATEGORIES
         or value["failure_step"] not in FAILURE_STEPS
         or value["failure_kind"] not in FAILURE_KINDS
+        or not isinstance(value["failure_row_index"], int)
+        or isinstance(value["failure_row_index"], bool)
+        or not 0 <= value["failure_row_index"] <= 1000
+        or value["failure_detail"] not in FAILURE_DETAILS
         or not isinstance(value["required_visible_symbol_count"], int)
         or isinstance(value["required_visible_symbol_count"], bool)
         or not isinstance(value["maximum_routable_visible_symbol_count"], int)
@@ -1552,6 +1572,7 @@ def build_single_page_symbol_rows(
     list[dict[str, object]],
     list[list[dict[str, object]]],
 ]:
+    global ACTIVE_FAILURE_ROW_INDEX, ACTIVE_FAILURE_DETAIL
     visual_rows = build_row_visuals(
         target_rows=target_rows,
         preserved_by_row=preserved_by_row,
@@ -1574,7 +1595,9 @@ def build_single_page_symbol_rows(
         zip(target_rows, visual_rows, pages, constraints),
         start=1,
     ):
+        ACTIVE_FAILURE_ROW_INDEX = expected_index
         if constraint is None:
+            ACTIVE_FAILURE_DETAIL = "solve-unconstrained-row"
             assignments = solve_row_visual_symbols(
                 trees=trees,
                 page=page,
@@ -1590,6 +1613,7 @@ def build_single_page_symbol_rows(
             route_capacity_bits = 0
             assignment_pages = [page] * len(assignments)
         elif expected_index <= len(PROVEN_ROW_FONT_PAGES):
+            ACTIVE_FAILURE_DETAIL = "solve-proven-row"
             assignments = solve_row_visual_symbols(
                 trees=trees,
                 page=page,
@@ -1617,6 +1641,7 @@ def build_single_page_symbol_rows(
             )
             route_capacity_bits = group_capacity_bits
             try:
+                ACTIVE_FAILURE_DETAIL = "solve-extra-single-page-row"
                 (
                     symbols,
                     padding_count,
@@ -1630,6 +1655,7 @@ def build_single_page_symbol_rows(
                 )
                 assignment_pages = [page] * len(assignments)
             except ValueError:
+                ACTIVE_FAILURE_DETAIL = "solve-extra-multi-page-row"
                 available_pages = tuple(
                     candidate_page
                     for candidate_page in range(
@@ -1651,6 +1677,7 @@ def build_single_page_symbol_rows(
                     pages=available_pages,
                     visuals=visuals,
                 )
+        ACTIVE_FAILURE_DETAIL = "validate-row-assignments"
         if (
             len(assignments) != len(visuals)
             or len(assignment_pages) != len(visuals)
@@ -1927,8 +1954,11 @@ def validate_first_context_translation_encoding(
 
 def _main() -> int:
     global ACTIVE_FAILURE_CATEGORY, ACTIVE_FAILURE_STEP
+    global ACTIVE_FAILURE_ROW_INDEX, ACTIVE_FAILURE_DETAIL
     ACTIVE_FAILURE_CATEGORY = "input"
     ACTIVE_FAILURE_STEP = "input"
+    ACTIVE_FAILURE_ROW_INDEX = 0
+    ACTIVE_FAILURE_DETAIL = "none"
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--if-ready", action="store_true")
@@ -2326,6 +2356,8 @@ def main() -> int:
                 maximum_routable_visible_symbol_count,
             failure_step=ACTIVE_FAILURE_STEP,
             failure_kind=type(error).__name__,
+            failure_row_index=ACTIVE_FAILURE_ROW_INDEX,
+            failure_detail=ACTIVE_FAILURE_DETAIL,
         )
         failure_path.parent.mkdir(parents=True, exist_ok=True)
         failure_path.write_text(

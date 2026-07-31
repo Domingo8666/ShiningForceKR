@@ -492,6 +492,8 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(failure["category"], "row-route")
         self.assertEqual(failure["failure_step"], "input")
         self.assertEqual(failure["failure_kind"], "ValueError")
+        self.assertEqual(failure["failure_row_index"], 0)
+        self.assertEqual(failure["failure_detail"], "none")
         self.assertEqual(failure["required_visible_symbol_count"], 0)
         self.assertEqual(failure["maximum_routable_visible_symbol_count"], 0)
         self.assertNotIn("error", failure)
