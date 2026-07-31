@@ -4,7 +4,7 @@ set -uo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_rom="${SFKR_SOURCE_ROM:-/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg}"
 interval="${SFKR_AUTOPILOT_INTERVAL:-30}"
-runtime_timeout="${SFKR_RUNTIME_TIMEOUT:-900}"
+runtime_timeout="${SFKR_RUNTIME_TIMEOUT:-300}"
 state_dir="${SFKR_AUTOPILOT_STATE_DIR:-$HOME/.local/state/shiningforcekr}"
 once=0
 force=0
@@ -17,7 +17,7 @@ Options:
   --source-rom PATH  S25U-local original ROM path
   --interval SEC     GitHub poll interval (minimum/default 30)
   --runtime-timeout SEC
-                      Runtime-stage wall limit (minimum 300, default 900)
+                      Runtime-stage wall limit (minimum/default 300)
   --state-dir PATH   Termux-private state directory
   --force            Run once even if the current commit was already processed
   --once             Exit after one synchronization/run decision
