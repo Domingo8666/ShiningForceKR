@@ -65,6 +65,10 @@ LOCAL_EVIDENCE_DIR = Path(
 LOCAL_REVIEW_PATH = Path(
     "reports/HUMAN_REVIEW_FIRST_CONTEXT_TRANSLATION.html"
 )
+FAILURE_PUBLISH_RELATIVE_PATH = Path(
+    "analysis/device/"
+    "v5_1_latest_first_context_translation_runtime_capture_failure.json"
+)
 SAFE_FIELDS = {
     "artifact_kind",
     "schema_version",
@@ -426,6 +430,7 @@ def main() -> int:
                     "SFKR first context translation runtime capture: "
                     "refreshed matching local capture"
                 )
+                (root / FAILURE_PUBLISH_RELATIVE_PATH).unlink(missing_ok=True)
                 return 0
         except (OSError, ValueError, json.JSONDecodeError):
             pass
@@ -502,6 +507,7 @@ def main() -> int:
         json.dumps(safe, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    (root / FAILURE_PUBLISH_RELATIVE_PATH).unlink(missing_ok=True)
     print(f"SFKR first context translation runtime capture: {safe_path}")
     return 0
 
