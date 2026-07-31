@@ -2041,7 +2041,7 @@ def select_row_font_pages(
                 (preferred, 89, *range(FONT_PAGE_COUNT - 1, -1, -1))
             )
         )
-        failed_anchors: list[int] = []
+        failed_pages: list[int] = []
         for page in candidate_pages:
             if page in used_pages:
                 continue
@@ -2062,7 +2062,13 @@ def select_row_font_pages(
                     )
             except ValueError:
                 if constraint is not None:
-                    for anchor in failed_anchors:
+                    candidate_groups = [
+                        (anchor, page) for anchor in failed_pages[:4]
+                    ]
+                    expanded_pool = tuple((*failed_pages, page))
+                    if len(expanded_pool) in {4, 8}:
+                        candidate_groups.append(expanded_pool)
+                    for page_group in candidate_groups:
                         try:
                             solve_exact_length_row_multi_page_visual_symbols(
                                 trees=trees,
@@ -2072,18 +2078,17 @@ def select_row_font_pages(
                                 target_bits=int(
                                     constraint["original_encoded_bits"]
                                 ),
-                                pages=(anchor, page),
+                                pages=page_group,
                                 visuals=visuals,
                             )
                         except ValueError:
                             continue
-                        page_pair = (anchor, page)
-                        pages.append(page_pair)
-                        used_pages.update(page_pair)
+                        pages.append(page_group)
+                        used_pages.update(page_group)
                         break
                     else:
-                        if len(failed_anchors) < 4:
-                            failed_anchors.append(page)
+                        if len(failed_pages) < 8:
+                            failed_pages.append(page)
                         continue
                     break
                 continue

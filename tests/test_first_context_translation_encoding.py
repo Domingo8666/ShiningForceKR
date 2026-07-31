@@ -207,6 +207,43 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(pages, ((240, 89),))
         multi_solver.assert_called_once()
 
+    def test_expands_an_exact_row_to_four_font_pages(self) -> None:
+        def solve_multi(*, trees, initial_context, target_bits, pages, visuals):
+            del trees, initial_context, target_bits
+            if len(pages) < 4:
+                raise ValueError("two pages are not exact")
+            return (
+                [0x5F, 0x11, 0x02, 0x03, 0xC9],
+                0,
+                [0x03] * len(visuals),
+                [pages[0]] * len(visuals),
+            )
+
+        with (
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_exact_length_row_visual_symbols",
+                side_effect=ValueError("single page is not exact"),
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_exact_length_row_multi_page_visual_symbols",
+                side_effect=solve_multi,
+            ),
+        ):
+            pages = select_row_font_pages(
+                trees={},
+                target_rows=[{"target_text": "가"}],
+                preserved_by_row=[[]],
+                runtime_constraints=[{
+                    "initial_context": 0xC9,
+                    "original_encoded_bits": 9,
+                    "original_record_length_bytes": 2,
+                }],
+            )
+
+        self.assertEqual(pages, ((240, 89, 243, 242),))
+
     def test_records_exact_multi_page_assignments(self) -> None:
         with patch(
             "tools.v5_1_first_context_translation_encoding."
