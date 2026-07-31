@@ -3,19 +3,19 @@
   "schema_version": 1,
   "status": "target-group-static-calls-not-found",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "source_group_extract_sha256": "f48ae305837d4c0d86fa3c5cd98e554b2e2ef1e0dca62af4b5b86bbe3d5e7b8c",
-  "captured_utc": "2026-07-31T22:50:14.351150Z",
+  "source_group_extract_sha256": "3f62ebab6267e5d70a5eda66cd4dc3d518bd45eacc9fe0f3b9d91f9ac9665f65",
+  "captured_utc": "2026-07-31T23:07:22.114171Z",
   "lookup": {
-    "duplicate_pointer_count": 0,
     "unique_pointer_count": 8,
+    "valid_pointer_count": 8,
     "slot_count": 12,
-    "valid_pointer_count": 8
+    "duplicate_pointer_count": 0
   },
   "static_usage": {
+    "decoder_call_signature_count": 0,
     "unique_selector_candidate_count": 0,
     "lookup_selectors_without_call_evidence_count": 8,
     "calls_with_both_candidates_count": 0,
-    "decoder_call_signature_count": 0,
     "calls_with_ordinal_candidate_count": 0,
     "lookup_selectors_with_call_evidence_count": 0,
     "calls_with_selector_candidate_count": 0
