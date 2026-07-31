@@ -7,6 +7,7 @@ interval="${SFKR_AUTOPILOT_INTERVAL:-30}"
 state_dir="${SFKR_AUTOPILOT_STATE_DIR:-$HOME/.local/state/shiningforcekr}"
 status_file="$root/reports/AUTOPILOT_STATUS.txt"
 action="status"
+force=0
 
 usage() {
   cat <<'EOF'
@@ -25,6 +26,7 @@ Options:
   --interval SEC     GitHub poll interval (minimum/default 30)
   --state-dir PATH   Termux-private state directory
   --status-file PATH Human-readable status file
+  --force            Reprocess the current commit once after start/restart
   --help             Show this help
 
 The launcher stores only paths and process state in Termux-private storage.
@@ -83,6 +85,10 @@ while [ "$#" -gt 0 ]; do
       fi
       status_file="$2"
       shift 2
+      ;;
+    --force)
+      force=1
+      shift
       ;;
     --help|-h)
       usage
@@ -289,11 +295,16 @@ start_autopilot() {
   fi
 
   rm -f "$stop_file"
+  autopilot_args=(
+    --source-rom "$source_rom"
+    --interval "$interval"
+    --state-dir "$state_dir"
+  )
+  if [ "$force" -eq 1 ]; then
+    autopilot_args+=(--force)
+  fi
   nohup bash "$root/tools/run_s25u_autopilot.sh" \
-    --source-rom "$source_rom" \
-    --interval "$interval" \
-    --state-dir "$state_dir" \
-    >>"$launcher_log" 2>&1 </dev/null &
+    "${autopilot_args[@]}" >>"$launcher_log" 2>&1 </dev/null &
   launched_pid=$!
   printf '%s\n' "$launched_pid" >"$launcher_pid_file"
 

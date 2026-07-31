@@ -77,6 +77,11 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn('kill -TERM "$owned_pid"', MANAGER)
         self.assertIn('kill -KILL "$owned_pid"', MANAGER)
 
+    def test_manager_can_force_one_rerun_after_local_input_changes(self) -> None:
+        self.assertIn("--force", MANAGER)
+        self.assertIn("autopilot_args+=(--force)", MANAGER)
+        self.assertIn('"${autopilot_args[@]}"', MANAGER)
+
     def test_default_poll_interval_is_thirty_seconds(self) -> None:
         self.assertIn('SFKR_AUTOPILOT_INTERVAL:-30', SCRIPT)
         self.assertIn('SFKR_AUTOPILOT_INTERVAL:-30', MANAGER)
