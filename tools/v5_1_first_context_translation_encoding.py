@@ -221,6 +221,8 @@ FAILURE_FIELDS = {
     "schema_version",
     "status",
     "category",
+    "required_visible_symbol_count",
+    "maximum_routable_visible_symbol_count",
     "captured_utc",
     "source_and_target_text_local_only",
     "next_checkpoint",
@@ -238,6 +240,13 @@ FAILURE_CATEGORIES = {
     "unexpected",
 }
 ACTIVE_FAILURE_CATEGORY = "unexpected"
+
+
+class RowRouteError(ValueError):
+    def __init__(self, required: int, maximum: int) -> None:
+        super().__init__("first context row has no usable Huffman route")
+        self.required = required
+        self.maximum = maximum
 
 
 def _is_sha256(value: object) -> bool:
@@ -266,6 +275,8 @@ def build_first_context_translation_encoding_failure(
     *,
     category: str,
     captured_utc: str,
+    required_visible_symbol_count: int = 0,
+    maximum_routable_visible_symbol_count: int = 0,
 ) -> dict[str, object]:
     value: dict[str, object] = {
         "artifact_kind":
@@ -273,6 +284,9 @@ def build_first_context_translation_encoding_failure(
         "schema_version": 1,
         "status": "first-context-translation-encoding-failed",
         "category": category,
+        "required_visible_symbol_count": required_visible_symbol_count,
+        "maximum_routable_visible_symbol_count":
+            maximum_routable_visible_symbol_count,
         "captured_utc": captured_utc,
         "source_and_target_text_local_only": True,
         "next_checkpoint": f"repair-first-context-{category}",
@@ -294,6 +308,14 @@ def validate_first_context_translation_encoding_failure(
         or value["schema_version"] != 1
         or value["status"] != "first-context-translation-encoding-failed"
         or value["category"] not in FAILURE_CATEGORIES
+        or not isinstance(value["required_visible_symbol_count"], int)
+        or isinstance(value["required_visible_symbol_count"], bool)
+        or not isinstance(value["maximum_routable_visible_symbol_count"], int)
+        or isinstance(value["maximum_routable_visible_symbol_count"], bool)
+        or not 0
+        <= value["maximum_routable_visible_symbol_count"]
+        <= value["required_visible_symbol_count"]
+        <= 1000
         or not _is_utc_timestamp(value["captured_utc"])
         or value["source_and_target_text_local_only"] is not True
         or value["next_checkpoint"]
@@ -1454,18 +1476,35 @@ def select_row_font_pages(
                 for page in range(FONT_PAGE_COUNT - 1, -1, -1)
                 if page not in used_pages
             )
-            (
-                _,
-                _,
-                _,
-                assignment_pages,
-            ) = solve_bounded_length_row_multi_page_visual_symbols(
-                trees=trees,
-                initial_context=int(constraint["initial_context"]),
-                maximum_bits=group_capacity_bits,
-                pages=available_pages,
-                visuals=visuals,
-            )
+            try:
+                (
+                    _,
+                    _,
+                    _,
+                    assignment_pages,
+                ) = solve_bounded_length_row_multi_page_visual_symbols(
+                    trees=trees,
+                    initial_context=int(constraint["initial_context"]),
+                    maximum_bits=group_capacity_bits,
+                    pages=available_pages,
+                    visuals=visuals,
+                )
+            except ValueError as error:
+                maximum = 0
+                for visible_count in range(len(visuals) - 1, 0, -1):
+                    try:
+                        solve_bounded_length_row_multi_page_visual_symbols(
+                            trees=trees,
+                            initial_context=int(constraint["initial_context"]),
+                            maximum_bits=group_capacity_bits,
+                            pages=available_pages,
+                            visuals=visuals[:visible_count],
+                        )
+                    except ValueError:
+                        continue
+                    maximum = visible_count
+                    break
+                raise RowRouteError(len(visuals), maximum) from error
             selected_pages = tuple(dict.fromkeys(assignment_pages))
             if not selected_pages:
                 raise ValueError("first context multi-page row is empty")
@@ -2241,9 +2280,17 @@ def main() -> int:
         category = classify_encoding_failure(error)
         if category == "unexpected":
             category = ACTIVE_FAILURE_CATEGORY
+        required_visible_symbol_count = 0
+        maximum_routable_visible_symbol_count = 0
+        if isinstance(error, RowRouteError):
+            required_visible_symbol_count = error.required
+            maximum_routable_visible_symbol_count = error.maximum
         failure = build_first_context_translation_encoding_failure(
             category=category,
             captured_utc=captured_utc,
+            required_visible_symbol_count=required_visible_symbol_count,
+            maximum_routable_visible_symbol_count=
+                maximum_routable_visible_symbol_count,
         )
         failure_path.parent.mkdir(parents=True, exist_ok=True)
         failure_path.write_text(
