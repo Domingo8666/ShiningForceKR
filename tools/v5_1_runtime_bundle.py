@@ -162,6 +162,11 @@ try:
         as FIRST_CONTEXT_TRANSLATION_APPROVAL_RELATIVE_PATH,
         validate_first_context_translation_approval,
     )
+    from .v5_1_first_context_translation_capacity import (
+        PUBLISH_RELATIVE_PATH
+        as FIRST_CONTEXT_TRANSLATION_CAPACITY_RELATIVE_PATH,
+        validate_first_context_translation_capacity,
+    )
     from .v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -347,6 +352,11 @@ except ImportError:  # direct script execution
         as FIRST_CONTEXT_TRANSLATION_APPROVAL_RELATIVE_PATH,
         validate_first_context_translation_approval,
     )
+    from v5_1_first_context_translation_capacity import (
+        PUBLISH_RELATIVE_PATH
+        as FIRST_CONTEXT_TRANSLATION_CAPACITY_RELATIVE_PATH,
+        validate_first_context_translation_capacity,
+    )
     from v5_1_group_text_candidate_resolution import (
         PUBLISH_RELATIVE_PATH as GROUP_TEXT_CANDIDATE_RELATIVE_PATH,
         validate_group_text_candidate_resolution,
@@ -472,6 +482,8 @@ SAFE_ARTIFACTS = {
         validate_first_context_translation_review,
     FIRST_CONTEXT_TRANSLATION_APPROVAL_RELATIVE_PATH:
         validate_first_context_translation_approval,
+    FIRST_CONTEXT_TRANSLATION_CAPACITY_RELATIVE_PATH:
+        validate_first_context_translation_capacity,
     GROUP_TEXT_CANDIDATE_RELATIVE_PATH:
         validate_group_text_candidate_resolution,
     UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH:
@@ -1168,6 +1180,24 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
             != first_context_translation_review["review_batch_sha256"]
         ):
             artifacts.pop(FIRST_CONTEXT_TRANSLATION_APPROVAL_RELATIVE_PATH)
+    first_context_translation_capacity = artifacts.get(
+        FIRST_CONTEXT_TRANSLATION_CAPACITY_RELATIVE_PATH
+    )
+    if first_context_translation_capacity is not None:
+        if (
+            FIRST_CONTEXT_TRANSLATION_APPROVAL_RELATIVE_PATH not in artifacts
+            or first_context_translation_capacity["target_sha256"]
+            != first_context_translation_approval["target_sha256"]
+            or first_context_translation_capacity["review_batch_sha256"]
+            != first_context_translation_approval["review_batch_sha256"]
+            or first_context_translation_capacity[
+                "first_context_translation_approval_sha256"
+            ]
+            != sha256_file(
+                root / FIRST_CONTEXT_TRANSLATION_APPROVAL_RELATIVE_PATH
+            )
+        ):
+            artifacts.pop(FIRST_CONTEXT_TRANSLATION_CAPACITY_RELATIVE_PATH)
     group_context_resolution = artifacts.get(
         GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH
     )
