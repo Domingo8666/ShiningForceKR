@@ -4,6 +4,7 @@ import copy
 import unittest
 
 from tools.v5_1_active_ram_producer import (
+    _capture_producer_state,
     analyze_capture,
     build_active_ram_producer,
     contiguous_address_ranges,
@@ -67,6 +68,48 @@ def _active_route() -> dict[str, object]:
 
 
 class ActiveRamProducerTests(unittest.TestCase):
+    def test_lightweight_capture_does_not_request_a_call_stack(self) -> None:
+        class Client:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def call(
+                self,
+                name: str,
+                arguments: dict[str, object] | None = None,
+            ) -> dict[str, object]:
+                self.calls.append(name)
+                if name == "debug_get_status":
+                    return {"pc": "3411", "at_breakpoint": True}
+                if name == "get_z80_status":
+                    return {
+                        "physical_PC": "3411",
+                        "bank": "00",
+                        "AF": "0000",
+                        "BC": "9300",
+                        "DE": "0002",
+                        "HL": "4913",
+                        "IX": "0000",
+                        "IY": "0000",
+                        "SP": "DFF0",
+                    }
+                if name == "read_memory":
+                    return {"data": "00 00 08 09"}
+                if name == "get_trace_log":
+                    return {"count": 0, "lines": [], "total_entries": 0}
+                raise AssertionError(name)
+
+        client = Client()
+        state, evidence = _capture_producer_state(
+            client,
+            ram_area_id=1,
+            ram_area_size=0x2004,
+        )
+        self.assertEqual(state["pc_after"], 0x3411)
+        self.assertEqual(state["slot1_bank"], 8)
+        self.assertIn("trace", evidence)
+        self.assertNotIn("get_call_stack", client.calls)
+
     def test_extracts_the_confirmed_previous_step_sources(self) -> None:
         local = {
             "artifact_kind": "local-s25u-active-vram-route",

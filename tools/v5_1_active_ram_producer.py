@@ -24,7 +24,6 @@ try:
     )
     from .run_s25u_runtime_probe import (
         McpStdioClient,
-        _capture_state,
         _default_command,
         _runtime_failure_receipt,
         _step_instruction_and_wait,
@@ -64,7 +63,6 @@ except ImportError:  # pragma: no cover - direct script execution
     )
     from run_s25u_runtime_probe import (
         McpStdioClient,
-        _capture_state,
         _default_command,
         _runtime_failure_receipt,
         _step_instruction_and_wait,
@@ -398,6 +396,62 @@ def _read_logical_ram_values(
         )
         result[address] = _parse_memory_bytes(payload.get("data"), 1)[0]
     return result
+
+
+def _parse_hex_status(value: object, label: str) -> int:
+    if not isinstance(value, str) or re.fullmatch(r"[0-9A-Fa-f]+", value) is None:
+        raise RuntimeError(f"Gearsystem {label} is not a hex value")
+    return int(value, 16)
+
+
+def _capture_producer_state(
+    client: McpStdioClient,
+    *,
+    ram_area_id: int,
+    ram_area_size: int,
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Capture only state needed by the write watch.
+
+    Call-stack reconstruction is deliberately excluded: it is unrelated to
+    identifying the completed memory-write instruction and can be unavailable
+    at a memory breakpoint in Gearsystem.
+    """
+
+    status = client.call("debug_get_status")
+    z80 = client.call("get_z80_status")
+    mapper_payload = client.call(
+        "read_memory",
+        {
+            "area": ram_area_id,
+            "offset": f"{ram_area_size - 4:04X}",
+            "size": 4,
+        },
+    )
+    mapper = _parse_memory_bytes(mapper_payload.get("data"), 4)
+    trace = client.call("get_trace_log", {"count": 64})
+    registers = {
+        key.lower(): _parse_hex_status(z80.get(key), key)
+        for key in ("AF", "BC", "DE", "HL", "IX", "IY", "SP")
+    }
+    state: dict[str, object] = {
+        "pc_after": _parse_hex_status(status.get("pc"), "pc"),
+        "physical_pc_after": _parse_hex_status(
+            z80.get("physical_PC"), "physical_PC"
+        ),
+        "executing_bank": _parse_hex_status(z80.get("bank"), "bank"),
+        "mapper_control": mapper[0],
+        "slot0_bank": mapper[1],
+        "slot1_bank": mapper[2],
+        "slot2_bank": mapper[3],
+        "registers": registers,
+        "trace_entries": int(trace.get("count", len(trace.get("lines", [])))),
+    }
+    return state, {
+        "status": status,
+        "z80": z80,
+        "mapper": mapper_payload,
+        "trace": trace,
+    }
 
 
 def analyze_capture(
@@ -806,6 +860,7 @@ def main() -> int:
         areas = client.call("list_memory_areas")
         ram_area = _select_ram_area(areas)
         ram_area_id = int(ram_area["id"])
+        ram_area_size = int(ram_area["size"])
         started = client.call(
             "set_trace_log",
             {
@@ -841,7 +896,11 @@ def main() -> int:
             )
             if status.get("at_breakpoint") is not True:
                 continue
-            state, evidence = _capture_state(client)
+            state, evidence = _capture_producer_state(
+                client,
+                ram_area_id=ram_area_id,
+                ram_area_size=ram_area_size,
+            )
             pc_after = int(state["pc_after"])
             if pc_after in entry_addresses:
                 if _entry_matches(
@@ -865,7 +924,11 @@ def main() -> int:
         for _ in range(DECODER_ENTRY_TRACE_STEPS):
             status = _step_instruction_and_wait(client)
             if status.get("at_breakpoint") is True:
-                state, evidence = _capture_state(client)
+                state, evidence = _capture_producer_state(
+                    client,
+                    ram_area_id=ram_area_id,
+                    ram_area_size=ram_area_size,
+                )
                 observe_write(state, evidence, status=status)
         _set_execute_breakpoint(client, DECODER_SKIP_ENDPOINT_LOGICAL)
         endpoint_armed = True
@@ -878,7 +941,11 @@ def main() -> int:
             )
             if status.get("at_breakpoint") is not True:
                 continue
-            state, evidence = _capture_state(client)
+            state, evidence = _capture_producer_state(
+                client,
+                ram_area_id=ram_area_id,
+                ram_area_size=ram_area_size,
+            )
             if int(state["pc_after"]) == DECODER_SKIP_ENDPOINT_LOGICAL:
                 endpoint_state = state
                 break
@@ -894,7 +961,11 @@ def main() -> int:
         _remove_breakpoint(client, DECODER_SKIP_ENDPOINT_LOGICAL)
         endpoint_armed = False
         status = _step_instruction_and_wait(client)
-        ready_state, ready_evidence = _capture_state(client)
+        ready_state, ready_evidence = _capture_producer_state(
+            client,
+            ram_area_id=ram_area_id,
+            ram_area_size=ram_area_size,
+        )
         if status.get("at_breakpoint") is True:
             observe_write(ready_state, ready_evidence, status=status)
         ready_registers = _registers(ready_state)
