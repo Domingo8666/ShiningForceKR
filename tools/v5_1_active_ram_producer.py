@@ -33,7 +33,6 @@ try:
         LOCAL_REPORT_PATH as ACTIVE_LOCAL_REPORT_PATH,
         PUBLISH_RELATIVE_PATH as ACTIVE_ROUTE_PATH,
         RAM_REQUIRED_SIZE,
-        _parse_memory_bytes,
         _read_memory_area,
         _select_ram_area,
         validate_active_vram_route,
@@ -71,7 +70,6 @@ except ImportError:  # pragma: no cover - direct script execution
         LOCAL_REPORT_PATH as ACTIVE_LOCAL_REPORT_PATH,
         PUBLISH_RELATIVE_PATH as ACTIVE_ROUTE_PATH,
         RAM_REQUIRED_SIZE,
-        _parse_memory_bytes,
         _read_memory_area,
         _select_ram_area,
         validate_active_vram_route,
@@ -409,25 +407,6 @@ def previous_target_write(
     return candidates[0] if len(candidates) == 1 else None
 
 
-def _read_logical_ram_values(
-    client: McpStdioClient,
-    *,
-    area_id: int,
-    addresses: list[int],
-) -> dict[int, int]:
-    result: dict[int, int] = {}
-    for address in sorted(set(addresses)):
-        offset = _ram_offset(address)
-        if offset is None:
-            raise ValueError("RAM write address is outside mirrored RAM")
-        payload = client.call(
-            "read_memory",
-            {"area": area_id, "offset": f"{offset:04X}", "size": 1},
-        )
-        result[address] = _parse_memory_bytes(payload.get("data"), 1)[0]
-    return result
-
-
 def _parse_hex_status(value: object, label: str) -> int:
     if not isinstance(value, str) or re.fullmatch(r"[0-9A-Fa-f]+", value) is None:
         raise RuntimeError(f"Gearsystem {label} is not a hex value")
@@ -436,9 +415,6 @@ def _parse_hex_status(value: object, label: str) -> int:
 
 def _capture_producer_state(
     client: McpStdioClient,
-    *,
-    ram_area_id: int,
-    ram_area_size: int,
 ) -> tuple[dict[str, object], dict[str, object]]:
     """Capture only state needed by the write watch.
 
@@ -449,15 +425,6 @@ def _capture_producer_state(
 
     status = client.call("debug_get_status")
     z80 = client.call("get_z80_status")
-    mapper_payload = client.call(
-        "read_memory",
-        {
-            "area": ram_area_id,
-            "offset": f"{ram_area_size - 4:04X}",
-            "size": 4,
-        },
-    )
-    mapper = _parse_memory_bytes(mapper_payload.get("data"), 4)
     registers = {
         key.lower(): _parse_hex_status(z80.get(key), key)
         for key in ("AF", "BC", "DE", "HL", "IX", "IY", "SP")
@@ -468,16 +435,11 @@ def _capture_producer_state(
             z80.get("physical_PC"), "physical_PC"
         ),
         "executing_bank": _parse_hex_status(z80.get("bank"), "bank"),
-        "mapper_control": mapper[0],
-        "slot0_bank": mapper[1],
-        "slot1_bank": mapper[2],
-        "slot2_bank": mapper[3],
         "registers": registers,
     }
     return state, {
         "status": status,
         "z80": z80,
-        "mapper": mapper_payload,
     }
 
 
@@ -808,7 +770,6 @@ def main() -> int:
     selector_de = int(runtime["selector_de"])
     entry_ordinal = int(runtime["entry_ordinal"])
     logical_start = int(runtime["logical_start"])
-    mapped_bank = int(runtime["mapped_bank"])
     target_addresses = set(target_values)
     write_ranges = contiguous_address_ranges(list(target_addresses))
     entry_addresses = sorted(
@@ -840,21 +801,12 @@ def main() -> int:
         if writer is None:
             return
         addresses = [int(item) for item in writer["addresses"]]
-        values = _read_logical_ram_values(
-            client,
-            area_id=ram_area_id,
-            addresses=addresses,
-        )
         event_index = len(events)
         events.append(
             {
                 "event_index": event_index,
                 "writer": writer,
                 "addresses": addresses,
-                "values_after_write": {
-                    f"0x{address:04X}": values[address]
-                    for address in addresses
-                },
                 "state": state,
                 "status": status,
             }
@@ -882,7 +834,6 @@ def main() -> int:
         areas = client.call("list_memory_areas")
         ram_area = _select_ram_area(areas)
         ram_area_id = int(ram_area["id"])
-        ram_area_size = int(ram_area["size"])
         client.call("set_trace_log", {"enabled": False})
         for start, end in write_ranges:
             _set_write_range(client, start, end)
@@ -904,11 +855,7 @@ def main() -> int:
             )
             if status.get("at_breakpoint") is not True:
                 continue
-            state, evidence = _capture_producer_state(
-                client,
-                ram_area_id=ram_area_id,
-                ram_area_size=ram_area_size,
-            )
+            state, evidence = _capture_producer_state(client)
             pc_after = int(state["pc_after"])
             if pc_after in entry_addresses:
                 if _entry_matches(
@@ -932,11 +879,7 @@ def main() -> int:
         for _ in range(DECODER_ENTRY_TRACE_STEPS):
             status = _step_instruction_and_wait(client)
             if status.get("at_breakpoint") is True:
-                state, evidence = _capture_producer_state(
-                    client,
-                    ram_area_id=ram_area_id,
-                    ram_area_size=ram_area_size,
-                )
+                state, evidence = _capture_producer_state(client)
                 observe_write(state, evidence, status=status)
         _set_execute_breakpoint(client, DECODER_SKIP_ENDPOINT_LOGICAL)
         endpoint_armed = True
@@ -949,11 +892,7 @@ def main() -> int:
             )
             if status.get("at_breakpoint") is not True:
                 continue
-            state, evidence = _capture_producer_state(
-                client,
-                ram_area_id=ram_area_id,
-                ram_area_size=ram_area_size,
-            )
+            state, evidence = _capture_producer_state(client)
             if int(state["pc_after"]) == DECODER_SKIP_ENDPOINT_LOGICAL:
                 endpoint_state = state
                 break
@@ -961,25 +900,17 @@ def main() -> int:
         if endpoint_state is None:
             raise RuntimeError("active RAM producer decoder endpoint was not reached")
         endpoint_registers = _registers(endpoint_state)
-        if (
-            int(endpoint_state["slot1_bank"]) != mapped_bank
-            or endpoint_registers.get("hl") != logical_start - 1
-        ):
+        if endpoint_registers.get("hl") != logical_start - 1:
             raise RuntimeError("active RAM producer decoder endpoint disagrees")
         _remove_breakpoint(client, DECODER_SKIP_ENDPOINT_LOGICAL)
         endpoint_armed = False
         status = _step_instruction_and_wait(client)
-        ready_state, ready_evidence = _capture_producer_state(
-            client,
-            ram_area_id=ram_area_id,
-            ram_area_size=ram_area_size,
-        )
+        ready_state, ready_evidence = _capture_producer_state(client)
         if status.get("at_breakpoint") is True:
             observe_write(ready_state, ready_evidence, status=status)
         ready_registers = _registers(ready_state)
         if (
             int(ready_state["pc_after"]) != DECODER_PAYLOAD_READY_LOGICAL
-            or int(ready_state["slot1_bank"]) != mapped_bank
             or ready_registers.get("hl") != logical_start
         ):
             raise RuntimeError("active RAM producer payload handoff disagrees")

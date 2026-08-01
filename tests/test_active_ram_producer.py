@@ -99,16 +99,13 @@ class ActiveRamProducerTests(unittest.TestCase):
                 raise AssertionError(name)
 
         client = Client()
-        state, evidence = _capture_producer_state(
-            client,
-            ram_area_id=1,
-            ram_area_size=0x2004,
-        )
+        state, evidence = _capture_producer_state(client)
         self.assertEqual(state["pc_after"], 0x3411)
-        self.assertEqual(state["slot1_bank"], 8)
+        self.assertEqual(state["registers"]["de"], 2)
         self.assertIn("z80", evidence)
         self.assertNotIn("get_call_stack", client.calls)
         self.assertNotIn("get_trace_log", client.calls)
+        self.assertNotIn("read_memory", client.calls)
 
     def test_extracts_the_confirmed_previous_step_sources(self) -> None:
         local = {
