@@ -535,6 +535,7 @@ def _capture_contexts(
         arm_entry()
         anchor_timeout = max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 240.0)
         anchor_reached = False
+        anchor_state: dict[str, object] | None = None
         for _ in range(MAX_REJECTED_TARGET_HITS):
             status = _continue_until_breakpoint(client, anchor_timeout)
             if status.get("at_breakpoint") is not True:
@@ -552,10 +553,11 @@ def _capture_contexts(
             disarm_entry()
             if selector == CONFIRMED_SELECTOR and ordinal == CONFIRMED_ORDINAL:
                 anchor_reached = True
+                anchor_state = state
                 break
             _step_instruction_and_wait(client)
             arm_entry()
-        if not anchor_reached:
+        if not anchor_reached or anchor_state is None:
             raise RuntimeError("consumer trace confirmed anchor was not reached")
 
         trace_lines, trace_window = _trace_bounded_frames(
