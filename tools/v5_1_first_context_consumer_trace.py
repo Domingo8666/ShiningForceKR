@@ -112,7 +112,7 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-consumer-trace"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_consumer_trace.json"
 )
@@ -129,6 +129,24 @@ TRACE_COUNT_KEYS = {
     "expected_context_prefix_match_count",
     "post_terminator_context_count",
     "initial_context_match_count",
+    "trace_line_count",
+    "parsed_instruction_count",
+    "supported_read_count",
+    "indexed_read_instruction_count",
+    "index_immediate_load_count",
+    "mapper_write_count",
+    "logical_vector_window_read_count",
+    "mapped_vector_read_count",
+}
+TRACE_DIAGNOSTIC_COUNT_KEYS = {
+    "trace_line_count",
+    "parsed_instruction_count",
+    "supported_read_count",
+    "indexed_read_instruction_count",
+    "index_immediate_load_count",
+    "mapper_write_count",
+    "logical_vector_window_read_count",
+    "mapped_vector_read_count",
 }
 SAFE_FIELDS = {
     "artifact_kind",
@@ -227,6 +245,14 @@ def summarize_consumer_contexts(
         "initial_context_match_count": int(
             bool(observed_contexts) and observed_contexts[0] == initial_context
         ),
+        "trace_line_count": len(observed_contexts),
+        "parsed_instruction_count": len(observed_contexts),
+        "supported_read_count": len(observed_contexts),
+        "indexed_read_instruction_count": 0,
+        "index_immediate_load_count": 0,
+        "mapper_write_count": 0,
+        "logical_vector_window_read_count": len(observed_contexts),
+        "mapped_vector_read_count": len(observed_contexts),
     }
     return counts, prefix_complete, first_post_is_terminator, direct_overread
 
@@ -312,8 +338,15 @@ def validate_first_context_consumer_trace(value: dict[str, object]) -> None:
         or any(
             not isinstance(count, int)
             or isinstance(count, bool)
-            or not 0 <= count <= MAX_VECTOR_READ_HITS
+            or count < 0
             for count in trace.values()
+        )
+        or any(
+            trace[key] > MAX_VECTOR_READ_HITS
+            for key in TRACE_COUNT_KEYS - TRACE_DIAGNOSTIC_COUNT_KEYS
+        )
+        or any(
+            trace[key] > 200_000 for key in TRACE_DIAGNOSTIC_COUNT_KEYS
         )
         or trace["planned_decode_count"] <= 0
         or trace["expected_context_count"] != trace["planned_decode_count"]
@@ -325,6 +358,18 @@ def validate_first_context_consumer_trace(value: dict[str, object]) -> None:
             trace["observed_context_count"] - trace["expected_context_count"],
         )
         or trace["initial_context_match_count"] not in {0, 1}
+        or trace["parsed_instruction_count"] > trace["trace_line_count"]
+        or trace["indexed_read_instruction_count"]
+        > trace["parsed_instruction_count"]
+        or trace["index_immediate_load_count"]
+        > trace["parsed_instruction_count"]
+        or trace["mapper_write_count"] > trace["parsed_instruction_count"]
+        or trace["logical_vector_window_read_count"]
+        > trace["supported_read_count"]
+        or trace["mapped_vector_read_count"]
+        > trace["logical_vector_window_read_count"]
+        or trace["mapped_vector_read_count"]
+        != trace["observed_context_count"]
     ):
         raise ValueError("first context consumer trace counts do not match")
     prefix_complete = (
@@ -416,14 +461,14 @@ def first_context_consumer_trace_needed(root: Path) -> bool:
         return True
 
 
-def extract_vector_contexts_from_trace(
+def analyze_vector_contexts_from_trace(
     lines: list[str],
     *,
     initial_slot1_bank: int,
     initial_slot2_bank: int,
     initial_ix: int,
     initial_iy: int,
-) -> list[int]:
+) -> tuple[list[int], dict[str, int]]:
     """Recover every Huffman context lookup from one complete consumer trace.
 
     Breakpoint-per-read sampling can resume in the middle of a two-byte vector
@@ -439,12 +484,19 @@ def extract_vector_contexts_from_trace(
         raise ValueError("consumer trace initial index register is invalid")
 
     contexts: list[int] = []
+    parsed_instruction_count = 0
+    supported_read_count = 0
+    indexed_read_instruction_count = 0
+    index_immediate_load_count = 0
+    mapper_write_count = 0
+    logical_vector_window_read_count = 0
     ix: int | None = initial_ix
     iy: int | None = initial_iy
     for line in lines:
         parsed = _parse_trace_line(line)
         if parsed is None:
             continue
+        parsed_instruction_count += 1
         opcodes = parsed["opcodes"]
         raw_registers = parsed["registers"]
         assert isinstance(opcodes, bytes)
@@ -459,7 +511,13 @@ def extract_vector_contexts_from_trace(
         if iy is not None:
             registers["iy"] = iy
 
-        for logical in _read_addresses(opcodes, registers):
+        read_addresses = _read_addresses(opcodes, registers)
+        supported_read_count += len(read_addresses)
+        if read_addresses and opcodes and opcodes[0] in {0xDD, 0xFD}:
+            indexed_read_instruction_count += 1
+        for logical in read_addresses:
+            if 0x4100 <= logical < 0x4300 or 0x8100 <= logical < 0x8300:
+                logical_vector_window_read_count += 1
             bank = _mapped_bank_for_address(
                 logical,
                 slot1_bank,
@@ -478,6 +536,7 @@ def extract_vector_contexts_from_trace(
 
         write_address = _write_a_address(opcodes, registers)
         if write_address in {0xFFFE, 0xFFFF}:
+            mapper_write_count += 1
             mapped_bank = registers.get("a", 0) & 0xFF
             if write_address == 0xFFFE:
                 slot1_bank = mapped_bank
@@ -489,6 +548,7 @@ def extract_vector_contexts_from_trace(
             second = opcodes[1]
             updated = current
             if second == 0x21 and len(opcodes) >= 4:
+                index_immediate_load_count += 1
                 updated = opcodes[2] | (opcodes[3] << 8)
             elif second == 0x23 and current is not None:
                 updated = (current + 1) & 0xFFFF
@@ -511,6 +571,34 @@ def extract_vector_contexts_from_trace(
             else:
                 iy = updated
 
+    diagnostics = {
+        "trace_line_count": len(lines),
+        "parsed_instruction_count": parsed_instruction_count,
+        "supported_read_count": supported_read_count,
+        "indexed_read_instruction_count": indexed_read_instruction_count,
+        "index_immediate_load_count": index_immediate_load_count,
+        "mapper_write_count": mapper_write_count,
+        "logical_vector_window_read_count": logical_vector_window_read_count,
+        "mapped_vector_read_count": len(contexts),
+    }
+    return contexts, diagnostics
+
+
+def extract_vector_contexts_from_trace(
+    lines: list[str],
+    *,
+    initial_slot1_bank: int,
+    initial_slot2_bank: int,
+    initial_ix: int,
+    initial_iy: int,
+) -> list[int]:
+    contexts, _ = analyze_vector_contexts_from_trace(
+        lines,
+        initial_slot1_bank=initial_slot1_bank,
+        initial_slot2_bank=initial_slot2_bank,
+        initial_ix=initial_ix,
+        initial_iy=initial_iy,
+    )
     return contexts
 
 
@@ -601,7 +689,7 @@ def _capture_contexts(
             client,
             ready_state=anchor_state,
         )
-        contexts = extract_vector_contexts_from_trace(
+        contexts, trace_diagnostics = analyze_vector_contexts_from_trace(
             trace_lines,
             initial_slot1_bank=int(anchor_state["slot1_bank"]),
             initial_slot2_bank=int(anchor_state["slot2_bank"]),
@@ -609,6 +697,7 @@ def _capture_contexts(
             initial_iy=int(anchor_state["registers"]["iy"]),
         )
         local["consumer_trace_window"] = trace_window
+        local["trace_diagnostics"] = trace_diagnostics
         local["raw_trace_lines"] = trace_lines
         local["observed_contexts"] = contexts
         return contexts, local
@@ -696,6 +785,19 @@ def _main() -> int:
         initial_context=initial_context,
         expected_symbols=expected_symbols,
     )
+    trace_diagnostics = local_capture.get("trace_diagnostics")
+    if (
+        not isinstance(trace_diagnostics, dict)
+        or set(trace_diagnostics) != TRACE_DIAGNOSTIC_COUNT_KEYS
+        or any(
+            not isinstance(count, int)
+            or isinstance(count, bool)
+            or count < 0
+            for count in trace_diagnostics.values()
+        )
+    ):
+        raise ValueError("consumer trace diagnostics are invalid")
+    counts.update(trace_diagnostics)
     captured_utc = datetime.now(timezone.utc).isoformat().replace(
         "+00:00", "Z"
     )

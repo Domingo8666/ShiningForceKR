@@ -6,6 +6,7 @@ import unittest
 
 from tools.sfgfc_huffman import CANDIDATE_END_SYMBOL
 from tools.v5_1_first_context_consumer_trace import (
+    analyze_vector_contexts_from_trace,
     build_first_context_consumer_trace,
     extract_vector_contexts_from_trace,
     summarize_consumer_contexts,
@@ -55,6 +56,35 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
                 initial_iy=0xFFFF,
             ),
             [0],
+        )
+
+    def test_reports_sanitized_continuous_trace_diagnostics(self) -> None:
+        lines = [
+            "not an instruction",
+            "08:5000 A:20 BC:0000 DE:0000 HL:0000 SP:DFF0  32 FF FF",
+            "08:5003 A:00 BC:0000 DE:0000 HL:0000 SP:DFF0  DD 21 00 81",
+            "08:5007 A:00 BC:0000 DE:0000 HL:0000 SP:DFF0  DD 7E 00",
+        ]
+        contexts, diagnostics = analyze_vector_contexts_from_trace(
+            lines,
+            initial_slot1_bank=8,
+            initial_slot2_bank=6,
+            initial_ix=0xFFFF,
+            initial_iy=0xFFFF,
+        )
+        self.assertEqual(contexts, [0])
+        self.assertEqual(
+            diagnostics,
+            {
+                "trace_line_count": 4,
+                "parsed_instruction_count": 3,
+                "supported_read_count": 1,
+                "indexed_read_instruction_count": 1,
+                "index_immediate_load_count": 1,
+                "mapper_write_count": 1,
+                "logical_vector_window_read_count": 1,
+                "mapped_vector_read_count": 1,
+            },
         )
 
     def test_rejects_invalid_trace_mapper_state(self) -> None:
