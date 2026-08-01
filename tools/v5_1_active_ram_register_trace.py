@@ -82,13 +82,14 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-active-ram-register-trace"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_active_ram_register_trace.json"
 )
 LOCAL_REPORT_PATH = Path("reports/local/v5_1_active_ram_register_trace.json")
 WRITER_WATCH_TIMEOUT_SECONDS = 240.0
 NEXT_WRITER_TIMEOUT_SECONDS = 15.0
+PREDECESSOR_DISTANCE = 8
 COUNT_KEYS = {
     "trace_line_count",
     "parsed_trace_line_count",
@@ -434,7 +435,7 @@ def main() -> int:
     prior_addresses = [address for address in all_target_addresses if address < sentinel]
     if not prior_addresses:
         raise ValueError("active RAM register predecessor anchor is unavailable")
-    predecessor = prior_addresses[-1]
+    predecessor = prior_addresses[-min(PREDECESSOR_DISTANCE, len(prior_addresses))]
     rom = rom_path.read_bytes()
     client = McpStdioClient(_default_command())
     armed_write_address: int | None = None
