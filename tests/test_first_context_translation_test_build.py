@@ -91,7 +91,7 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
                 "review_index": 1,
                 "target_selector": 7,
                 "target_ordinal": 2,
-                "alias_keys": [(7, 2)],
+                "alias_keys": [(7, 1)],
                 "length_offset": length_offset,
                 "payload_start": payload_start,
                 "payload_end": payload_end,

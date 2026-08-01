@@ -226,27 +226,17 @@ def build_translation_writes(
         encoded = bytes.fromhex(encoded_hex)
         if not 1 <= len(encoded) <= min(0xFF, end - start):
             raise ValueError("first context record write exceeds its payload")
-        group_alias_ordinals = [
-            ordinal
-            for alias in alias_keys
-            if isinstance(alias, (list, tuple))
-            and len(alias) == 2
-            for selector, ordinal in [alias]
-            if selector == group_selector
-            and isinstance(ordinal, int)
-            and not isinstance(ordinal, bool)
+        group_matches = [
+            record
+            for record in group_records
+            if int(record["length_offset"]) == length_offset
+            and int(record["payload_start"]) == start
+            and int(record["payload_end"]) == end
         ]
-        if len(group_alias_ordinals) != 1:
+        if len(group_matches) != 1:
             raise ValueError("first context confirmed group alias is ambiguous")
-        ordinal = group_alias_ordinals[0]
-        if not 0 <= ordinal < len(group_records) or ordinal in replacements:
-            raise ValueError("first context confirmed group alias is ambiguous")
-        group_record = group_records[ordinal]
-        if (
-            int(group_record["length_offset"]) != length_offset
-            or int(group_record["payload_start"]) != start
-            or int(group_record["payload_end"]) != end
-        ):
+        ordinal = int(group_matches[0]["ordinal"])
+        if ordinal in replacements:
             raise ValueError("first context confirmed group alias is ambiguous")
         replacements[ordinal] = (row, encoded)
     if not replacements:
@@ -321,19 +311,19 @@ def verify_translation_build(
         aliases = row.get("alias_keys")
         if not isinstance(aliases, list):
             raise ValueError("first context build verification group alias is invalid")
-        ordinals = [
-            ordinal
-            for alias in aliases
-            if isinstance(alias, (list, tuple))
-            and len(alias) == 2
-            for selector, ordinal in [alias]
-            if selector == group_selector
-            and isinstance(ordinal, int)
-            and not isinstance(ordinal, bool)
+        matches = [
+            record
+            for record in group_records
+            if int(record["length_offset"]) == int(row["length_offset"])
+            and int(record["payload_start"]) == int(row["payload_start"])
+            and int(record["payload_end"]) == int(row["payload_end"])
         ]
-        if len(ordinals) != 1 or ordinals[0] in selected_by_ordinal:
+        if len(matches) != 1:
             raise ValueError("first context build verification group alias is invalid")
-        selected_by_ordinal[ordinals[0]] = row
+        ordinal = int(matches[0]["ordinal"])
+        if ordinal in selected_by_ordinal:
+            raise ValueError("first context build verification group alias is invalid")
+        selected_by_ordinal[ordinal] = row
     packed_offsets = {}
     tail_start_ordinal = min(selected_by_ordinal)
     cursor = int(group_records[tail_start_ordinal]["length_offset"])
