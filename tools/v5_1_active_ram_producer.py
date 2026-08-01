@@ -100,8 +100,8 @@ PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_active_ram_producer.json"
 )
 LOCAL_REPORT_PATH = Path("reports/local/v5_1_active_ram_producer.json")
-PRODUCER_WARMUP_FRAMES = 10_000
-PRODUCER_WATCH_TIMEOUT_SECONDS = 80.0
+PRODUCER_WARMUP_FRAMES = 8_000
+PRODUCER_WATCH_TIMEOUT_SECONDS = 120.0
 ENDPOINT_WATCH_TIMEOUT_SECONDS = 15.0
 MAX_WRITE_WATCH_HITS = 4096
 COUNT_KEYS = {
@@ -850,16 +850,9 @@ def main() -> int:
             frames = min(1_000, warmup_remaining)
             status = _step_frames_and_wait(client, frames)
             if status.get("at_breakpoint") is True:
-                state, _ = _capture_producer_state(client)
-                if _entry_matches(
-                    state,
-                    selector_de=selector_de,
-                    entry_ordinal=entry_ordinal,
-                ):
-                    raise RuntimeError(
-                        "active RAM producer target preceded the focused watch"
-                    )
-                continue
+                raise RuntimeError(
+                    "active RAM producer decoder entry preceded the focused watch"
+                )
             warmup_remaining -= frames
 
         for start, end in write_ranges:
