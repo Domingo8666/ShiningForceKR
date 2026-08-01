@@ -126,6 +126,23 @@ if [ "$setup_status" -ne 0 ]; then
   stage_status="$setup_status"
   diagnostic_trigger=setup
 else
+  critical_path_focus="$(
+    python tools/v5_1_critical_path.py \
+      --if-ready \
+      --print-next-stage 2>/dev/null || printf 'continue\n'
+  )"
+  if [ "$critical_path_focus" = "active-register-rom-source" ]; then
+    echo "SFKR critical path: mapping the one unresolved ROM source boundary."
+    write_next_step \
+      "확정된 과거 단계는 건너뛰고 현재 ROM 원천 한 단계만 자동 검사하고 있습니다."
+    run_active_register_rom_source
+    active_register_rom_source_status=$?
+    if [ "$active_register_rom_source_status" -ne 0 ]; then
+      stage_status="$active_register_rom_source_status"
+      diagnostic_trigger=probe
+      record_stage_failure active-register-rom-source
+    fi
+  else
   if decoder_selection_ready || group_selection_ready; then
     echo "SFKR runtime stage: using the confirmed decoder stream."
   else
@@ -1308,6 +1325,7 @@ else
       diagnostic_trigger=probe
       record_stage_failure confirmed-group-unicode
     fi
+  fi
   fi
 fi
 
