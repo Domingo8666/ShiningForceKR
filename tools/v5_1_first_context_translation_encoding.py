@@ -2890,10 +2890,14 @@ def solve_fixed_count_row_multi_page_visual_symbols(
     else:
         required_page_tokens = -1
 
-    # The reviewed first row has exactly two page-select tokens in its fixed
-    # output count.  Solve that structure directly: one visible segment on
-    # each page, with no invisible padding and no exact-bit sweep.
-    if required_page_tokens == 2 and len(candidate_pages) == 2:
+    # Solve short fixed-count structures directly: one visible segment on each
+    # page, with no invisible padding and no exact-bit sweep.  The compact
+    # first row uses three page tokens; keeping each segment independent avoids
+    # the exponential generic multi-page search on the phone.
+    if (
+        required_page_tokens in {2, 3}
+        and len(candidate_pages) == required_page_tokens
+    ):
         lengths = _code_lengths(trees)
         glyph_symbols = tuple(
             range(FONT_GLYPH_FIRST_SYMBOL, FONT_GLYPH_LAST_SYMBOL + 1)
@@ -2995,6 +2999,121 @@ def solve_fixed_count_row_multi_page_visual_symbols(
             encoded = transition(previous, (CANDIDATE_END_SYMBOL,))
             if encoded is not None:
                 direct_end[previous] = (encoded[0], (CANDIDATE_END_SYMBOL,))
+
+        if required_page_tokens == 3:
+            page_orders = tuple(
+                (first, second, third)
+                for first in candidate_pages
+                for second in candidate_pages
+                for third in candidate_pages
+                if len({first, second, third}) == 3
+            )
+            split_pairs = sorted(
+                (
+                    (first_split, second_split)
+                    for first_split in range(1, len(visuals) - 1)
+                    for second_split in range(
+                        first_split + 1,
+                        len(visuals),
+                    )
+                ),
+                key=lambda pair: (
+                    max(
+                        pair[0],
+                        pair[1] - pair[0],
+                        len(visuals) - pair[1],
+                    )
+                    - min(
+                        pair[0],
+                        pair[1] - pair[0],
+                        len(visuals) - pair[1],
+                    ),
+                    pair,
+                ),
+            )
+            for first_page, second_page, third_page in page_orders:
+                first_token = tuple(page_select_symbols(first_page))
+                second_token = tuple(page_select_symbols(second_page))
+                third_token = tuple(page_select_symbols(third_page))
+                selected = transition(initial_context, first_token)
+                if selected is None or selected[0] >= maximum_bits:
+                    continue
+                transition_to_second = {}
+                transition_to_third = {}
+                for previous in range(0x100):
+                    encoded_second = transition(previous, second_token)
+                    if encoded_second is not None:
+                        transition_to_second[previous] = (
+                            encoded_second[0],
+                            second_token,
+                        )
+                    encoded_third = transition(previous, third_token)
+                    if encoded_third is not None:
+                        transition_to_third[previous] = (
+                            encoded_third[0],
+                            third_token,
+                        )
+                for first_split, second_split in split_pairs:
+                    suffix = segment_path(
+                        start_previous=third_token[-1],
+                        glyph_count=len(visuals) - second_split,
+                        bit_limit=maximum_bits - selected[0],
+                        tail_by_previous=direct_end,
+                    )
+                    if suffix is None:
+                        continue
+                    suffix_symbols, suffix_assignments, suffix_bits = suffix
+                    middle_limit = maximum_bits - selected[0] - suffix_bits
+                    if middle_limit <= 0:
+                        continue
+                    middle = segment_path(
+                        start_previous=second_token[-1],
+                        glyph_count=second_split - first_split,
+                        bit_limit=middle_limit,
+                        tail_by_previous=transition_to_third,
+                    )
+                    if middle is None:
+                        continue
+                    middle_symbols, middle_assignments, middle_bits = middle
+                    prefix_limit = middle_limit - middle_bits
+                    if prefix_limit <= 0:
+                        continue
+                    prefix = segment_path(
+                        start_previous=selected[1],
+                        glyph_count=first_split,
+                        bit_limit=prefix_limit,
+                        tail_by_previous=transition_to_second,
+                    )
+                    if prefix is None:
+                        continue
+                    prefix_symbols, prefix_assignments, _ = prefix
+                    symbols = (
+                        first_token
+                        + prefix_symbols
+                        + middle_symbols
+                        + suffix_symbols
+                    )
+                    if len(symbols) != target_symbol_count:
+                        continue
+                    assignments = (
+                        prefix_assignments
+                        + middle_assignments
+                        + suffix_assignments
+                    )
+                    assignment_pages = (
+                        (first_page,) * first_split
+                        + (second_page,) * (second_split - first_split)
+                        + (third_page,) * (len(visuals) - second_split)
+                    )
+                    return (
+                        list(symbols),
+                        0,
+                        list(assignments),
+                        list(assignment_pages),
+                    )
+            raise ValueError(
+                "first context row has no three-page fixed-count route"
+            )
 
         for first_page, second_page in (
             candidate_pages,
@@ -3308,9 +3427,29 @@ def select_row_font_pages(
             except ValueError:
                 if constraint is not None:
                     if "original_symbol_count" in constraint:
-                        candidate_groups = (
-                            [(failed_pages[0], page)] if failed_pages else []
+                        required_page_tokens = (
+                            int(constraint["original_symbol_count"])
+                            - len(visuals)
+                            - 1
                         )
+                        required_page_tokens = (
+                            required_page_tokens // 3
+                            if required_page_tokens >= 0
+                            and required_page_tokens % 3 == 0
+                            else -1
+                        )
+                        if required_page_tokens == 3:
+                            candidate_groups = (
+                                [(failed_pages[0], failed_pages[1], page)]
+                                if len(failed_pages) >= 2
+                                else []
+                            )
+                        else:
+                            candidate_groups = (
+                                [(failed_pages[0], page)]
+                                if failed_pages
+                                else []
+                            )
                     else:
                         candidate_groups = [
                             (anchor, page) for anchor in failed_pages[:4]
@@ -3377,6 +3516,30 @@ def select_row_font_pages(
                 if constraint is not None
                 else 0
             )
+            fixed_page_token_count = (
+                (
+                    int(constraint["original_symbol_count"])
+                    - len(visuals)
+                    - 1
+                )
+                // 3
+                if constraint is not None
+                and "original_symbol_count" in constraint
+                and (
+                    int(constraint["original_symbol_count"])
+                    - len(visuals)
+                    - 1
+                )
+                >= 0
+                and (
+                    int(constraint["original_symbol_count"])
+                    - len(visuals)
+                    - 1
+                )
+                % 3
+                == 0
+                else -1
+            )
             candidate_bits = (
                 diagnose_bounded_candidate_bit_count(
                     trees=trees,
@@ -3385,7 +3548,7 @@ def select_row_font_pages(
                     pages=tuple(failed_pages),
                     visuals=visuals,
                 )
-                if constraint is not None
+                if constraint is not None and fixed_page_token_count < 3
                 else 0
             )
             raise RowRouteError(

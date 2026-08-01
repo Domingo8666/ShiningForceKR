@@ -885,6 +885,49 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(assignments, [4, 5])
         self.assertEqual(pages, [240, 241])
 
+    def test_fixed_count_solver_splits_compact_row_across_three_pages(self) -> None:
+        page_contexts = ParsedTree(
+            previous_symbol=0x11,
+            pointer=0,
+            structure_offset=0,
+            structure_bits=5,
+            leaf_count=3,
+            symbol_offset=0,
+            root=HuffmanNode(
+                left=HuffmanNode(symbol=0x02),
+                right=HuffmanNode(
+                    left=HuffmanNode(symbol=0x03),
+                    right=HuffmanNode(symbol=0x04),
+                ),
+            ),
+        )
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x5F),
+            0x11: page_contexts,
+            0x02: tree(0x02, 0x05, 0x02),
+            0x03: tree(0x03, 0x06, 0x03),
+            0x04: tree(0x04, 0x07, 0x04),
+            0x05: tree(0x05, 0x5F, 0x05),
+            0x06: tree(0x06, 0x5F, 0x06),
+            0x07: tree(0x07, 0xC9, 0x07),
+        }
+        symbols, padding, assignments, pages = (
+            solve_fixed_count_row_multi_page_visual_symbols(
+                trees=trees,
+                initial_context=0xC9,
+                maximum_bits=20,
+                target_symbol_count=13,
+                pages=(240, 241, 242),
+                visuals=["text:가", "text:나", "text:다"],
+            )
+        )
+        self.assertEqual(len(symbols), 13)
+        self.assertEqual(symbols[-1], 0xC9)
+        self.assertEqual(padding, 0)
+        self.assertEqual(assignments, [5, 6, 7])
+        self.assertEqual(pages, [240, 241, 242])
+
     def test_builds_two_page_symbols_and_preserves_insertions(self) -> None:
         targets = [
             {"review_index": 1, "target_text": "가!"},
