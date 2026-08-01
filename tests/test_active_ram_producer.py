@@ -10,6 +10,7 @@ from tools.v5_1_active_ram_producer import (
     contiguous_address_ranges,
     extract_target_values,
     previous_target_write,
+    select_producer_sentinels,
     validate_active_ram_producer,
     write_addresses,
 )
@@ -146,6 +147,20 @@ class ActiveRamProducerTests(unittest.TestCase):
             contiguous_address_ranges([0xC103, 0xC100, 0xC101, 0xC200]),
             [(0xC100, 0xC101), (0xC103, 0xC103), (0xC200, 0xC200)],
         )
+
+    def test_selects_a_deterministic_nonzero_writer_sentinel(self) -> None:
+        self.assertEqual(
+            select_producer_sentinels(
+                {0xC100: 0, 0xC101: 0x12, 0xC102: 0x34, 0xC103: 0x56}
+            ),
+            {0xC102},
+        )
+        self.assertEqual(
+            select_producer_sentinels({0xC100: 0, 0xC101: 0}),
+            {0xC101},
+        )
+        with self.assertRaises(ValueError):
+            select_producer_sentinels({0xC100: 1}, limit=0)
 
     def test_decodes_post_instruction_z80_write_addresses(self) -> None:
         registers = {

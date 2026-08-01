@@ -26,7 +26,6 @@ try:
         McpStdioClient,
         _default_command,
         _runtime_failure_receipt,
-        _step_frames_and_wait,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
@@ -64,7 +63,6 @@ except ImportError:  # pragma: no cover - direct script execution
         McpStdioClient,
         _default_command,
         _runtime_failure_receipt,
-        _step_frames_and_wait,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
@@ -100,8 +98,8 @@ PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_active_ram_producer.json"
 )
 LOCAL_REPORT_PATH = Path("reports/local/v5_1_active_ram_producer.json")
-PRODUCER_WARMUP_FRAMES = 8_000
-PRODUCER_WATCH_TIMEOUT_SECONDS = 120.0
+PRODUCER_SENTINEL_COUNT = 1
+PRODUCER_WATCH_TIMEOUT_SECONDS = 240.0
 ENDPOINT_WATCH_TIMEOUT_SECONDS = 15.0
 MAX_WRITE_WATCH_HITS = 4096
 COUNT_KEYS = {
@@ -245,6 +243,38 @@ def contiguous_address_ranges(addresses: list[int]) -> list[tuple[int, int]]:
         previous = address
     result.append((start, previous))
     return result
+
+
+def select_producer_sentinels(
+    target_values: dict[int, int],
+    *,
+    limit: int = PRODUCER_SENTINEL_COUNT,
+) -> set[int]:
+    """Choose a small deterministic sample for one-shot writer discovery.
+
+    Watching every byte of the 192-byte active dialogue buffer makes the
+    emulator stop on every copy instruction and can exhaust the runtime
+    budget.  A middle non-zero byte is sufficient to identify a candidate
+    writer.  The complete buffer is still verified at the proven decoder
+    anchor, so this optimization cannot turn a partial observation into a
+    confirmed producer route.
+    """
+
+    if limit <= 0:
+        raise ValueError("active RAM producer sentinel limit must be positive")
+    candidates = sorted(
+        address for address, value in target_values.items() if value != 0
+    )
+    if not candidates:
+        candidates = sorted(target_values)
+    if not candidates:
+        raise ValueError("active RAM producer sentinel source is empty")
+    if len(candidates) <= limit:
+        return set(candidates)
+    return {
+        candidates[((index + 1) * len(candidates)) // (limit + 1)]
+        for index in range(limit)
+    }
 
 
 def _signed_byte(value: int) -> int:
@@ -773,7 +803,7 @@ def main() -> int:
     selector_de = int(runtime["selector_de"])
     entry_ordinal = int(runtime["entry_ordinal"])
     logical_start = int(runtime["logical_start"])
-    target_addresses = set(target_values)
+    target_addresses = select_producer_sentinels(target_values)
     write_ranges = contiguous_address_ranges(list(target_addresses))
     entry_addresses = sorted(
         {int(item["logical_address"]) for item in _decoder_entry_mappings()}
@@ -816,6 +846,13 @@ def main() -> int:
         )
         for address in addresses:
             latest_writer_event[address] = event_index
+        if target_addresses.issubset(latest_writer_event):
+            # The sentinel is a discovery breakpoint, not a frame-by-frame
+            # trace.  Remove it immediately after the first decoded writer so
+            # the emulator can run uninterrupted to the proven entry anchor.
+            for start, end in list(armed_write_ranges):
+                _remove_range(client, start, end)
+                armed_write_ranges.remove((start, end))
 
     try:
         rom = rom_path.read_bytes()
@@ -844,17 +881,6 @@ def main() -> int:
 
         if any(button is not None for _, button in ATTRACT_ROUTE_SCHEDULE):
             raise RuntimeError("active RAM producer attract route must be passive")
-        runtime_stage = "active-ram-producer-route-warmup"
-        warmup_remaining = PRODUCER_WARMUP_FRAMES
-        while warmup_remaining > 0:
-            frames = min(1_000, warmup_remaining)
-            status = _step_frames_and_wait(client, frames)
-            if status.get("at_breakpoint") is True:
-                raise RuntimeError(
-                    "active RAM producer decoder entry preceded the focused watch"
-                )
-            warmup_remaining -= frames
-
         for start, end in write_ranges:
             _set_write_range(client, start, end)
             armed_write_ranges.append((start, end))
