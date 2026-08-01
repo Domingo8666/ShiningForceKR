@@ -7,11 +7,34 @@ from tools.v5_1_active_ram_register_trace import (
     _definition_source_class,
     analyze_register_trace,
     build_active_ram_register_trace,
+    select_register_candidate,
     validate_active_ram_register_trace,
 )
 
 
 class ActiveRamRegisterTraceTests(unittest.TestCase):
+    def test_prefers_an_accumulator_register_writer_from_a_mixed_sample(self) -> None:
+        selected = select_register_candidate(
+            [
+                {
+                    "event_index": 1,
+                    "source": {"kind": "immediate", "value": 0},
+                    "writer": {"operand_kind": "hl-indirect"},
+                },
+                {
+                    "event_index": 2,
+                    "source": {"kind": "register", "register": "b"},
+                    "writer": {"operand_kind": "hl-indirect"},
+                },
+                {
+                    "event_index": 3,
+                    "source": {"kind": "register", "register": "a"},
+                    "writer": {"operand_kind": "hl-indirect"},
+                },
+            ]
+        )
+        self.assertEqual(selected["event_index"], 3)
+
     def test_detects_common_z80_register_definitions(self) -> None:
         self.assertEqual(_defined_registers(bytes.fromhex("3E 12")), {"a"})
         self.assertEqual(_defined_registers(bytes.fromhex("7E")), {"a"})

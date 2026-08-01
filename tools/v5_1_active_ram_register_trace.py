@@ -132,6 +132,35 @@ def _register_members(name: str) -> set[str]:
     }.get(name, {name})
 
 
+def select_register_candidate(
+    candidates: list[object],
+) -> dict[str, object]:
+    """Choose one deterministic dynamic writer from a mixed sentinel sample."""
+
+    register_candidates = [
+        candidate
+        for candidate in candidates
+        if isinstance(candidate, dict)
+        and isinstance(candidate.get("source"), dict)
+        and candidate["source"].get("kind") == "register"
+        and isinstance(candidate.get("writer"), dict)
+    ]
+    if not register_candidates:
+        raise ValueError("active RAM register writer candidate is unavailable")
+
+    def rank(candidate: dict[str, object]) -> tuple[int, int, int]:
+        source = candidate["source"]
+        writer = candidate["writer"]
+        assert isinstance(source, dict) and isinstance(writer, dict)
+        return (
+            0 if source.get("register") == "a" else 1,
+            0 if writer.get("operand_kind") in {"hl-indirect", "indexed-store"} else 1,
+            int(candidate.get("event_index", 0)),
+        )
+
+    return min(register_candidates, key=rank)
+
+
 def _defined_registers(opcodes: bytes) -> set[str]:
     if not opcodes:
         return set()
@@ -405,15 +434,17 @@ def main() -> int:
     if _is_current(publish_path, target_sha256=target_sha256, source_sha256=writer_sha256):
         print("Active RAM register definition trace is already current")
         return 0
-    if writer_safe["writer_source_class"] != "register":
+    writer_counts = writer_safe["analysis"]
+    assert isinstance(writer_counts, dict)
+    if int(writer_counts["register_source_event_count"]) <= 0:
         if args.if_ready:
             print("Active RAM register definition trace is not ready")
             return 0
         raise ValueError("active RAM writer does not use a register source")
     candidates = writer_local.get("analysis", {}).get("candidates", [])
-    if not isinstance(candidates, list) or len(candidates) != 1 or not isinstance(candidates[0], dict):
-        raise ValueError("active RAM register writer candidate is ambiguous")
-    candidate = candidates[0]
+    if not isinstance(candidates, list):
+        raise ValueError("active RAM register writer candidates are invalid")
+    candidate = select_register_candidate(candidates)
     source = candidate.get("source")
     writer = candidate.get("writer")
     if not isinstance(source, dict) or not isinstance(writer, dict) or source.get("kind") != "register":

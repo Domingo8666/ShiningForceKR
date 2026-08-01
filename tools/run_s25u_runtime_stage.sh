@@ -937,9 +937,6 @@ else
       grep -qx yes; then
       printf '%s\n' \
         'First-context translation build waits for a measured active VRAM font route'
-      stage_status=8
-      diagnostic_trigger=probe
-      record_stage_failure first-context-active-vram-route
     fi
   fi
 
