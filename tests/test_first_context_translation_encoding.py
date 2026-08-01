@@ -27,6 +27,7 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     exact_multi_page_state_limit,
     exact_length_row_symbols,
     pad_row_to_runtime_symbol_count,
+    resolve_runtime_records_from_visible_anchor,
     select_row_font_pages,
     solve_bounded_length_row_visual_symbols,
     solve_bounded_length_row_multi_page_visual_symbols,
@@ -64,6 +65,30 @@ def tree(previous: int, left: int, right: int) -> ParsedTree:
 
 
 class FirstContextTranslationEncodingTests(unittest.TestCase):
+    def test_resolves_consecutive_runtime_records_from_visible_anchor(self) -> None:
+        target = b"\x00\x03abc\x02de\x01f"
+        records = resolve_runtime_records_from_visible_anchor(
+            target=target,
+            runtime_entry={"physical_start": 2, "record_length_bytes": 3},
+            row_count=3,
+        )
+        self.assertEqual(
+            records,
+            [
+                {"length_offset": 1, "record_length_bytes": 3},
+                {"length_offset": 5, "record_length_bytes": 2},
+                {"length_offset": 8, "record_length_bytes": 1},
+            ],
+        )
+
+    def test_rejects_visible_anchor_with_wrong_record_length(self) -> None:
+        with self.assertRaisesRegex(ValueError, "length disagrees"):
+            resolve_runtime_records_from_visible_anchor(
+                target=b"\x03abc",
+                runtime_entry={"physical_start": 1, "record_length_bytes": 2},
+                row_count=1,
+            )
+
     def test_keeps_proven_four_row_pages_before_the_fifth_page(self) -> None:
         self.assertEqual(ROW_FONT_PAGES, (240, 241, 242, 243, 239))
         self.assertEqual(MAX_EXACT_FONT_PAGE_CANDIDATES, 8)
@@ -1041,6 +1066,34 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         )
         self.assertEqual(constraints[0]["original_encoded_bits"], 6)
         self.assertEqual(constraints[0]["original_symbol_count"], 6)
+
+        anchored_constraints = build_runtime_codec_constraints(
+            target=b"\x00\x01\x00",
+            trees=trees,
+            context_rows=[
+                {
+                    "mapping_status": "unique",
+                    "source_section_index": 1,
+                    "source_line_index": 2,
+                    "observation": {"initial_context": 0xC9},
+                }
+            ],
+            projection_pairs=[
+                {
+                    "source_section_index": 1,
+                    "source_line_index": 2,
+                    "target_record": {
+                        "length_offset": 0,
+                        "record_length_bytes": 0,
+                    },
+                }
+            ],
+            runtime_records=[
+                {"length_offset": 1, "record_length_bytes": 1}
+            ],
+        )
+        self.assertEqual(anchored_constraints[0]["original_encoded_bits"], 6)
+        self.assertEqual(anchored_constraints[0]["original_symbol_count"], 6)
 
     def test_builds_safe_ready_receipt_without_local_payload(self) -> None:
         counts = {

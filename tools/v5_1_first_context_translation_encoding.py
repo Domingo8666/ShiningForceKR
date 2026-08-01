@@ -70,6 +70,10 @@ try:
     from .v5_1_source_target_section_projection import (
         LOCAL_REPORT_PATH as LOCAL_PROJECTION_PATH,
     )
+    from .v5_1_visible_entry_proof import (
+        PUBLISH_RELATIVE_PATH as VISIBLE_ENTRY_PROOF_PATH,
+        validate_visible_entry_proof,
+    )
     from .v5_1_test_phrase import (
         FONT_PAGE_COUNT,
         FONT_GLYPH_FIRST_SYMBOL,
@@ -130,6 +134,10 @@ except ImportError:  # pragma: no cover - direct script execution
     )
     from v5_1_source_target_section_projection import (
         LOCAL_REPORT_PATH as LOCAL_PROJECTION_PATH,
+    )
+    from v5_1_visible_entry_proof import (
+        PUBLISH_RELATIVE_PATH as VISIBLE_ENTRY_PROOF_PATH,
+        validate_visible_entry_proof,
     )
     from v5_1_test_phrase import (
         FONT_PAGE_COUNT,
@@ -910,7 +918,10 @@ def build_runtime_codec_constraints(
     trees: dict[int, object],
     context_rows: list[dict[str, object]],
     projection_pairs: list[dict[str, object]],
+    runtime_records: list[dict[str, int]] | None = None,
 ) -> list[dict[str, int]]:
+    if runtime_records is not None and len(runtime_records) != len(context_rows):
+        raise ValueError("first context runtime record count disagrees")
     pair_index = {
         (pair.get("source_section_index"), pair.get("source_line_index")): pair
         for pair in projection_pairs
@@ -918,7 +929,7 @@ def build_runtime_codec_constraints(
     }
     constraints = []
     known = bytes((1,)) * len(target)
-    for context_row in context_rows:
+    for row_index, context_row in enumerate(context_rows):
         if (
             not isinstance(context_row, dict)
             or context_row.get("mapping_status") != "unique"
@@ -928,13 +939,16 @@ def build_runtime_codec_constraints(
         if not isinstance(observation, dict):
             raise ValueError("first context runtime observation is missing")
         initial_context = observation.get("initial_context")
-        pair = pair_index.get(
-            (
-                context_row.get("source_section_index"),
-                context_row.get("source_line_index"),
+        if runtime_records is None:
+            pair = pair_index.get(
+                (
+                    context_row.get("source_section_index"),
+                    context_row.get("source_line_index"),
+                )
             )
-        )
-        target_record = None if pair is None else pair.get("target_record")
+            target_record = None if pair is None else pair.get("target_record")
+        else:
+            target_record = runtime_records[row_index]
         if not isinstance(target_record, dict):
             raise ValueError("first context runtime target record is missing")
         length_offset = target_record.get("length_offset")
@@ -988,6 +1002,55 @@ def build_runtime_codec_constraints(
             }
         )
     return constraints
+
+
+def resolve_runtime_records_from_visible_anchor(
+    *,
+    target: bytes,
+    runtime_entry: dict[str, object],
+    row_count: int,
+) -> list[dict[str, int]]:
+    """Resolve consecutive dialogue records from the proven visible entry.
+
+    Source/target projection is useful for translation context, but it is not
+    authoritative for binary placement.  The runtime display proof carries the
+    decoder-proven payload address, so in-place encoding must follow the actual
+    length-prefixed records beginning there.
+    """
+    if not isinstance(row_count, int) or isinstance(row_count, bool) or row_count < 1:
+        raise ValueError("first context runtime row count is invalid")
+    physical_start = runtime_entry.get("physical_start")
+    proven_length = runtime_entry.get("record_length_bytes")
+    if (
+        not isinstance(physical_start, int)
+        or isinstance(physical_start, bool)
+        or not isinstance(proven_length, int)
+        or isinstance(proven_length, bool)
+    ):
+        raise ValueError("first context visible runtime entry is invalid")
+    length_offset = physical_start - 1
+    if not 0 <= length_offset < len(target):
+        raise ValueError("first context visible runtime entry is out of bounds")
+    if target[length_offset] != proven_length:
+        raise ValueError("first context visible runtime length disagrees")
+
+    records: list[dict[str, int]] = []
+    for _ in range(row_count):
+        if not 0 <= length_offset < len(target):
+            raise ValueError("first context consecutive runtime record is missing")
+        record_length = target[length_offset]
+        payload_start = length_offset + 1
+        payload_end = payload_start + record_length
+        if record_length < 1 or payload_end > len(target):
+            raise ValueError("first context consecutive runtime record is invalid")
+        records.append(
+            {
+                "length_offset": length_offset,
+                "record_length_bytes": record_length,
+            }
+        )
+        length_offset = payload_end
+    return records
 
 
 def solve_row_visual_symbols(
@@ -4184,6 +4247,7 @@ def _main() -> int:
         "local_preservation": root / LOCAL_PRESERVATION_PATH,
         "local_context": root / LOCAL_CONTEXT_PATH,
         "local_projection": root / LOCAL_PROJECTION_PATH,
+        "visible_entry_proof": root / VISIBLE_ENTRY_PROOF_PATH,
         "patch": root / PATCH_PATH,
         "bdf": root / LOCAL_BDF_PATH,
         "target": root / TARGET_PATH,
@@ -4202,10 +4266,12 @@ def _main() -> int:
     local_preservation = _load_json_object(paths["local_preservation"])
     local_context = _load_json_object(paths["local_context"])
     local_projection = _load_json_object(paths["local_projection"])
+    visible_entry_proof = _load_json_object(paths["visible_entry_proof"])
     validate_first_context_translation_capacity(capacity)
     validate_first_context_translation_approval(approval)
     validate_local_first_context_translation_approval(local_approval)
     validate_runtime_context_glyph_preservation(preservation)
+    validate_visible_entry_proof(visible_entry_proof)
     ACTIVE_FAILURE_CATEGORY = "identity"
     if (
         capacity["target_sha256"] != approval["target_sha256"]
@@ -4217,6 +4283,8 @@ def _main() -> int:
         != capacity["target_sha256"]
         or local_context.get("target_sha256") != capacity["target_sha256"]
         or local_projection.get("target_sha256") != capacity["target_sha256"]
+        or visible_entry_proof.get("baseline_target_sha256")
+        != capacity["target_sha256"]
     ):
         raise ValueError("first context translation encoding identity disagrees")
     source_rows = local_review.get("rows")
@@ -4276,11 +4344,17 @@ def _main() -> int:
         KO_VECTOR_ENTRIES,
     )
     ACTIVE_FAILURE_STEP = "build-runtime-codec-constraints"
+    runtime_records = resolve_runtime_records_from_visible_anchor(
+        target=target,
+        runtime_entry=visible_entry_proof["runtime_entry"],
+        row_count=len(context_rows),
+    )
     runtime_constraints = build_runtime_codec_constraints(
         target=target,
         trees=trees,
         context_rows=context_rows,
         projection_pairs=projection_pairs,
+        runtime_records=runtime_records,
     )
     ACTIVE_FAILURE_STEP = "build-runtime-layout-rows"
     target_rows, layout_compactions = build_runtime_layout_rows(
