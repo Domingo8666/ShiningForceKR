@@ -1062,13 +1062,19 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                     "mapping_status": "unique",
                     "source_section_index": 1,
                     "source_line_index": 2,
-                    "observation": {"initial_context": 0xC9},
+                    "observation": {
+                        "selector": 7,
+                        "ordinal": 2,
+                        "initial_context": 0xC9,
+                    },
                 }
             ],
             projection_pairs=[
                 {
                     "source_section_index": 1,
                     "source_line_index": 2,
+                    "target_selector": 7,
+                    "target_ordinal": 2,
                     "target_record": {
                         "length_offset": 0,
                         "record_length_bytes": 1,
@@ -1087,27 +1093,39 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                     "mapping_status": "unique",
                     "source_section_index": 1,
                     "source_line_index": 2,
-                    "observation": {"initial_context": 0x11},
+                    "observation": {
+                        "selector": 7,
+                        "ordinal": 2,
+                        "initial_context": 0x11,
+                    },
                 },
                 {
                     "mapping_status": "unique",
                     "source_section_index": 1,
                     "source_line_index": 3,
-                    "observation": {"initial_context": 0x11},
+                    "observation": {
+                        "selector": 7,
+                        "ordinal": 3,
+                        "initial_context": 0x11,
+                    },
                 },
             ],
             projection_pairs=[
                 {
                     "source_section_index": 1,
                     "source_line_index": 2,
+                    "target_selector": 7,
+                    "target_ordinal": 2,
                     "target_record": {
-                        "length_offset": 3,
-                        "record_length_bytes": 0,
+                        "length_offset": 0,
+                        "record_length_bytes": 1,
                     },
                 },
                 {
                     "source_section_index": 1,
                     "source_line_index": 3,
+                    "target_selector": 7,
+                    "target_ordinal": 3,
                     "target_record": {
                         "length_offset": 2,
                         "record_length_bytes": 1,
@@ -1126,6 +1144,60 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(anchored_constraints[0]["original_symbol_count"], 6)
         self.assertEqual(anchored_constraints[1]["original_encoded_bits"], 6)
         self.assertEqual(anchored_constraints[1]["original_symbol_count"], 6)
+
+        self.assertEqual(anchored_constraints[0]["length_offset"], 0)
+        self.assertEqual(anchored_constraints[1]["length_offset"], 2)
+
+    def test_uses_runtime_coordinates_when_source_rows_are_duplicated(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x5F),
+            0x11: tree(0x11, 0x02, 0x11),
+            0x02: tree(0x02, 0x03, 0x04),
+            0x03: tree(0x03, 0x04, 0xC9),
+            0x04: tree(0x04, 0xC9, 0x03),
+        }
+        constraints = build_runtime_codec_constraints(
+            target=b"\x01\x00\x00",
+            trees=trees,
+            context_rows=[{
+                "mapping_status": "unique",
+                "source_section_index": 1,
+                "source_line_index": 2,
+                "observation": {
+                    "selector": 7,
+                    "ordinal": 2,
+                    "initial_context": 0xC9,
+                },
+            }],
+            projection_pairs=[
+                {
+                    "source_section_index": 1,
+                    "source_line_index": 2,
+                    "target_selector": 7,
+                    "target_ordinal": 2,
+                    "target_record": {
+                        "length_offset": 0,
+                        "record_length_bytes": 1,
+                    },
+                },
+                {
+                    "source_section_index": 1,
+                    "source_line_index": 2,
+                    "target_selector": 8,
+                    "target_ordinal": 2,
+                    "target_record": {
+                        "length_offset": 2,
+                        "record_length_bytes": 0,
+                    },
+                },
+            ],
+        )
+        self.assertEqual(constraints[0]["length_offset"], 0)
+        self.assertEqual(
+            constraints[0]["record_resolution_basis"],
+            "captured-runtime-coordinate",
+        )
 
     def test_builds_safe_ready_receipt_without_local_payload(self) -> None:
         counts = {

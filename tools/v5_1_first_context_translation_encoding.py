@@ -770,7 +770,7 @@ def build_row_visuals(
 def build_runtime_layout_rows(
     *,
     target_rows: list[dict[str, object]],
-    runtime_constraints: list[dict[str, int]],
+    runtime_constraints: list[dict[str, object]],
     compact_review_indexes: tuple[int, ...] = (1,),
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     """Build renderer-only rows without changing the approved translation.
@@ -919,17 +919,18 @@ def build_runtime_codec_constraints(
     context_rows: list[dict[str, object]],
     projection_pairs: list[dict[str, object]],
     runtime_records: list[dict[str, int]] | None = None,
-) -> list[dict[str, int]]:
+) -> list[dict[str, object]]:
     global ACTIVE_FAILURE_ROW_INDEX
     if runtime_records is not None and not (
         1 <= len(runtime_records) <= len(context_rows)
     ):
         raise ValueError("first context runtime record count disagrees")
-    pair_index = {
-        (pair.get("source_section_index"), pair.get("source_line_index")): pair
-        for pair in projection_pairs
-        if isinstance(pair, dict)
-    }
+    pair_index: dict[tuple[object, object], list[dict[str, object]]] = {}
+    for pair in projection_pairs:
+        if not isinstance(pair, dict):
+            raise ValueError("first context runtime projection is invalid")
+        key = (pair.get("target_selector"), pair.get("target_ordinal"))
+        pair_index.setdefault(key, []).append(pair)
     constraints = []
     known = bytes((1,)) * len(target)
     for row_index, context_row in enumerate(context_rows):
@@ -942,21 +943,41 @@ def build_runtime_codec_constraints(
         observation = context_row.get("observation")
         if not isinstance(observation, dict):
             raise ValueError("first context runtime observation is missing")
-        initial_context = observation.get("initial_context")
-        if runtime_records is None or row_index >= len(runtime_records):
-            pair = pair_index.get(
-                (
-                    context_row.get("source_section_index"),
-                    context_row.get("source_line_index"),
-                )
-            )
-            target_record = None if pair is None else pair.get("target_record")
-        else:
+        target_selector = observation.get("selector")
+        target_ordinal = observation.get("ordinal")
+        if (
+            not isinstance(target_selector, int)
+            or isinstance(target_selector, bool)
+            or not 0 <= target_selector <= 0xFFFF
+            or not isinstance(target_ordinal, int)
+            or isinstance(target_ordinal, bool)
+            or not 0 <= target_ordinal <= 0xFF
+        ):
+            raise ValueError("first context runtime coordinates are invalid")
+        matches = pair_index.get((target_selector, target_ordinal), [])
+        if len(matches) != 1:
+            raise ValueError("first context runtime coordinate mapping is not unique")
+        mapped_record = matches[0].get("target_record")
+        if row_index < len(runtime_records or []):
             target_record = runtime_records[row_index]
+            if (
+                not isinstance(mapped_record, dict)
+                or target_record.get("length_offset")
+                != mapped_record.get("length_offset")
+                or target_record.get("record_length_bytes")
+                != mapped_record.get("record_length_bytes")
+            ):
+                raise ValueError(
+                    "first context visible runtime record disagrees with coordinates"
+                )
+        else:
+            target_record = mapped_record
         if not isinstance(target_record, dict):
             raise ValueError("first context runtime target record is missing")
-        if runtime_records is not None:
-            initial_context = CANDIDATE_END_SYMBOL
+        # Each captured runtime observation starts an independent compressed
+        # string.  The sampled register value is post-decode state; the exact
+        # no-change roundtrip proves the entry context is the end symbol.
+        initial_context = CANDIDATE_END_SYMBOL
         length_offset = target_record.get("length_offset")
         record_length = target_record.get("record_length_bytes")
         if (
@@ -1005,6 +1026,10 @@ def build_runtime_codec_constraints(
                 "original_encoded_bits": encoded_bits,
                 "original_record_length_bytes": record_length,
                 "original_symbol_count": len(symbols),
+                "target_selector": target_selector,
+                "target_ordinal": target_ordinal,
+                "length_offset": length_offset,
+                "record_resolution_basis": "captured-runtime-coordinate",
             }
         )
     return constraints
@@ -3463,7 +3488,7 @@ def select_row_font_pages(
     trees: dict[int, object],
     target_rows: list[dict[str, object]],
     preserved_by_row: list[list[dict[str, int]]],
-    runtime_constraints: list[dict[str, int]] | None = None,
+    runtime_constraints: list[dict[str, object]] | None = None,
 ) -> tuple[int | tuple[int, ...], ...]:
     visual_rows = build_row_visuals(
         target_rows=target_rows,
@@ -3750,7 +3775,7 @@ def build_single_page_symbol_rows(
     trees: dict[int, object],
     target_rows: list[dict[str, object]],
     preserved_by_row: list[list[dict[str, int]]],
-    runtime_constraints: list[dict[str, int]] | None = None,
+    runtime_constraints: list[dict[str, object]] | None = None,
     pages: tuple[int | tuple[int, ...], ...] = ROW_FONT_PAGES,
 ) -> tuple[
     dict[str, int],
@@ -3942,8 +3967,7 @@ def build_single_page_symbol_rows(
             or len(assignment_pages) != len(visuals)
         ):
             raise ValueError("first context visual assignment count disagrees")
-        rows.append(
-            {
+        row = {
                 "review_index": expected_index,
                 "target_text": target_row["target_text"],
                 "visuals": visuals,
@@ -3963,7 +3987,17 @@ def build_single_page_symbol_rows(
                     visual.startswith("preserved:") for visual in visuals
                 ),
             }
-        )
+        if constraint is not None:
+            for key in (
+                "target_selector",
+                "target_ordinal",
+                "length_offset",
+                "original_record_length_bytes",
+                "record_resolution_basis",
+            ):
+                if key in constraint:
+                    row[key] = constraint[key]
+        rows.append(row)
         assignments_by_row.append(
             [
                 {"visual": visual, "page": assignment_page, "symbol": symbol}

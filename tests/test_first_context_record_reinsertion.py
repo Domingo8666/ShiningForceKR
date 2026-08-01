@@ -40,6 +40,10 @@ class FirstContextRecordReinsertionTests(unittest.TestCase):
                     "mapping_status": "unique",
                     "source_section_index": index,
                     "source_line_index": index + 10,
+                    "observation": {
+                        "selector": index,
+                        "ordinal": index,
+                    },
                 }
             )
             projection_pairs.append(
@@ -63,6 +67,8 @@ class FirstContextRecordReinsertionTests(unittest.TestCase):
                     "encoded_bits": 20,
                     "target_encoded_bits": 20,
                     "encoded_bytes": len(payload),
+                    "length_offset": offset,
+                    "original_record_length_bytes": length,
                 }
             )
         return target, context_rows, projection_pairs, encoding_rows
@@ -107,6 +113,30 @@ class FirstContextRecordReinsertionTests(unittest.TestCase):
             safe["status"],
             "first-context-record-reinsertion-plan-ready",
         )
+
+    def test_ignores_duplicate_source_rows_and_uses_runtime_coordinates(self) -> None:
+        target, contexts, projections, encodings = self._rows()
+        target[90] = 1
+        projections.append(
+            {
+                "source_section_index": 1,
+                "source_line_index": 11,
+                "target_selector": 99,
+                "target_ordinal": 99,
+                "target_record": {
+                    "length_offset": 90,
+                    "record_length_bytes": 1,
+                    "aliases": [{"selector": 99, "ordinal": 99}],
+                },
+            }
+        )
+        rows = build_reinsertion_rows(
+            target=bytes(target),
+            context_rows=contexts,
+            projection_pairs=projections,
+            encoding_rows=encodings,
+        )
+        self.assertEqual(rows[0]["length_offset"], 10)
 
     def test_accepts_disjoint_shared_aliases(self) -> None:
         target, contexts, projections, encodings = self._rows()
