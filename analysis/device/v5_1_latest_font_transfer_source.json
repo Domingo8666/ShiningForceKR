@@ -3,15 +3,15 @@
   "schema_version": 1,
   "status": "font-transfer-source-not-yet-observed",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "source_mapping_sha256": "dd5ace6c1f63377aa32f0be5a501074a08b8699873d7f696f03322778d4c8ba8",
+  "source_mapping_sha256": "31b24089143980f101290ab55cc1fd83980d9cc8b339685bc8fb23c0e046a406",
   "source_renderer_trace_sha256": "67790a28021e7a9be2802c3b742c8eab5b627390cfa303781038302c67c90067",
-  "source_initial_trace_sha256": "bfe4b463bc2133b2cc45e3e7ff3a25b8e4190fd3d34bb1252f28774e2d3ec4ae",
-  "captured_utc": "2026-08-01T08:28:13.758967Z",
+  "source_initial_trace_sha256": "58c3a9d09f05552f92bf70aedcc3b30a16d54a985cc848cbd5416630b2712278",
+  "captured_utc": "2026-08-01T08:31:58.427277Z",
   "runtime_entry": {
-    "record_length_bytes": 16,
     "mapped_bank": 8,
-    "physical_start": 133395,
-    "logical_start": 18707
+    "record_length_bytes": 16,
+    "logical_start": 18707,
+    "physical_start": 133395
   },
   "candidate_page_count_before": 9,
   "candidate_page_count_after": 9,
