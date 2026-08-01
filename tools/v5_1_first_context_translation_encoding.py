@@ -2356,18 +2356,23 @@ def build_single_page_symbol_rows(
                         visuals=visuals,
                     )
                 except ValueError:
-                    ACTIVE_FAILURE_DETAIL = "solve-bounded-record-row"
-                    route_capacity_bits = storage_capacity_bits
-                    (
-                        symbols,
-                        padding_count,
-                        assignments,
-                    ) = solve_bounded_length_row_visual_symbols(
+                    ACTIVE_FAILURE_DETAIL = (
+                        "solve-proven-bounded-row"
+                        if expected_index <= len(PROVEN_ROW_FONT_PAGES)
+                        else "solve-extra-single-page-row"
+                    )
+                    candidate_bits = diagnose_bounded_candidate_bit_count(
                         trees=trees,
                         initial_context=initial_context,
-                        maximum_bits=storage_capacity_bits,
-                        page=page,
+                        target_bits=target_bits,
+                        pages=(page,),
                         visuals=visuals,
+                    )
+                    raise RowRouteError(
+                        required=len(visuals),
+                        maximum=len(visuals) if candidate_bits else 0,
+                        target_bits=target_bits,
+                        candidate_bits=candidate_bits,
                     )
                 assignment_pages = [page] * len(assignments)
             else:
@@ -2386,19 +2391,23 @@ def build_single_page_symbol_rows(
                         visuals=visuals,
                     )
                 except ValueError:
-                    ACTIVE_FAILURE_DETAIL = "solve-bounded-record-multi-page-row"
-                    route_capacity_bits = storage_capacity_bits
-                    (
-                        symbols,
-                        padding_count,
-                        assignments,
-                        assignment_pages,
-                    ) = solve_bounded_length_row_multi_page_visual_symbols(
+                    ACTIVE_FAILURE_DETAIL = (
+                        "solve-proven-multi-page-row"
+                        if expected_index <= len(PROVEN_ROW_FONT_PAGES)
+                        else "solve-extra-multi-page-row"
+                    )
+                    candidate_bits = diagnose_bounded_candidate_bit_count(
                         trees=trees,
                         initial_context=initial_context,
-                        maximum_bits=storage_capacity_bits,
-                        pages=row_pages,
+                        target_bits=target_bits,
+                        pages=tuple(row_pages),
                         visuals=visuals,
+                    )
+                    raise RowRouteError(
+                        required=len(visuals),
+                        maximum=len(visuals) if candidate_bits else 0,
+                        target_bits=target_bits,
+                        candidate_bits=candidate_bits,
                     )
         ACTIVE_FAILURE_DETAIL = "validate-row-assignments"
         if (

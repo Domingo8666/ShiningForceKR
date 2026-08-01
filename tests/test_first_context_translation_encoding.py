@@ -99,7 +99,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             {"visual": "text:가", "page": 240, "symbol": 0x03}
         ])
 
-    def test_falls_back_to_a_record_bounded_runtime_row(self) -> None:
+    def test_rejects_a_shorter_record_bounded_runtime_row(self) -> None:
         target = [{"review_index": 1, "target_text": "가"}]
         constraints = [{
             "initial_context": 0xC9,
@@ -114,29 +114,28 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             ),
             patch(
                 "tools.v5_1_first_context_translation_encoding."
-                "solve_bounded_length_row_visual_symbols",
-                return_value=([0x5F, 0x11, 0x02, 0x03, 0xC9], 0, [0x03]),
-            ) as bounded_solver,
+                "diagnose_bounded_candidate_bit_count",
+                return_value=6,
+            ) as diagnostic,
         ):
-            _, rows, assignments = build_single_page_symbol_rows(
-                trees={},
-                target_rows=target,
-                preserved_by_row=[[]],
-                runtime_constraints=constraints,
-                pages=(240,),
-            )
+            with self.assertRaises(RowRouteError) as caught:
+                build_single_page_symbol_rows(
+                    trees={},
+                    target_rows=target,
+                    preserved_by_row=[[]],
+                    runtime_constraints=constraints,
+                    pages=(240,),
+                )
 
-        bounded_solver.assert_called_once_with(
+        diagnostic.assert_called_once_with(
             trees={},
             initial_context=0xC9,
-            maximum_bits=8,
-            page=240,
+            target_bits=4,
+            pages=(240,),
             visuals=["text:가"],
         )
-        self.assertEqual(rows[0]["route_capacity_bits"], 8)
-        self.assertEqual(assignments[0], [
-            {"visual": "text:가", "page": 240, "symbol": 0x03}
-        ])
+        self.assertEqual(caught.exception.target_bits, 4)
+        self.assertEqual(caught.exception.candidate_bits, 6)
 
     def test_searches_past_an_unusable_extra_row_page(self) -> None:
         targets = [{"target_text": "가"} for _ in range(5)]

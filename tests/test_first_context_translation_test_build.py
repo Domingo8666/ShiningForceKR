@@ -28,7 +28,7 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
         target = bytearray(range(100))
         cursor = 40
         records = []
-        for ordinal, length in enumerate((2, 3, 4, 6)):
+        for ordinal, length in enumerate((2, 3, 4, 3)):
             length_offset = cursor
             target[cursor] = length
             cursor += 1
@@ -76,14 +76,13 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
         record_write = next(
             write for write in writes if "record" in write.writer
         )
-        self.assertEqual(record_write.offset, length_offset)
-        self.assertEqual(record_write.after[:4], b"\x03\xAA\xBB\xCC")
-        self.assertEqual(record_write.after[4:], target[payload_start + 3:payload_end])
+        self.assertEqual(record_write.offset, payload_start)
+        self.assertEqual(record_write.after, b"\xAA\xBB\xCC")
 
-    def test_repacks_untranslated_records_after_changed_record(self) -> None:
+    def test_writes_non_tail_record_without_moving_next_record(self) -> None:
         target, records = self._target_with_group()
         length_offset, payload_start, payload_end = records[2]
-        last_length_offset, _, last_payload_end = records[3]
+        next_length_offset, _, _ = records[3]
         writes, font_count, record_count = build_translation_writes(
             target=target,
             font_overlay=b"PATCHEOF",
@@ -95,7 +94,7 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
                 "length_offset": length_offset,
                 "payload_start": payload_start,
                 "payload_end": payload_end,
-                "encoded_payload_hex": "AABBCC",
+                "encoded_payload_hex": "AABBCCDD",
                 "fits_in_place": True,
             }],
             group_selector=7,
@@ -106,14 +105,10 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
         self.assertEqual(record_count, 1)
         self.assertEqual(len(writes), 1)
         record_write = writes[0]
-        self.assertEqual(record_write.offset, length_offset)
-        self.assertEqual(record_write.allowed_end_exclusive, last_payload_end)
-        self.assertEqual(record_write.after[:4], b"\x03\xAA\xBB\xCC")
-        self.assertEqual(
-            record_write.after[4:],
-            target[last_length_offset:last_payload_end]
-            + target[last_payload_end - 1:last_payload_end],
-        )
+        self.assertEqual(record_write.offset, payload_start)
+        self.assertEqual(record_write.allowed_end_exclusive, payload_end)
+        self.assertLess(record_write.allowed_end_exclusive, next_length_offset + 1)
+        self.assertEqual(record_write.after, b"\xAA\xBB\xCC\xDD")
 
     def test_builds_safe_static_verification_receipt(self) -> None:
         verification = {
@@ -123,7 +118,7 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
             "write_count": 44,
             "changed_byte_count": 800,
             "record_length_field_verified_count": 4,
-            "record_length_changed_count": 4,
+            "record_length_changed_count": 0,
             "decoded_roundtrip_entry_count": 4,
             "decoded_failure_entry_count": 0,
             "font_glyph_assignment_count": 55,

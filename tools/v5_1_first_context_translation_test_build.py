@@ -27,7 +27,6 @@ try:
     )
     from .v5_1_confirmed_group_extract import (
         PUBLISH_RELATIVE_PATH as GROUP_EXTRACT_PATH,
-        parse_length_prefixed_group,
         validate_confirmed_group_extract,
     )
     from .v5_1_first_context_record_reinsertion import (
@@ -61,7 +60,6 @@ except ImportError:  # pragma: no cover - direct script execution
     )
     from v5_1_confirmed_group_extract import (
         PUBLISH_RELATIVE_PATH as GROUP_EXTRACT_PATH,
-        parse_length_prefixed_group,
         validate_confirmed_group_extract,
     )
     from v5_1_first_context_record_reinsertion import (
@@ -192,12 +190,8 @@ def build_translation_writes(
         or not 1 <= declared_group_entry_count <= 0xFF
     ):
         raise ValueError("first context group identity is invalid")
-    group_records = parse_length_prefixed_group(
-        target,
-        physical_start=group_physical_start,
-        entry_count=declared_group_entry_count,
-    )
-    replacements: dict[int, tuple[dict[str, object], bytes]] = {}
+    record_write_count = 0
+    seen_payload_ranges = set()
     ordered_rows = sorted(
         reinsertion_rows,
         key=lambda item: int(item["length_offset"]),
@@ -224,55 +218,30 @@ def build_translation_writes(
         ):
             raise ValueError("first context record write row is invalid")
         encoded = bytes.fromhex(encoded_hex)
-        if not 1 <= len(encoded) <= min(0xFF, end - start):
-            raise ValueError("first context record write exceeds its payload")
-        group_matches = [
-            record
-            for record in group_records
-            if int(record["length_offset"]) == length_offset
-            and int(record["payload_start"]) == start
-            and int(record["payload_end"]) == end
-        ]
-        if len(group_matches) != 1:
-            raise ValueError("first context confirmed group alias is ambiguous")
-        ordinal = int(group_matches[0]["ordinal"])
-        if ordinal in replacements:
-            raise ValueError("first context confirmed group alias is ambiguous")
-        replacements[ordinal] = (row, encoded)
-    if not replacements:
+        if len(encoded) != end - start:
+            raise ValueError("first context record write is not exact length")
+        payload_range = (start, end)
+        if payload_range in seen_payload_ranges:
+            raise ValueError("first context record write is duplicated")
+        seen_payload_ranges.add(payload_range)
+        before = target[start:end]
+        if before == encoded:
+            raise ValueError("first context record write changes no bytes")
+        writes.append(
+            ExpectedWrite(
+                writer=f"first-context-record-{int(row['review_index']):03d}",
+                purpose="first-context-static-translation-build",
+                offset=start,
+                before=before,
+                after=encoded,
+                allowed_start=start,
+                allowed_end_exclusive=end,
+            )
+        )
+        record_write_count += 1
+    if record_write_count == 0:
         raise ValueError("first context record rows are missing")
-    tail_start_ordinal = min(replacements)
-    tail_records = group_records[tail_start_ordinal:]
-    span_start = int(tail_records[0]["length_offset"])
-    span_end = int(tail_records[-1]["payload_end"])
-    before = target[span_start:span_end]
-    packed_parts = []
-    for record in tail_records:
-        ordinal = int(record["ordinal"])
-        payload = (
-            replacements[ordinal][1]
-            if ordinal in replacements
-            else bytes(record["payload"])
-        )
-        packed_parts.append(bytes((len(payload),)) + payload)
-    packed = b"".join(packed_parts)
-    if len(packed) > len(before):
-        raise ValueError("first context packed group tail exceeds its span")
-    after = packed + before[len(packed):]
-    if before == after:
-        raise ValueError("first context packed group tail changes no bytes")
-    writes.append(
-        ExpectedWrite(
-            writer="first-context-packed-record-tail",
-            purpose="first-context-static-translation-build",
-            offset=span_start,
-            before=before,
-            after=after,
-            allowed_start=span_start,
-            allowed_end_exclusive=span_end,
-        )
-    )
-    return writes, font_write_count, len(replacements)
+    return writes, font_write_count, record_write_count
 
 
 def verify_translation_build(
@@ -301,44 +270,9 @@ def verify_translation_build(
     length_fields_verified = 0
     length_fields_changed = 0
     encoded_lengths_exact = 0
-    group_records = parse_length_prefixed_group(
-        baseline,
-        physical_start=group_physical_start,
-        entry_count=declared_group_entry_count,
-    )
-    selected_by_ordinal = {}
-    for row in reinsertion_rows:
-        aliases = row.get("alias_keys")
-        if not isinstance(aliases, list):
-            raise ValueError("first context build verification group alias is invalid")
-        matches = [
-            record
-            for record in group_records
-            if int(record["length_offset"]) == int(row["length_offset"])
-            and int(record["payload_start"]) == int(row["payload_start"])
-            and int(record["payload_end"]) == int(row["payload_end"])
-        ]
-        if len(matches) != 1:
-            raise ValueError("first context build verification group alias is invalid")
-        ordinal = int(matches[0]["ordinal"])
-        if ordinal in selected_by_ordinal:
-            raise ValueError("first context build verification group alias is invalid")
-        selected_by_ordinal[ordinal] = row
-    packed_offsets = {}
-    tail_start_ordinal = min(selected_by_ordinal)
-    cursor = int(group_records[tail_start_ordinal]["length_offset"])
-    for record in group_records[tail_start_ordinal:]:
-        ordinal = int(record["ordinal"])
-        row = selected_by_ordinal.get(ordinal)
-        if row is None:
-            cursor += 1 + int(record["record_length_bytes"])
-            continue
-        packed_offsets[int(row["review_index"])] = (cursor, cursor + 1)
-        cursor += 1 + int(row["encoded_payload_bytes"])
     for reinsertion, encoding in zip(reinsertion_rows, encoding_rows):
-        review_index = int(reinsertion["review_index"])
-        length_offset, payload_start = packed_offsets[review_index]
-        original_length_offset = int(reinsertion["length_offset"])
+        length_offset = int(reinsertion["length_offset"])
+        payload_start = int(reinsertion["payload_start"])
         original_length = int(reinsertion["original_length_bytes"])
         expected_symbols = encoding.get("symbols")
         expected_bits = encoding.get("encoded_bits")
@@ -361,10 +295,10 @@ def verify_translation_build(
             raise ValueError("first context build expected symbols are missing")
         encoded_lengths_exact += int(expected_bits == target_bits)
         length_fields_verified += int(
-            baseline[original_length_offset] == original_length
-            and test[length_offset] == expected_bytes
+            baseline[length_offset] == original_length
+            and test[length_offset] == original_length
             and expected_bytes == int(reinsertion["encoded_payload_bytes"])
-            and 1 <= expected_bytes <= original_length
+            and expected_bytes == original_length
         )
         length_fields_changed += int(
             expected_bytes != original_length
@@ -431,7 +365,7 @@ def build_first_context_translation_test_build(
         == verification["context_entry_count"]
         and verification["record_length_field_verified_count"]
         == verification["context_entry_count"]
-        and verification["record_length_changed_count"] > 0
+        and verification["record_length_changed_count"] == 0
         and verification["decoded_roundtrip_entry_count"]
         == verification["context_entry_count"]
         and verification["decoded_failure_entry_count"] == 0
@@ -517,7 +451,7 @@ def validate_first_context_translation_test_build(
         == verification["context_entry_count"]
         and verification["record_length_field_verified_count"]
         == verification["context_entry_count"]
-        and verification["record_length_changed_count"] > 0
+        and verification["record_length_changed_count"] == 0
         and verification["decoded_roundtrip_entry_count"]
         == verification["context_entry_count"]
         and verification["decoded_failure_entry_count"] == 0
