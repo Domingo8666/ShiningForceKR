@@ -45,8 +45,6 @@ try:
     from .v5_1_renderer_output_trace import (
         DEFAULT_ROM,
         REQUIRED_TOOLS,
-        _remove_breakpoint,
-        _set_execute_breakpoint,
     )
 except ImportError:  # pragma: no cover - direct script execution
     from patch_io import sha256_file
@@ -80,8 +78,6 @@ except ImportError:  # pragma: no cover - direct script execution
     from v5_1_renderer_output_trace import (
         DEFAULT_ROM,
         REQUIRED_TOOLS,
-        _remove_breakpoint,
-        _set_execute_breakpoint,
     )
 
 
@@ -432,12 +428,17 @@ def main() -> int:
         raise ValueError("active RAM register sentinel is ambiguous")
     sentinel = sentinel_addresses[0]
     expected_value = int(target_values[f"0x{sentinel:04X}"])
-    writer_pc = int(writer["pc"])
     writer_bank = int(writer["bank"])
     writer_physical_pc = int(writer["physical_pc"])
+    all_target_addresses = sorted(int(address, 16) for address in target_values)
+    prior_addresses = [address for address in all_target_addresses if address < sentinel]
+    if not prior_addresses:
+        raise ValueError("active RAM register predecessor anchor is unavailable")
+    predecessor = prior_addresses[-1]
     rom = rom_path.read_bytes()
     client = McpStdioClient(_default_command())
-    write_armed = execute_armed = fast_forward = trace_enabled = False
+    armed_write_address: int | None = None
+    fast_forward = trace_enabled = False
     runtime_stage = "active-ram-register-trace-initialize"
     first_state = second_state = None
     lines: list[str] = []
@@ -452,8 +453,8 @@ def main() -> int:
         client.call("debug_reset")
         client.call("debug_pause")
         client.call("set_trace_log", {"enabled": False})
-        _set_write_range(client, sentinel, sentinel)
-        write_armed = True
+        _set_write_range(client, predecessor, predecessor)
+        armed_write_address = predecessor
         runtime_stage = "active-ram-register-trace-writer-watch"
         _set_unlimited_fast_forward(client, True)
         fast_forward = True
@@ -463,7 +464,7 @@ def main() -> int:
             if status.get("at_breakpoint") is not True:
                 continue
             state, _ = _capture_producer_state(client)
-            observed = previous_target_write(rom, state, {sentinel})
+            observed = previous_target_write(rom, state, {predecessor})
             if observed is not None and int(observed["bank"]) == writer_bank and int(observed["physical_pc"]) == writer_physical_pc:
                 first_state = state
                 break
@@ -471,10 +472,10 @@ def main() -> int:
             raise RuntimeError("active RAM register writer instance was not reached")
         _set_unlimited_fast_forward(client, False)
         fast_forward = False
-        _remove_range(client, sentinel, sentinel)
-        write_armed = False
-        _set_execute_breakpoint(client, writer_pc)
-        execute_armed = True
+        _remove_range(client, predecessor, predecessor)
+        armed_write_address = None
+        _set_write_range(client, sentinel, sentinel)
+        armed_write_address = sentinel
         started = client.call("set_trace_log", {"enabled": True, "cpu_irq": False, "vdp_write": False, "vdp_status": False, "psg": False, "ym2413": False, "io_port": False, "bank_switch": True})
         trace_enabled = True
         trace_start = int(started.get("total_entries", -1))
@@ -483,10 +484,11 @@ def main() -> int:
         runtime_stage = "active-ram-register-trace-short-window"
         status = _continue_until_breakpoint(client, NEXT_WRITER_TIMEOUT_SECONDS)
         if status.get("at_breakpoint") is not True:
-            raise RuntimeError("active RAM register next writer was not reached")
+            raise RuntimeError("active RAM register target writer was not reached")
         second_state, _ = _capture_producer_state(client)
-        if int(second_state["pc_after"]) != writer_pc or int(second_state["executing_bank"]) != writer_bank:
-            raise RuntimeError("active RAM register next writer identity disagrees")
+        observed = previous_target_write(rom, second_state, {sentinel})
+        if observed is None or int(observed["bank"]) != writer_bank or int(observed["physical_pc"]) != writer_physical_pc:
+            raise RuntimeError("active RAM register target writer identity disagrees")
         stopped = client.call("set_trace_log", {"enabled": False})
         trace_enabled = False
         trace_end = int(stopped.get("total_entries", -1))
@@ -504,18 +506,15 @@ def main() -> int:
         if fast_forward:
             try: _set_unlimited_fast_forward(client, False)
             except Exception: pass
-        if write_armed:
-            try: _remove_range(client, sentinel, sentinel)
-            except Exception: pass
-        if execute_armed:
-            try: _remove_breakpoint(client, writer_pc)
+        if armed_write_address is not None:
+            try: _remove_range(client, armed_write_address, armed_write_address)
             except Exception: pass
         client.close()
     counts, local_analysis = analyze_register_trace(lines, source_register)
     source_class = _definition_source_class(local_analysis)
     captured_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     safe = build_active_ram_register_trace(target_sha256=target_sha256, source_active_ram_writer_sha256=writer_sha256, analysis=counts, writer_instance_confirmed=True, definition_source_class=source_class, captured_utc=captured_utc)
-    local = {"artifact_kind": "local-s25u-active-ram-register-trace", "schema_version": 1, "target_sha256": target_sha256, "source_active_ram_writer_sha256": writer_sha256, "captured_utc": captured_utc, "source_register": source_register, "sentinel_address": sentinel, "expected_value": expected_value, "writer": writer, "first_state": first_state, "second_state": second_state, "raw_trace_lines": lines, "trace": local_trace, "analysis": local_analysis, "publication_policy": "never-publish-register-names-addresses-opcodes-pcs-values-or-traces"}
+    local = {"artifact_kind": "local-s25u-active-ram-register-trace", "schema_version": 1, "target_sha256": target_sha256, "source_active_ram_writer_sha256": writer_sha256, "captured_utc": captured_utc, "source_register": source_register, "predecessor_address": predecessor, "sentinel_address": sentinel, "expected_value": expected_value, "writer": writer, "first_state": first_state, "second_state": second_state, "raw_trace_lines": lines, "trace": local_trace, "analysis": local_analysis, "publication_policy": "never-publish-register-names-addresses-opcodes-pcs-values-or-traces"}
     publish_path.parent.mkdir(parents=True, exist_ok=True)
     local_path.parent.mkdir(parents=True, exist_ok=True)
     publish_path.write_text(json.dumps(safe, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
