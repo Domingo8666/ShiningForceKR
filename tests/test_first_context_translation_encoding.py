@@ -1259,6 +1259,57 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             "visible-anchor-consecutive-fallback",
         )
 
+    def test_uses_captured_context_only_after_canonical_context_fails(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0xC9, 0xAA),
+            0x11: tree(0x11, 0x03, 0xC9),
+        }
+        constraints = build_runtime_codec_constraints(
+            target=b"\x01\x80\x01\x00",
+            trees=trees,
+            context_rows=[
+                {
+                    "mapping_status": "unique",
+                    "observation": {
+                        "selector": 7,
+                        "ordinal": 2,
+                        "initial_context": 0xC9,
+                    },
+                },
+                {
+                    "mapping_status": "unique",
+                    "observation": {
+                        "selector": 7,
+                        "ordinal": 3,
+                        "initial_context": 0x11,
+                    },
+                },
+            ],
+            projection_pairs=[
+                {
+                    "target_selector": 7,
+                    "target_ordinal": 2,
+                    "target_record": {
+                        "length_offset": 2,
+                        "record_length_bytes": 1,
+                    },
+                },
+                {
+                    "target_selector": 7,
+                    "target_ordinal": 3,
+                    "target_record": {
+                        "length_offset": 0,
+                        "record_length_bytes": 1,
+                    },
+                },
+            ],
+        )
+        self.assertEqual(constraints[1]["initial_context"], 0x11)
+        self.assertEqual(
+            constraints[1]["context_resolution_basis"],
+            "captured-vector-context-fallback",
+        )
+
     def test_builds_safe_ready_receipt_without_local_payload(self) -> None:
         counts = {
             "context_entry_count": 5,

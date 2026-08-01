@@ -920,7 +920,7 @@ def build_runtime_codec_constraints(
     projection_pairs: list[dict[str, object]],
     runtime_records: list[dict[str, int]] | None = None,
 ) -> list[dict[str, object]]:
-    global ACTIVE_FAILURE_ROW_INDEX
+    global ACTIVE_FAILURE_ROW_INDEX, ACTIVE_FAILURE_DETAIL
     if runtime_records is not None and not (
         1 <= len(runtime_records) <= len(context_rows)
     ):
@@ -958,11 +958,17 @@ def build_runtime_codec_constraints(
             or not 0 <= observed_context <= 0xFF
         ):
             raise ValueError("first context runtime coordinates are invalid")
-        # The sequence probe stops at the first vector read it can observe
-        # after decoder entry, which can already be a later symbol context.
-        # The visible-entry proof independently establishes a 19-symbol exact
-        # no-change roundtrip from the canonical end-symbol entry context.
-        initial_context = CANDIDATE_END_SYMBOL
+        # The anchor has a direct 19-symbol proof from the canonical entry
+        # context.  Later records prefer the same independent-string context,
+        # but may use their captured vector context only when neither mapped
+        # nor anchor-chain storage roundtrips canonically.
+        context_candidates = [
+            ("proven-independent-entry-context", CANDIDATE_END_SYMBOL)
+        ]
+        if row_index > 0 and observed_context != CANDIDATE_END_SYMBOL:
+            context_candidates.append(
+                ("captured-vector-context-fallback", observed_context)
+            )
         matches = pair_index.get((target_selector, target_ordinal), [])
         if len(matches) != 1:
             raise ValueError("first context runtime coordinate mapping is not unique")
@@ -1002,70 +1008,80 @@ def build_runtime_codec_constraints(
 
         candidate_errors: list[Exception] = []
         selected: dict[str, object] | None = None
-        for resolution_basis, target_record in candidates:
-            length_offset = target_record.get("length_offset")
-            record_length = target_record.get("record_length_bytes")
-            if (
-                not isinstance(length_offset, int)
-                or isinstance(length_offset, bool)
-                or not isinstance(record_length, int)
-                or isinstance(record_length, bool)
-                or not 0 <= length_offset < len(target)
-                or target[length_offset] != record_length
-            ):
-                candidate_errors.append(
-                    ValueError("first context runtime codec fields are invalid")
-                )
-                continue
-            payload_start = length_offset + 1
-            payload_end = payload_start + record_length
-            if not (0 < record_length and payload_end <= len(target)):
-                candidate_errors.append(
-                    ValueError("first context runtime record bounds are invalid")
-                )
-                continue
-            try:
-                symbols, encoded_bits = decode_symbols(
-                    target,
-                    known,
-                    trees,
-                    payload_start,
-                    initial_symbol=initial_context,
-                    end_symbol=CANDIDATE_END_SYMBOL,
-                    max_symbols=0x1000,
-                    max_bytes=record_length,
-                )
-                reencoded, reencoded_bits = encode_symbols(
-                    trees,
-                    symbols,
-                    initial_symbol=initial_context,
-                    end_symbol=CANDIDATE_END_SYMBOL,
-                    max_bits=record_length * 8,
-                )
-            except PatchError as error:
-                candidate_errors.append(error)
-                continue
-            payload = target[payload_start:payload_end]
-            if (
-                symbols.count(CANDIDATE_END_SYMBOL) != 1
-                or encoded_bits != reencoded_bits
-                or not _bits_equal(payload, reencoded, encoded_bits)
-            ):
-                candidate_errors.append(
-                    ValueError("first context runtime codec roundtrip disagrees")
-                )
-                continue
-            selected = {
-                "initial_context": initial_context,
-                "original_encoded_bits": encoded_bits,
-                "original_record_length_bytes": record_length,
-                "original_symbol_count": len(symbols),
-                "target_selector": target_selector,
-                "target_ordinal": target_ordinal,
-                "length_offset": length_offset,
-                "record_resolution_basis": resolution_basis,
-            }
-            break
+        for context_basis, initial_context in context_candidates:
+            for resolution_basis, target_record in candidates:
+                length_offset = target_record.get("length_offset")
+                record_length = target_record.get("record_length_bytes")
+                if (
+                    not isinstance(length_offset, int)
+                    or isinstance(length_offset, bool)
+                    or not isinstance(record_length, int)
+                    or isinstance(record_length, bool)
+                    or not 0 <= length_offset < len(target)
+                    or target[length_offset] != record_length
+                ):
+                    candidate_errors.append(
+                        ValueError(
+                            "first context runtime codec fields are invalid"
+                        )
+                    )
+                    continue
+                payload_start = length_offset + 1
+                payload_end = payload_start + record_length
+                if not (0 < record_length and payload_end <= len(target)):
+                    candidate_errors.append(
+                        ValueError(
+                            "first context runtime record bounds are invalid"
+                        )
+                    )
+                    continue
+                try:
+                    symbols, encoded_bits = decode_symbols(
+                        target,
+                        known,
+                        trees,
+                        payload_start,
+                        initial_symbol=initial_context,
+                        end_symbol=CANDIDATE_END_SYMBOL,
+                        max_symbols=0x1000,
+                        max_bytes=record_length,
+                    )
+                    reencoded, reencoded_bits = encode_symbols(
+                        trees,
+                        symbols,
+                        initial_symbol=initial_context,
+                        end_symbol=CANDIDATE_END_SYMBOL,
+                        max_bits=record_length * 8,
+                    )
+                except PatchError as error:
+                    candidate_errors.append(error)
+                    continue
+                payload = target[payload_start:payload_end]
+                if (
+                    symbols.count(CANDIDATE_END_SYMBOL) != 1
+                    or encoded_bits != reencoded_bits
+                    or not _bits_equal(payload, reencoded, encoded_bits)
+                ):
+                    candidate_errors.append(
+                        ValueError(
+                            "first context runtime codec roundtrip disagrees"
+                        )
+                    )
+                    continue
+                selected = {
+                    "initial_context": initial_context,
+                    "original_encoded_bits": encoded_bits,
+                    "original_record_length_bytes": record_length,
+                    "original_symbol_count": len(symbols),
+                    "target_selector": target_selector,
+                    "target_ordinal": target_ordinal,
+                    "length_offset": length_offset,
+                    "record_resolution_basis": resolution_basis,
+                    "context_resolution_basis": context_basis,
+                }
+                break
+            if selected is not None:
+                break
         if selected is None:
             ACTIVE_FAILURE_DETAIL = "runtime-coordinate-and-anchor-chain-invalid"
             if candidate_errors:
@@ -4034,6 +4050,7 @@ def build_single_page_symbol_rows(
                 "length_offset",
                 "original_record_length_bytes",
                 "record_resolution_basis",
+                "context_resolution_basis",
             ):
                 if key in constraint:
                     row[key] = constraint[key]
