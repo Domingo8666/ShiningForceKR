@@ -28,6 +28,10 @@ try:
         PUBLISH_RELATIVE_PATH as ROM_READ_BLOCK_PATH,
         validate_active_rom_read_block,
     )
+    from .v5_1_active_rom_lookup_index_producer import (
+        PUBLISH_RELATIVE_PATH as ROM_LOOKUP_INDEX_PATH,
+        validate_active_rom_lookup_index_producer,
+    )
     from .v5_1_renderer_output_trace import DEFAULT_ROM
 except ImportError:  # pragma: no cover - direct script execution
     from patch_io import sha256_file
@@ -48,15 +52,20 @@ except ImportError:  # pragma: no cover - direct script execution
         PUBLISH_RELATIVE_PATH as ROM_READ_BLOCK_PATH,
         validate_active_rom_read_block,
     )
+    from v5_1_active_rom_lookup_index_producer import (
+        PUBLISH_RELATIVE_PATH as ROM_LOOKUP_INDEX_PATH,
+        validate_active_rom_lookup_index_producer,
+    )
     from v5_1_renderer_output_trace import DEFAULT_ROM
 
 
 ARTIFACT_KIND = "sanitized-s25u-critical-path"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 PUBLISH_RELATIVE_PATH = Path("analysis/device/v5_1_latest_critical_path.json")
 FOCUSED_STAGE = "active-register-rom-source"
 SOURCE_ROLE_STAGE = "active-rom-source-role"
 READ_BLOCK_STAGE = "active-rom-read-block"
+LOOKUP_INDEX_STAGE = "active-rom-lookup-index-producer"
 FALLBACK_STAGE = "continue"
 STAGE_POLICIES = {
     FOCUSED_STAGE: {
@@ -78,6 +87,14 @@ STAGE_POLICIES = {
             "current-unclassified-rom-source-ready-current-read-block-missing"
         ),
         "next_checkpoint": "capture-active-rom-read-block",
+    },
+    LOOKUP_INDEX_STAGE: {
+        "confirmed_boundary": "active-vram-to-scattered-rom-lookup-candidate",
+        "blocked_boundary": "lookup-candidate-to-address-index-producer",
+        "selection_reason": (
+            "current-rom-lookup-candidate-ready-current-index-producer-missing"
+        ),
+        "next_checkpoint": "trace-active-rom-lookup-index-producer",
     },
 }
 TOP_LEVEL_KEYS = {
@@ -197,6 +214,30 @@ def _read_block_current(
     )
 
 
+def _lookup_index_current(
+    root: Path,
+    *,
+    target_sha256: str,
+    read_block_sha256: str,
+    role_sha256: str,
+    trace_sha256: str,
+) -> bool:
+    path = root / ROM_LOOKUP_INDEX_PATH
+    if not path.is_file():
+        return False
+    try:
+        value = _load_object(path)
+        validate_active_rom_lookup_index_producer(value)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    return (
+        value.get("target_sha256") == target_sha256
+        and value.get("source_active_rom_read_block_sha256") == read_block_sha256
+        and value.get("source_active_rom_source_role_sha256") == role_sha256
+        and value.get("source_register_trace_sha256") == trace_sha256
+    )
+
+
 def _build_selection(
     *,
     target_sha256: str,
@@ -271,6 +312,25 @@ def select_critical_path(root: Path, rom_path: Path) -> dict[str, object] | None
                 trace_sha256=trace_sha256,
                 stage=READ_BLOCK_STAGE,
             )
+        read_block_path = root / ROM_READ_BLOCK_PATH
+        read_block = _load_object(read_block_path)
+        validate_active_rom_read_block(read_block)
+        if read_block.get("access_pattern") in {
+            "fixed-stride-lookup-candidate", "scattered-lookup-candidate"
+        }:
+            read_block_sha256 = sha256_file(read_block_path)
+            if not _lookup_index_current(
+                root,
+                target_sha256=target_sha256,
+                read_block_sha256=read_block_sha256,
+                role_sha256=role_sha256,
+                trace_sha256=trace_sha256,
+            ):
+                return _build_selection(
+                    target_sha256=target_sha256,
+                    trace_sha256=trace_sha256,
+                    stage=LOOKUP_INDEX_STAGE,
+                )
     return None
 
 

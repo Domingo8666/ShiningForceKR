@@ -166,6 +166,10 @@ try:
         PUBLISH_RELATIVE_PATH as ACTIVE_ROM_READ_BLOCK_RELATIVE_PATH,
         validate_active_rom_read_block,
     )
+    from .v5_1_active_rom_lookup_index_producer import (
+        PUBLISH_RELATIVE_PATH as ACTIVE_ROM_LOOKUP_INDEX_RELATIVE_PATH,
+        validate_active_rom_lookup_index_producer,
+    )
     from .v5_1_critical_path import (
         PUBLISH_RELATIVE_PATH as CRITICAL_PATH_RELATIVE_PATH,
         validate_critical_path,
@@ -425,6 +429,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as ACTIVE_ROM_READ_BLOCK_RELATIVE_PATH,
         validate_active_rom_read_block,
     )
+    from v5_1_active_rom_lookup_index_producer import (
+        PUBLISH_RELATIVE_PATH as ACTIVE_ROM_LOOKUP_INDEX_RELATIVE_PATH,
+        validate_active_rom_lookup_index_producer,
+    )
     from v5_1_critical_path import (
         PUBLISH_RELATIVE_PATH as CRITICAL_PATH_RELATIVE_PATH,
         validate_critical_path,
@@ -624,6 +632,8 @@ SAFE_ARTIFACTS = {
         validate_active_rom_source_role,
     ACTIVE_ROM_READ_BLOCK_RELATIVE_PATH:
         validate_active_rom_read_block,
+    ACTIVE_ROM_LOOKUP_INDEX_RELATIVE_PATH:
+        validate_active_rom_lookup_index_producer,
     CRITICAL_PATH_RELATIVE_PATH:
         validate_critical_path,
     RUNTIME_CONTEXT_GLYPH_CANDIDATES_RELATIVE_PATH:

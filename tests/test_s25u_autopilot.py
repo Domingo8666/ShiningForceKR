@@ -162,18 +162,28 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn("v5_1_active_rom_source_role.py", RUNTIME_STAGE)
         self.assertIn('"active-rom-read-block"', RUNTIME_STAGE)
         self.assertIn("v5_1_active_rom_read_block.py", RUNTIME_STAGE)
+        self.assertIn('"active-rom-lookup-index-producer"', RUNTIME_STAGE)
+        self.assertIn("v5_1_active_rom_lookup_index_producer.py", RUNTIME_STAGE)
         self.assertLess(
             RUNTIME_STAGE.index('"active-rom-source-role"'),
             RUNTIME_STAGE.index('"active-rom-read-block"'),
         )
         self.assertLess(
             RUNTIME_STAGE.index('"active-rom-read-block"'),
+            RUNTIME_STAGE.index('"active-rom-lookup-index-producer"'),
+        )
+        self.assertLess(
+            RUNTIME_STAGE.index('"active-rom-lookup-index-producer"'),
             RUNTIME_STAGE.index("if decoder_selection_ready || group_selection_ready; then"),
         )
 
     def test_autopilot_publishes_sanitized_active_rom_read_block(self) -> None:
         self.assertIn(
             "analysis/device/v5_1_latest_active_rom_read_block.json",
+            SCRIPT,
+        )
+        self.assertIn(
+            "analysis/device/v5_1_latest_active_rom_lookup_index_producer.json",
             SCRIPT,
         )
 

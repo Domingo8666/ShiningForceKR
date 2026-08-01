@@ -164,6 +164,17 @@ else
       diagnostic_trigger=probe
       record_stage_failure active-rom-read-block
     fi
+  elif [ "$critical_path_focus" = "active-rom-lookup-index-producer" ]; then
+    echo "SFKR critical path: tracing the ROM lookup address producer."
+    write_next_step \
+      "기존 실행 기록에서 조회 주소를 만든 직전 Z80 명령을 역추적하고 있습니다."
+    python tools/v5_1_active_rom_lookup_index_producer.py --if-ready
+    active_rom_lookup_index_status=$?
+    if [ "$active_rom_lookup_index_status" -ne 0 ]; then
+      stage_status="$active_rom_lookup_index_status"
+      diagnostic_trigger=probe
+      record_stage_failure active-rom-lookup-index-producer
+    fi
   else
   if decoder_selection_ready || group_selection_ready; then
     echo "SFKR runtime stage: using the confirmed decoder stream."

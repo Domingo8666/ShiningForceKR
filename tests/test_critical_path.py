@@ -23,8 +23,13 @@ from tools.v5_1_active_rom_read_block import (
     PUBLISH_RELATIVE_PATH as ROM_READ_BLOCK_PATH,
     build_active_rom_read_block,
 )
+from tools.v5_1_active_rom_lookup_index_producer import (
+    PUBLISH_RELATIVE_PATH as ROM_LOOKUP_INDEX_PATH,
+    build_active_rom_lookup_index_producer,
+)
 from tools.v5_1_critical_path import (
     FOCUSED_STAGE,
+    LOOKUP_INDEX_STAGE,
     READ_BLOCK_STAGE,
     SOURCE_ROLE_STAGE,
     select_critical_path,
@@ -211,6 +216,40 @@ class CriticalPathTests(unittest.TestCase):
                 captured_utc="2026-08-02T00:00:00Z",
             )
             self._write_json(root / ROM_READ_BLOCK_PATH, read_block)
+            selected = select_critical_path(root, rom_path)
+            self.assertIsNotNone(selected)
+            assert selected is not None
+            self.assertEqual(selected["selected_stage"], LOOKUP_INDEX_STAGE)
+
+            lookup = build_active_rom_lookup_index_producer(
+                target_sha256=target_sha256,
+                source_active_rom_read_block_sha256=sha256_file(
+                    root / ROM_READ_BLOCK_PATH
+                ),
+                source_active_rom_source_role_sha256=role_sha256,
+                source_register_trace_sha256=sha256_file(
+                    root / REGISTER_TRACE_PATH
+                ),
+                analysis={
+                    "target_event_count": 46,
+                    "target_unique_logical_read_count": 8,
+                    "address_register_candidate_count": 1,
+                    "matched_predecessor_definition_count": 46,
+                    "unique_predecessor_instruction_count": 1,
+                    "maximum_backtrack_instruction_count": 2,
+                    "literal_pointer_definition_count": 0,
+                    "arithmetic_pointer_definition_count": 46,
+                    "incremental_pointer_definition_count": 0,
+                    "memory_pointer_definition_count": 0,
+                    "stack_pointer_definition_count": 0,
+                    "split_pointer_definition_count": 0,
+                    "unknown_pointer_definition_count": 0,
+                },
+                address_operand_kind="hl-indirect",
+                producer_class="register-arithmetic-selector-candidate",
+                captured_utc="2026-08-02T00:00:00Z",
+            )
+            self._write_json(root / ROM_LOOKUP_INDEX_PATH, lookup)
             self.assertIsNone(select_critical_path(root, rom_path))
 
     def test_does_not_focus_without_current_prerequisites(self) -> None:
