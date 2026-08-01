@@ -7,6 +7,7 @@ import unittest
 from tools.sfgfc_huffman import CANDIDATE_END_SYMBOL
 from tools.v5_1_first_context_consumer_trace import (
     build_first_context_consumer_trace,
+    extract_vector_contexts_from_trace,
     summarize_consumer_contexts,
     validate_first_context_consumer_trace,
 )
@@ -21,6 +22,30 @@ SHA_F = "f" * 64
 
 
 class FirstContextConsumerTraceTests(unittest.TestCase):
+    def test_extracts_vector_contexts_from_continuous_trace(self) -> None:
+        lines = [
+            "08:5000 A:20 BC:0000 DE:0000 HL:0000 SP:DFF0  32 FF FF",
+            "08:5003 A:00 BC:0000 DE:0000 HL:8100 SP:DFF0  7E",
+            "08:5004 A:00 BC:0000 DE:0000 HL:8101 SP:DFF0  7E",
+            "08:5005 A:00 BC:0000 DE:0000 HL:8102 SP:DFF0  7E",
+        ]
+        self.assertEqual(
+            extract_vector_contexts_from_trace(
+                lines,
+                initial_slot1_bank=8,
+                initial_slot2_bank=6,
+            ),
+            [0, 1],
+        )
+
+    def test_rejects_invalid_trace_mapper_state(self) -> None:
+        with self.assertRaisesRegex(ValueError, "mapper bank"):
+            extract_vector_contexts_from_trace(
+                [],
+                initial_slot1_bank=-1,
+                initial_slot2_bank=6,
+            )
+
     def test_exact_context_sequence_observes_clean_terminator_stop(self) -> None:
         symbols = [0x5F, 0x12, 0x34, CANDIDATE_END_SYMBOL]
         counts, prefix, first_post, direct = summarize_consumer_contexts(

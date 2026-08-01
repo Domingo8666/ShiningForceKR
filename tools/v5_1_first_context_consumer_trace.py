@@ -15,7 +15,7 @@ from pathlib import Path
 
 try:
     from .patch_io import sha256_file
-    from .run_s25u_renderer_probe import HUFFMAN_VECTOR_START, _last_rom_read
+    from .run_s25u_renderer_probe import HUFFMAN_VECTOR_START
     from .run_s25u_runtime_probe import (
         McpStdioClient,
         _capture_state,
@@ -39,6 +39,13 @@ try:
         PUBLISH_RELATIVE_PATH as VISUAL_REVIEW_PATH,
         validate_first_context_translation_visual_review,
     )
+    from .v5_1_font_transfer_source import (
+        _mapped_bank_for_address,
+        _physical_address,
+        _write_a_address,
+    )
+    from .v5_1_renderer_output_trace import _trace_to_outer_return
+    from .v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
     from .v5_1_source_target_anchor import (
         CONFIRMED_ORDINAL,
         CONFIRMED_SELECTOR,
@@ -49,13 +56,12 @@ try:
         DECODER_ENTRY_LOGICAL,
         MAX_REJECTED_TARGET_HITS,
         REQUIRED_TOOLS,
-        VECTOR_LOGICAL_RANGES,
         _entry_coordinates,
     )
     from .v5_1_test_display_capture import _continue_until_breakpoint
 except ImportError:  # pragma: no cover - direct script execution
     from patch_io import sha256_file
-    from run_s25u_renderer_probe import HUFFMAN_VECTOR_START, _last_rom_read
+    from run_s25u_renderer_probe import HUFFMAN_VECTOR_START
     from run_s25u_runtime_probe import (
         McpStdioClient,
         _capture_state,
@@ -79,6 +85,13 @@ except ImportError:  # pragma: no cover - direct script execution
         PUBLISH_RELATIVE_PATH as VISUAL_REVIEW_PATH,
         validate_first_context_translation_visual_review,
     )
+    from v5_1_font_transfer_source import (
+        _mapped_bank_for_address,
+        _physical_address,
+        _write_a_address,
+    )
+    from v5_1_renderer_output_trace import _trace_to_outer_return
+    from v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
     from v5_1_source_target_anchor import (
         CONFIRMED_ORDINAL,
         CONFIRMED_SELECTOR,
@@ -89,7 +102,6 @@ except ImportError:  # pragma: no cover - direct script execution
         DECODER_ENTRY_LOGICAL,
         MAX_REJECTED_TARGET_HITS,
         REQUIRED_TOOLS,
-        VECTOR_LOGICAL_RANGES,
         _entry_coordinates,
     )
     from v5_1_test_display_capture import _continue_until_breakpoint
@@ -400,18 +412,74 @@ def first_context_consumer_trace_needed(root: Path) -> bool:
         return True
 
 
+def extract_vector_contexts_from_trace(
+    lines: list[str],
+    *,
+    initial_slot1_bank: int,
+    initial_slot2_bank: int,
+) -> list[int]:
+    """Recover every Huffman context lookup from one complete consumer trace.
+
+    Breakpoint-per-read sampling can resume in the middle of a two-byte vector
+    lookup and lose the next lookup.  A continuous trace to the outer consumer
+    return preserves the original instruction stream and mapper transitions.
+    """
+
+    slot1_bank = initial_slot1_bank
+    slot2_bank = initial_slot2_bank
+    if not 0 <= slot1_bank <= 0xFF or not 0 <= slot2_bank <= 0xFF:
+        raise ValueError("consumer trace initial mapper bank is invalid")
+
+    contexts: list[int] = []
+    for line in lines:
+        parsed = _parse_trace_line(line)
+        if parsed is None:
+            continue
+        opcodes = parsed["opcodes"]
+        raw_registers = parsed["registers"]
+        assert isinstance(opcodes, bytes)
+        assert isinstance(raw_registers, dict)
+        registers = {
+            key: int(value)
+            for key, value in raw_registers.items()
+            if isinstance(value, int) and not isinstance(value, bool)
+        }
+
+        for logical in _read_addresses(opcodes, registers):
+            bank = _mapped_bank_for_address(
+                logical,
+                slot1_bank,
+                slot2_bank,
+            )
+            if bank is None:
+                continue
+            physical = _physical_address(bank, logical)
+            if (
+                HUFFMAN_VECTOR_START
+                <= physical
+                < HUFFMAN_VECTOR_START + 0x200
+                and (physical - HUFFMAN_VECTOR_START) % 2 == 0
+            ):
+                contexts.append((physical - HUFFMAN_VECTOR_START) // 2)
+
+        write_address = _write_a_address(opcodes, registers)
+        if write_address in {0xFFFE, 0xFFFF}:
+            mapped_bank = registers.get("a", 0) & 0xFF
+            if write_address == 0xFFFE:
+                slot1_bank = mapped_bank
+            else:
+                slot2_bank = mapped_bank
+
+    return contexts
+
+
 def _capture_contexts(
     *, rom_path: Path, rom_size: int
 ) -> tuple[list[int], dict[str, object]]:
     client = McpStdioClient(_default_command())
     entry_address = f"{DECODER_ENTRY_LOGICAL:04X}"
-    vector_ranges = [
-        (f"{start:04X}", f"{end:04X}")
-        for start, end in VECTOR_LOGICAL_RANGES
-    ]
     entry_armed = False
-    vector_armed = False
-    local: dict[str, object] = {"anchor_hits": [], "vector_events": []}
+    local: dict[str, object] = {"anchor_hits": []}
 
     def arm_entry() -> None:
         nonlocal entry_armed
@@ -440,40 +508,6 @@ def _capture_contexts(
                 },
             )
             entry_armed = False
-
-    def arm_vectors() -> None:
-        nonlocal vector_armed
-        for start, end in vector_ranges:
-            client.call(
-                "set_breakpoint_range",
-                {
-                    "start_address": start,
-                    "end_address": end,
-                    "memory_area": "rom_ram",
-                    "execute": False,
-                    "read": True,
-                    "write": False,
-                },
-            )
-        vector_armed = True
-
-    def disarm_vectors() -> None:
-        nonlocal vector_armed
-        if not vector_armed:
-            return
-        for start, end in vector_ranges:
-            try:
-                client.call(
-                    "remove_breakpoint",
-                    {
-                        "address": start,
-                        "end_address": end,
-                        "memory_area": "rom_ram",
-                    },
-                )
-            except RuntimeError:
-                pass
-        vector_armed = False
 
     contexts: list[int] = []
     try:
@@ -520,53 +554,17 @@ def _capture_contexts(
         if not anchor_reached:
             raise RuntimeError("consumer trace confirmed anchor was not reached")
 
-        client.call(
-            "set_trace_log",
-            {
-                "enabled": True,
-                "cpu_irq": False,
-                "vdp_write": False,
-                "vdp_status": False,
-                "psg": False,
-                "ym2413": False,
-                "io_port": False,
-                "bank_switch": True,
-            },
+        trace_lines, trace_window = _trace_to_outer_return(
+            client,
+            ready_state=anchor_state,
         )
-        for hit_index in range(MAX_VECTOR_READ_HITS):
-            arm_vectors()
-            status = _continue_until_breakpoint(
-                client,
-                FIRST_VECTOR_TIMEOUT_SECONDS
-                if hit_index == 0
-                else NEXT_VECTOR_TIMEOUT_SECONDS,
-            )
-            if status.get("at_breakpoint") is not True:
-                break
-            state, evidence = _capture_state(client)
-            sample = _last_rom_read(state, evidence, rom_size)
-            event: dict[str, object] = {
-                "state": state,
-                "evidence": evidence,
-                "sample": sample,
-            }
-            if sample is not None:
-                physical = sample.get("physical_file_offset")
-                if (
-                    sample.get("classification") == "korean-huffman-vector"
-                    and isinstance(physical, int)
-                    and not isinstance(physical, bool)
-                    and HUFFMAN_VECTOR_START
-                    <= physical
-                    < HUFFMAN_VECTOR_START + 0x200
-                    and (physical - HUFFMAN_VECTOR_START) % 2 == 0
-                ):
-                    context = (physical - HUFFMAN_VECTOR_START) // 2
-                    contexts.append(context)
-                    event["context"] = context
-            local["vector_events"].append(event)
-            disarm_vectors()
-            _step_instruction_and_wait(client)
+        contexts = extract_vector_contexts_from_trace(
+            trace_lines,
+            initial_slot1_bank=int(anchor_state["slot1_bank"]),
+            initial_slot2_bank=int(anchor_state["slot2_bank"]),
+        )
+        local["consumer_trace_window"] = trace_window
+        local["raw_trace_lines"] = trace_lines
         local["observed_contexts"] = contexts
         return contexts, local
     finally:
@@ -574,7 +572,6 @@ def _capture_contexts(
             disarm_entry()
         except RuntimeError:
             pass
-        disarm_vectors()
         try:
             client.call(
                 "set_trace_log",
