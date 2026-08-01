@@ -5,7 +5,7 @@
   "category": "input",
   "failure_step": "build-runtime-codec-constraints",
   "failure_kind": "PatchError",
-  "failure_row_index": 0,
+  "failure_row_index": 5,
   "failure_detail": "none",
   "required_visible_symbol_count": 0,
   "maximum_routable_visible_symbol_count": 0,
@@ -16,7 +16,7 @@
   "compact_visible_symbol_count": 0,
   "runtime_symbol_count": 0,
   "layout_control_symbol_count": 0,
-  "captured_utc": "2026-08-01T10:43:56.856682Z",
+  "captured_utc": "2026-08-01T10:48:41.314954Z",
   "source_and_target_text_local_only": true,
   "next_checkpoint": "repair-first-context-input"
 }
