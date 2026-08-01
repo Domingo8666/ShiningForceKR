@@ -170,7 +170,7 @@ ROW_FONT_PAGES = PROVEN_ROW_FONT_PAGES + (239,)
 DIRECT_RENDERER_PROOF_PAGE = 21
 DIRECT_RENDERER_GLYPH_LAST_SYMBOL = 0x5E
 DIRECT_RENDERER_EXTRA_SYMBOL_COUNT = 1
-DIRECT_RENDERER_BEAM_WIDTH = 512
+DIRECT_RENDERER_SEARCH_NODE_LIMIT = 50_000
 LOCAL_VISIBLE_UNICODE_MAPPING_PATH = Path(
     "reports/local/v5_1_visible_unicode_mapping.json"
 )
@@ -1304,8 +1304,10 @@ def solve_direct_renderer_proof_symbols(
     The runtime consumer renders every decoded non-terminator symbol through
     its already-selected page.  Pick distinct glyph symbols so each on-screen
     position can receive an independently audited tile, then place the known
-    terminator in the final fixed-count slot.  A bounded beam keeps the search
-    deterministic even when a Huffman context exposes many glyph exits.
+    terminator in the final fixed-count slot.  A depth-first route finder keeps
+    only one candidate path in memory.  This matters on the Termux target,
+    where materializing and sorting a beam of tuple paths can be killed by the
+    Android low-memory manager before Python can publish a failure artifact.
     """
 
     if (
@@ -1318,50 +1320,53 @@ def solve_direct_renderer_proof_symbols(
     glyph_symbols = set(
         range(FONT_GLYPH_FIRST_SYMBOL, DIRECT_RENDERER_GLYPH_LAST_SYMBOL + 1)
     )
-    states: list[tuple[int, tuple[int, ...], int]] = [
-        (0, (), initial_context)
-    ]
-    for index in range(visible_glyph_count):
-        expanded: list[tuple[int, tuple[int, ...], int]] = []
-        for bits, path, previous in states:
-            used = set(path)
-            for symbol, code_length in lengths.get(previous, {}).items():
-                if symbol not in glyph_symbols or symbol in used:
-                    continue
-                total = bits + int(code_length)
-                if total >= maximum_bits:
-                    continue
-                if (
-                    index == visible_glyph_count - 1
-                    and CANDIDATE_END_SYMBOL
-                    not in lengths.get(symbol, {})
-                ):
-                    continue
-                expanded.append((total, path + (symbol,), symbol))
-        if not expanded:
-            raise ValueError("direct renderer proof has no Huffman glyph route")
-        expanded.sort(
-            key=lambda item: (
-                item[0],
-                -len(lengths.get(item[2], {})),
-                item[1],
-            )
-        )
-        states = expanded[:DIRECT_RENDERER_BEAM_WIDTH]
+    assignments: list[int] = []
+    used: set[int] = set()
+    visited_node_count = 0
 
-    completed = []
-    for bits, path, previous in states:
-        end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
-        if end_length is None:
-            continue
-        total = bits + int(end_length)
-        if total <= maximum_bits:
-            completed.append((total, path))
-    if not completed:
-        raise ValueError("direct renderer proof cannot reach the final control")
-    _, assignments = min(completed)
+    def search(previous: int, bits: int) -> bool:
+        nonlocal visited_node_count
+        visited_node_count += 1
+        if visited_node_count > DIRECT_RENDERER_SEARCH_NODE_LIMIT:
+            raise ValueError("direct renderer proof route search limit exceeded")
+        remaining = visible_glyph_count - len(assignments)
+        if remaining == 0:
+            end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
+            return (
+                end_length is not None
+                and bits + int(end_length) <= maximum_bits
+            )
+
+        candidates = []
+        for symbol, code_length in lengths.get(previous, {}).items():
+            if symbol not in glyph_symbols or symbol in used:
+                continue
+            total = bits + int(code_length)
+            if total >= maximum_bits:
+                continue
+            next_codes = lengths.get(symbol, {})
+            if remaining == 1 and CANDIDATE_END_SYMBOL not in next_codes:
+                continue
+            candidates.append(
+                (
+                    int(code_length),
+                    -len(next_codes),
+                    symbol,
+                )
+            )
+        for code_length, _, symbol in sorted(candidates):
+            assignments.append(symbol)
+            used.add(symbol)
+            if search(symbol, bits + code_length):
+                return True
+            used.remove(symbol)
+            assignments.pop()
+        return False
+
+    if not search(initial_context, 0):
+        raise ValueError("direct renderer proof has no Huffman glyph route")
     symbols = [*assignments, CANDIDATE_END_SYMBOL]
-    return symbols, list(assignments)
+    return symbols, assignments
 
 
 def direct_renderer_font_tile_offset(page: int, symbol: int) -> int:
