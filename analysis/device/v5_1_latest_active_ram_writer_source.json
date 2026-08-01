@@ -4,16 +4,17 @@
   "status": "active-ram-writer-source-classified",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "source_active_ram_producer_sha256": "61d7c830633d5ef31c84a5b51309b29a5e7dbc83cb21fe51c2f84329ed3ae04e",
-  "captured_utc": "2026-08-01T19:35:42.887759Z",
+  "captured_utc": "2026-08-01T19:42:31.356267Z",
   "analysis": {
     "rom_window_source_event_count": 0,
-    "unresolved_source_event_count": 0,
     "candidate_event_count": 1,
-    "io_source_event_count": 0,
-    "system_ram_source_event_count": 0,
-    "register_source_event_count": 1,
     "memory_source_event_count": 0,
-    "classified_event_count": 1
+    "io_source_event_count": 0,
+    "unresolved_source_event_count": 0,
+    "classified_event_count": 1,
+    "system_ram_source_event_count": 0,
+    "immediate_source_event_count": 0,
+    "register_source_event_count": 1
   },
   "writer_sentinel_confirmed": true,
   "writer_source_class": "register",
