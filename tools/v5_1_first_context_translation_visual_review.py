@@ -11,7 +11,7 @@ from pathlib import Path
 ARTIFACT_KIND = (
     "sanitized-v5-1-first-context-translation-runtime-visual-review"
 )
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/"
     "v5_1_latest_first_context_translation_visual_review.json"
@@ -28,6 +28,7 @@ SAFE_FIELDS = {
     "schema_version",
     "status",
     "runtime_capture_sha256",
+    "test_target_sha256",
     "review_evidence_sha256",
     "captured_utc",
     "review",
@@ -61,6 +62,7 @@ def _is_utc_timestamp(value: object) -> bool:
 def build_first_context_translation_visual_review(
     *,
     runtime_capture_sha256: str,
+    test_target_sha256: str,
     review_evidence_sha256: str,
     review: dict[str, int],
     captured_utc: str,
@@ -88,6 +90,7 @@ def build_first_context_translation_visual_review(
             else "first-context-translation-runtime-visual-incomplete"
         ),
         "runtime_capture_sha256": runtime_capture_sha256,
+        "test_target_sha256": test_target_sha256,
         "review_evidence_sha256": review_evidence_sha256,
         "captured_utc": captured_utc,
         "review": review,
@@ -117,6 +120,7 @@ def validate_first_context_translation_visual_review(
         value["artifact_kind"] != ARTIFACT_KIND
         or value["schema_version"] != SCHEMA_VERSION
         or not _is_sha256(value["runtime_capture_sha256"])
+        or not _is_sha256(value["test_target_sha256"])
         or not _is_sha256(value["review_evidence_sha256"])
         or not _is_utc_timestamp(value["captured_utc"])
         or value["review_evidence_kind"]

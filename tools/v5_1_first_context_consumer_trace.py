@@ -376,7 +376,7 @@ def first_context_consumer_trace_needed(root: Path) -> bool:
         if (
             review["status"]
             != "first-context-translation-runtime-visual-fail"
-            or review["runtime_capture_sha256"] != sha256_file(paths["runtime"])
+            or review["test_target_sha256"] != runtime["test_target_sha256"]
             or runtime["test_target_sha256"] != build["test_target_sha256"]
             or sha256_file(paths["rom"]) != build["test_target_sha256"]
         ):
@@ -629,7 +629,7 @@ def _main() -> int:
         raise ValueError("first context consumer trace encoding row is invalid")
     if (
         review["status"] != "first-context-translation-runtime-visual-fail"
-        or review["runtime_capture_sha256"] != sha256_file(paths["runtime"])
+        or review["test_target_sha256"] != runtime["test_target_sha256"]
         or runtime["test_target_sha256"] != build["test_target_sha256"]
         or sha256_file(paths["rom"]) != build["test_target_sha256"]
     ):

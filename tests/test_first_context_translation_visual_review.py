@@ -18,6 +18,7 @@ class FirstContextTranslationVisualReviewTests(unittest.TestCase):
     def test_records_user_visible_failure_without_private_paths(self) -> None:
         value = build_first_context_translation_visual_review(
             runtime_capture_sha256="a" * 64,
+            test_target_sha256="c" * 64,
             review_evidence_sha256="b" * 64,
             review={
                 "expected_screen_count": 5,
@@ -42,6 +43,7 @@ class FirstContextTranslationVisualReviewTests(unittest.TestCase):
     def test_four_screens_cannot_complete_a_five_screen_review(self) -> None:
         value = build_first_context_translation_visual_review(
             runtime_capture_sha256="a" * 64,
+            test_target_sha256="c" * 64,
             review_evidence_sha256="b" * 64,
             review={
                 "expected_screen_count": 5,

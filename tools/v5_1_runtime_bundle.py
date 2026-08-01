@@ -1384,12 +1384,8 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
         if (
             FIRST_CONTEXT_TRANSLATION_RUNTIME_CAPTURE_RELATIVE_PATH
             not in artifacts
-            or first_context_translation_visual_review[
-                "runtime_capture_sha256"
-            ]
-            != sha256_file(
-                root / FIRST_CONTEXT_TRANSLATION_RUNTIME_CAPTURE_RELATIVE_PATH
-            )
+            or first_context_translation_visual_review["test_target_sha256"]
+            != first_context_translation_runtime_capture["test_target_sha256"]
         ):
             artifacts.pop(FIRST_CONTEXT_TRANSLATION_VISUAL_REVIEW_RELATIVE_PATH)
     first_context_consumer_trace = artifacts.get(
