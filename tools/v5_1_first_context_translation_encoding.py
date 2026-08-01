@@ -161,6 +161,19 @@ SCHEMA_VERSION = 1
 # original decoded symbol count and verified with the fixed-count codec.
 PROVEN_ROW_FONT_PAGES = (240, 241, 242, 243)
 ROW_FONT_PAGES = PROVEN_ROW_FONT_PAGES + (239,)
+# The first-context consumer trace proved that this dialogue path renders a
+# fixed symbol count directly: the nominal 0x5F page token operands appeared
+# on screen and the decoder performed one lookup after the nominal terminator.
+# Keep this as an explicitly bounded technical proof until the surrounding
+# consumer contract is fully recovered.  Page 21 is the independently mapped
+# implicit page for this visible entry.
+DIRECT_RENDERER_PROOF_PAGE = 21
+DIRECT_RENDERER_GLYPH_LAST_SYMBOL = 0x5E
+DIRECT_RENDERER_EXTRA_SYMBOL_COUNT = 1
+DIRECT_RENDERER_BEAM_WIDTH = 4096
+LOCAL_VISIBLE_UNICODE_MAPPING_PATH = Path(
+    "reports/local/v5_1_visible_unicode_mapping.json"
+)
 MAX_EXACT_FONT_PAGE_CANDIDATES = 8
 MAX_EXACT_SINGLE_PAGE_STATES = 5_000
 MAX_BOUNDED_SINGLE_PAGE_STATES = 5_000
@@ -1277,6 +1290,89 @@ def solve_row_visual_symbols(
     if not search(start_previous):
         raise ValueError("first context visual row has no Huffman assignment")
     return assignments
+
+
+def solve_direct_renderer_proof_symbols(
+    *,
+    trees: dict[int, object],
+    initial_context: int,
+    maximum_bits: int,
+    visible_glyph_count: int,
+) -> tuple[list[int], list[int]]:
+    """Build one fixed-count row without the disproven inline page token.
+
+    The runtime consumer renders every decoded non-terminator symbol through
+    its already-selected page.  Pick distinct glyph symbols so each on-screen
+    position can receive an independently audited tile, then place the known
+    terminator in the final fixed-count slot.  A bounded beam keeps the search
+    deterministic even when a Huffman context exposes many glyph exits.
+    """
+
+    if (
+        not 0 <= initial_context <= 0xFF
+        or not 1 <= maximum_bits <= 0x7FFF
+        or not 1 <= visible_glyph_count <= 32
+    ):
+        raise ValueError("direct renderer proof inputs are invalid")
+    lengths = _code_lengths(trees)
+    glyph_symbols = set(
+        range(FONT_GLYPH_FIRST_SYMBOL, DIRECT_RENDERER_GLYPH_LAST_SYMBOL + 1)
+    )
+    states: list[tuple[int, tuple[int, ...], int]] = [
+        (0, (), initial_context)
+    ]
+    for index in range(visible_glyph_count):
+        expanded: list[tuple[int, tuple[int, ...], int]] = []
+        for bits, path, previous in states:
+            used = set(path)
+            for symbol, code_length in lengths.get(previous, {}).items():
+                if symbol not in glyph_symbols or symbol in used:
+                    continue
+                total = bits + int(code_length)
+                if total >= maximum_bits:
+                    continue
+                if (
+                    index == visible_glyph_count - 1
+                    and CANDIDATE_END_SYMBOL
+                    not in lengths.get(symbol, {})
+                ):
+                    continue
+                expanded.append((total, path + (symbol,), symbol))
+        if not expanded:
+            raise ValueError("direct renderer proof has no Huffman glyph route")
+        expanded.sort(
+            key=lambda item: (
+                item[0],
+                -len(lengths.get(item[2], {})),
+                item[1],
+            )
+        )
+        states = expanded[:DIRECT_RENDERER_BEAM_WIDTH]
+
+    completed = []
+    for bits, path, previous in states:
+        end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
+        if end_length is None:
+            continue
+        total = bits + int(end_length)
+        if total <= maximum_bits:
+            completed.append((total, path))
+    if not completed:
+        raise ValueError("direct renderer proof cannot reach the final control")
+    _, assignments = min(completed)
+    symbols = [*assignments, CANDIDATE_END_SYMBOL]
+    return symbols, list(assignments)
+
+
+def direct_renderer_font_tile_offset(page: int, symbol: int) -> int:
+    """Return an audited tile offset inside the full 0x0C00-byte page."""
+
+    if not FONT_GLYPH_FIRST_SYMBOL <= symbol <= DIRECT_RENDERER_GLYPH_LAST_SYMBOL:
+        raise ValueError("direct renderer proof glyph symbol is out of range")
+    return (
+        font_tile_offset(page, FONT_GLYPH_FIRST_SYMBOL)
+        + (symbol - FONT_GLYPH_FIRST_SYMBOL) * FONT_TILE_BYTES
+    )
 
 
 def exact_length_row_symbols(
@@ -3924,6 +4020,8 @@ def build_single_page_symbol_rows(
     preserved_by_row: list[list[dict[str, int]]],
     runtime_constraints: list[dict[str, object]] | None = None,
     pages: tuple[int | tuple[int, ...], ...] = ROW_FONT_PAGES,
+    direct_renderer_first_row: bool = False,
+    direct_renderer_pages: tuple[int, ...] = (DIRECT_RENDERER_PROOF_PAGE,),
 ) -> tuple[
     dict[str, int],
     list[dict[str, object]],
@@ -3936,6 +4034,12 @@ def build_single_page_symbol_rows(
     )
     if len(visual_rows) != len(pages):
         raise ValueError("first context row font page count does not match")
+    if (
+        not direct_renderer_pages
+        or len(direct_renderer_pages) != len(set(direct_renderer_pages))
+        or any(not 0 <= page < FONT_PAGE_COUNT for page in direct_renderer_pages)
+    ):
+        raise ValueError("direct renderer proof page candidates are invalid")
     if runtime_constraints is not None and len(runtime_constraints) != len(
         visual_rows
     ):
@@ -3955,7 +4059,44 @@ def build_single_page_symbol_rows(
             or any(not 0 <= page < FONT_PAGE_COUNT for page in row_pages)
         ):
             raise ValueError("first context row font page group is invalid")
-        if constraint is None:
+        renderer_visuals = visuals
+        direct_renderer_page = False
+        if direct_renderer_first_row and expected_index == 1:
+            if constraint is None:
+                raise ValueError("direct renderer proof requires a runtime row")
+            initial_context = int(constraint["initial_context"])
+            target_bits = int(constraint["original_record_length_bytes"]) * 8
+            storage_capacity_bits = target_bits
+            route_capacity_bits = target_bits
+            runtime_symbol_count = (
+                int(constraint["original_symbol_count"])
+                + DIRECT_RENDERER_EXTRA_SYMBOL_COUNT
+            )
+            renderer_glyph_count = runtime_symbol_count - 1
+            if len(visuals) > renderer_glyph_count:
+                raise ValueError(
+                    "direct renderer proof has insufficient visible slots"
+                )
+            renderer_visuals = [
+                *visuals,
+                *(
+                    "technical-blank"
+                    for _ in range(renderer_glyph_count - len(visuals))
+                ),
+            ]
+            ACTIVE_FAILURE_DETAIL = "solve-direct-renderer-first-row"
+            symbols, assignments = solve_direct_renderer_proof_symbols(
+                trees=trees,
+                initial_context=initial_context,
+                maximum_bits=target_bits,
+                visible_glyph_count=renderer_glyph_count,
+            )
+            assignment_pages = [direct_renderer_pages[0]] * len(assignments)
+            padding_count = 0
+            page_select_count = 0
+            fixed_count_padding_symbol_count = renderer_glyph_count - len(visuals)
+            direct_renderer_page = True
+        elif constraint is None:
             if len(row_pages) != 1:
                 raise ValueError(
                     "unconstrained first context row requires one font page"
@@ -4105,21 +4246,23 @@ def build_single_page_symbol_rows(
                 - 1
                 - visible_page_select_count * 3,
             )
+        if not direct_renderer_page:
+            page_select_count = 1 + padding_count
         if constraint is None:
             runtime_symbol_count = len(symbols)
             fixed_count_padding_symbol_count = 0
         ACTIVE_FAILURE_DETAIL = "validate-row-assignments"
         if (
-            len(assignments) != len(visuals)
-            or len(assignment_pages) != len(visuals)
+            len(assignments) != len(renderer_visuals)
+            or len(assignment_pages) != len(renderer_visuals)
         ):
             raise ValueError("first context visual assignment count disagrees")
         row = {
                 "review_index": expected_index,
                 "target_text": target_row["target_text"],
-                "visuals": visuals,
+                "visuals": renderer_visuals,
                 "symbols": symbols,
-                "page_select_count": 1 + padding_count,
+                "page_select_count": page_select_count,
                 "page_select_padding_count": padding_count,
                 "initial_context": initial_context,
                 "target_encoded_bits": target_bits,
@@ -4131,9 +4274,12 @@ def build_single_page_symbol_rows(
                     fixed_count_padding_symbol_count
                 ),
                 "preserved_non_text_glyph_count": sum(
-                    visual.startswith("preserved:") for visual in visuals
+                    visual.startswith("preserved:")
+                    for visual in renderer_visuals
                 ),
             }
+        if direct_renderer_page:
+            row["direct_renderer_proof"] = True
         if constraint is not None:
             for key in (
                 "target_selector",
@@ -4148,9 +4294,23 @@ def build_single_page_symbol_rows(
         rows.append(row)
         assignments_by_row.append(
             [
-                {"visual": visual, "page": assignment_page, "symbol": symbol}
+                {
+                    "visual": visual,
+                    "page": emitted_page,
+                    "symbol": symbol,
+                    **(
+                        {"direct_renderer_page": True}
+                        if direct_renderer_page
+                        else {}
+                    ),
+                }
                 for visual, assignment_page, symbol in zip(
-                    visuals, assignment_pages, assignments
+                    renderer_visuals, assignment_pages, assignments
+                )
+                for emitted_page in (
+                    direct_renderer_pages
+                    if direct_renderer_page
+                    else (assignment_page,)
                 )
             ]
         )
@@ -4572,6 +4732,37 @@ def _main() -> int:
         )
         for assignment in character_assignments
     }
+    direct_renderer_pages = (DIRECT_RENDERER_PROOF_PAGE,)
+    try:
+        local_unicode_mapping = _load_json_object(
+            root / LOCAL_VISIBLE_UNICODE_MAPPING_PATH
+        )
+        local_mapping = local_unicode_mapping.get("mapping")
+        raw_page_candidates = (
+            local_mapping.get("initial_page_candidates")
+            if isinstance(local_mapping, dict)
+            else None
+        )
+        candidate_pages = tuple(
+            sorted(
+                {
+                    int(candidate["page"])
+                    for candidate in raw_page_candidates
+                    if isinstance(candidate, dict)
+                    and isinstance(candidate.get("page"), int)
+                    and not isinstance(candidate.get("page"), bool)
+                    and 0 <= int(candidate["page"]) < FONT_PAGE_COUNT
+                }
+            )
+        ) if isinstance(raw_page_candidates, list) else ()
+        if (
+            local_unicode_mapping.get("target_sha256")
+            == capacity["target_sha256"]
+            and 1 <= len(candidate_pages) <= 16
+        ):
+            direct_renderer_pages = candidate_pages
+    except (OSError, ValueError, json.JSONDecodeError):
+        pass
     ACTIVE_FAILURE_CATEGORY = "row-route"
     ACTIVE_FAILURE_STEP = "select-row-font-pages"
     selected_row_font_pages = select_row_font_pages(
@@ -4591,6 +4782,8 @@ def _main() -> int:
         preserved_by_row=rendered_preserved_by_row,
         runtime_constraints=runtime_constraints,
         pages=selected_row_font_pages,
+        direct_renderer_first_row=True,
+        direct_renderer_pages=direct_renderer_pages,
     )
     symbol_counts["preserved_non_text_glyph_occurrence_count"] = sum(
         len(row) for row in preserved_by_row
@@ -4609,6 +4802,9 @@ def _main() -> int:
             visual = assignment["visual"]
             page = assignment["page"]
             symbol = assignment["symbol"]
+            direct_renderer_page = (
+                assignment.get("direct_renderer_page") is True
+            )
             assert isinstance(visual, str)
             assert isinstance(page, int)
             assert isinstance(symbol, int)
@@ -4619,6 +4815,9 @@ def _main() -> int:
                         "first context target character tile is missing"
                     )
                 visual_kind = "approved-target-character"
+            elif visual == "technical-blank":
+                after = bytes(FONT_TILE_BYTES)
+                visual_kind = "technical-proof-blank"
             else:
                 _, source_page_hex, source_symbol_hex = visual.split(":")
                 source_page = int(source_page_hex, 16)
@@ -4634,7 +4833,11 @@ def _main() -> int:
                     )
                 after = sparse.data[source_start:source_end]
                 visual_kind = "reviewed-non-text-glyph-visual"
-            start = font_tile_offset(page, symbol)
+            start = (
+                direct_renderer_font_tile_offset(page, symbol)
+                if direct_renderer_page
+                else font_tile_offset(page, symbol)
+            )
             end = start + len(after)
             if any(value == 0 for value in sparse.known[start:end]):
                 raise ValueError(

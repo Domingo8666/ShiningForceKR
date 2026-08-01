@@ -24,6 +24,7 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     build_single_page_symbol_rows,
     build_symbol_rows,
     diagnose_bounded_candidate_bit_count,
+    direct_renderer_font_tile_offset,
     exact_multi_page_state_limit,
     exact_length_row_symbols,
     pad_row_to_runtime_symbol_count,
@@ -31,6 +32,7 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     select_row_font_pages,
     solve_bounded_length_row_visual_symbols,
     solve_bounded_length_row_multi_page_visual_symbols,
+    solve_direct_renderer_proof_symbols,
     solve_fixed_count_row_visual_symbols,
     solve_fixed_count_row_multi_page_visual_symbols,
     solve_exact_length_row_multi_page_visual_symbols,
@@ -106,6 +108,65 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(MAX_EXACT_FONT_PAGE_CANDIDATES, 8)
         self.assertEqual(MAX_EXACT_SINGLE_PAGE_STATES, 5_000)
         self.assertEqual(MAX_BOUNDED_SINGLE_PAGE_STATES, 5_000)
+
+    def test_builds_direct_renderer_fixed_count_route(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x02, 0xFE),
+            **{
+                symbol: tree(symbol, symbol + 1, 0xFE)
+                for symbol in range(0x02, 0x0A)
+            },
+            0x0A: tree(0x0A, 0xC9, 0xFE),
+        }
+        symbols, assignments = solve_direct_renderer_proof_symbols(
+            trees=trees,
+            initial_context=0xC9,
+            maximum_bits=32,
+            visible_glyph_count=9,
+        )
+        self.assertEqual(assignments, list(range(0x02, 0x0B)))
+        self.assertEqual(symbols, [*assignments, 0xC9])
+        self.assertEqual(
+            direct_renderer_font_tile_offset(21, 0x05),
+            direct_renderer_font_tile_offset(21, 0x02) + 3 * 32,
+        )
+
+    def test_first_row_direct_renderer_omits_inline_page_token(self) -> None:
+        direct_symbols = [*range(0x02, 0x0B), 0xC9]
+        with patch(
+            "tools.v5_1_first_context_translation_encoding."
+            "solve_direct_renderer_proof_symbols",
+            return_value=(direct_symbols, list(range(0x02, 0x0B))),
+        ):
+            counts, rows, assignments = build_single_page_symbol_rows(
+                trees={},
+                target_rows=[{"review_index": 1, "target_text": "가"}],
+                preserved_by_row=[[]],
+                runtime_constraints=[{
+                    "initial_context": 0xC9,
+                    "original_record_length_bytes": 16,
+                    "original_symbol_count": 9,
+                }],
+                pages=(240,),
+                direct_renderer_first_row=True,
+                direct_renderer_pages=(21, 22),
+            )
+        self.assertEqual(rows[0]["symbols"], direct_symbols)
+        self.assertEqual(rows[0]["runtime_symbol_count"], 10)
+        self.assertEqual(rows[0]["page_select_count"], 0)
+        self.assertTrue(rows[0]["direct_renderer_proof"])
+        self.assertEqual(counts["planned_page_select_count"], 0)
+        self.assertEqual(len(assignments[0]), 18)
+        self.assertEqual(assignments[0][0]["visual"], "text:가")
+        self.assertTrue(assignments[0][0]["direct_renderer_page"])
+        self.assertEqual(
+            {assignment["page"] for assignment in assignments[0]},
+            {21, 22},
+        )
+        self.assertTrue(all(
+            assignment["visual"] == "technical-blank"
+            for assignment in assignments[0][2:]
+        ))
 
     def test_compacts_only_ascii_layout_and_preserves_hangul_sequence(self) -> None:
         approved = [{
