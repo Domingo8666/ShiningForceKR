@@ -34,8 +34,27 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
                 lines,
                 initial_slot1_bank=8,
                 initial_slot2_bank=6,
+                initial_ix=0,
+                initial_iy=0,
             ),
             [0, 1],
+        )
+
+    def test_tracks_index_register_load_for_vector_read(self) -> None:
+        lines = [
+            "08:5000 A:20 BC:0000 DE:0000 HL:0000 SP:DFF0  32 FF FF",
+            "08:5003 A:00 BC:0000 DE:0000 HL:0000 SP:DFF0  DD 21 00 81",
+            "08:5007 A:00 BC:0000 DE:0000 HL:0000 SP:DFF0  DD 7E 00",
+        ]
+        self.assertEqual(
+            extract_vector_contexts_from_trace(
+                lines,
+                initial_slot1_bank=8,
+                initial_slot2_bank=6,
+                initial_ix=0xFFFF,
+                initial_iy=0xFFFF,
+            ),
+            [0],
         )
 
     def test_rejects_invalid_trace_mapper_state(self) -> None:
@@ -44,6 +63,8 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
                 [],
                 initial_slot1_bank=-1,
                 initial_slot2_bank=6,
+                initial_ix=0,
+                initial_iy=0,
             )
 
     def test_exact_context_sequence_observes_clean_terminator_stop(self) -> None:

@@ -421,6 +421,8 @@ def extract_vector_contexts_from_trace(
     *,
     initial_slot1_bank: int,
     initial_slot2_bank: int,
+    initial_ix: int,
+    initial_iy: int,
 ) -> list[int]:
     """Recover every Huffman context lookup from one complete consumer trace.
 
@@ -433,8 +435,12 @@ def extract_vector_contexts_from_trace(
     slot2_bank = initial_slot2_bank
     if not 0 <= slot1_bank <= 0xFF or not 0 <= slot2_bank <= 0xFF:
         raise ValueError("consumer trace initial mapper bank is invalid")
+    if not 0 <= initial_ix <= 0xFFFF or not 0 <= initial_iy <= 0xFFFF:
+        raise ValueError("consumer trace initial index register is invalid")
 
     contexts: list[int] = []
+    ix: int | None = initial_ix
+    iy: int | None = initial_iy
     for line in lines:
         parsed = _parse_trace_line(line)
         if parsed is None:
@@ -448,6 +454,10 @@ def extract_vector_contexts_from_trace(
             for key, value in raw_registers.items()
             if isinstance(value, int) and not isinstance(value, bool)
         }
+        if ix is not None:
+            registers["ix"] = ix
+        if iy is not None:
+            registers["iy"] = iy
 
         for logical in _read_addresses(opcodes, registers):
             bank = _mapped_bank_for_address(
@@ -473,6 +483,33 @@ def extract_vector_contexts_from_trace(
                 slot1_bank = mapped_bank
             else:
                 slot2_bank = mapped_bank
+
+        if opcodes and opcodes[0] in {0xDD, 0xFD} and len(opcodes) >= 2:
+            current = ix if opcodes[0] == 0xDD else iy
+            second = opcodes[1]
+            updated = current
+            if second == 0x21 and len(opcodes) >= 4:
+                updated = opcodes[2] | (opcodes[3] << 8)
+            elif second == 0x23 and current is not None:
+                updated = (current + 1) & 0xFFFF
+            elif second == 0x2B and current is not None:
+                updated = (current - 1) & 0xFFFF
+            elif second == 0x09 and current is not None:
+                updated = (current + registers.get("bc", 0)) & 0xFFFF
+            elif second == 0x19 and current is not None:
+                updated = (current + registers.get("de", 0)) & 0xFFFF
+            elif second == 0x29 and current is not None:
+                updated = (current * 2) & 0xFFFF
+            elif second == 0x39 and current is not None:
+                updated = (current + registers.get("sp", 0)) & 0xFFFF
+            elif second in {0x2A, 0xE1, 0xE3}:
+                # The trace omits memory/stack values.  Stay fail-closed until a
+                # later immediate load makes this index value observable again.
+                updated = None
+            if opcodes[0] == 0xDD:
+                ix = updated
+            else:
+                iy = updated
 
     return contexts
 
@@ -568,6 +605,8 @@ def _capture_contexts(
             trace_lines,
             initial_slot1_bank=int(anchor_state["slot1_bank"]),
             initial_slot2_bank=int(anchor_state["slot2_bank"]),
+            initial_ix=int(anchor_state["registers"]["ix"]),
+            initial_iy=int(anchor_state["registers"]["iy"]),
         )
         local["consumer_trace_window"] = trace_window
         local["raw_trace_lines"] = trace_lines
