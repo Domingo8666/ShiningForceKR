@@ -8,7 +8,7 @@
   "confirmed_boundary": "active-vram-to-physical-rom-source",
   "blocked_boundary": "physical-rom-source-to-source-role",
   "selection_reason": "current-rom-source-ready-current-role-missing",
-  "generated_utc": "2026-08-01T21:39:30.530680Z",
+  "generated_utc": "2026-08-01T21:42:40.318089Z",
   "baseline_script_bytes_unchanged": true,
   "translation_build_eligible": false,
   "next_checkpoint": "classify-active-rom-source-role"
