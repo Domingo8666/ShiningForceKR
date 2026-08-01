@@ -4,7 +4,7 @@
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
   "exit_code": 1,
-  "attempt_utc": "2026-08-01T09:53:38Z",
+  "attempt_utc": "2026-08-01T09:57:25Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
