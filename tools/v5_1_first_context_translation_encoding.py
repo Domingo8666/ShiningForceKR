@@ -2408,6 +2408,175 @@ def solve_fixed_count_row_visual_symbols(
                 (CANDIDATE_END_SYMBOL,),
             )
 
+    def internally_controlled_path(
+        *,
+        start_previous: int,
+        start_bits: int,
+        control_count: int,
+    ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+        """Solve visible glyphs and page controls in one endpoint-proof search."""
+
+        unreachable = maximum_bits + 1
+
+        def final_tail(
+            previous: int,
+            controls_left: int,
+        ) -> tuple[int, tuple[int, ...]] | None:
+            if controls_left == 0:
+                return direct_end_by_previous.get(previous)
+            if controls_left == 1:
+                return safe_suffix_by_previous.get(previous)
+            tail = row_page_token * controls_left + (CANDIDATE_END_SYMBOL,)
+            encoded = transition(previous, tail)
+            return None if encoded is None else (encoded[0], tail)
+
+        @lru_cache(maxsize=None)
+        def minimum_remaining_bits(
+            previous: int,
+            remaining: int,
+            controls_left: int,
+        ) -> int:
+            if remaining == 0:
+                tail = final_tail(previous, controls_left)
+                return unreachable if tail is None else tail[0]
+            best = unreachable
+            for inserted_now in range(controls_left + 1):
+                controls = row_page_token * inserted_now
+                controlled = transition(previous, controls)
+                if controlled is None:
+                    continue
+                control_bits, controlled_previous = controlled
+                for symbol in candidate_order[controlled_previous]:
+                    suffix = minimum_remaining_bits(
+                        symbol,
+                        remaining - 1,
+                        controls_left - inserted_now,
+                    )
+                    if suffix >= unreachable:
+                        continue
+                    best = min(
+                        best,
+                        control_bits
+                        + lengths[controlled_previous][symbol]
+                        + suffix,
+                    )
+            return best
+
+        if (
+            start_bits
+            + minimum_remaining_bits(
+                start_previous,
+                len(visuals),
+                control_count,
+            )
+            > maximum_bits
+        ):
+            return None
+        expanded = 0
+        best_bits: dict[tuple[int, int, int, int], int] = {}
+
+        def search(
+            previous: int,
+            used_mask: int,
+            remaining: int,
+            controls_left: int,
+            bits: int,
+        ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+            nonlocal expanded
+            expanded += 1
+            if expanded > 300_000:
+                return None
+            state = (previous, used_mask, remaining, controls_left)
+            if bits >= best_bits.get(state, maximum_bits + 1):
+                return None
+            best_bits[state] = bits
+            if remaining == 0:
+                tail = final_tail(previous, controls_left)
+                if tail is None or bits + tail[0] > maximum_bits:
+                    return None
+                return tail[1], ()
+            ranked = []
+            for inserted_now in range(controls_left + 1):
+                controls = row_page_token * inserted_now
+                controlled = transition(previous, controls)
+                if controlled is None:
+                    continue
+                control_bits, controlled_previous = controlled
+                for symbol in candidate_order[controlled_previous]:
+                    mask = 1 << (symbol - FONT_GLYPH_FIRST_SYMBOL)
+                    if used_mask & mask:
+                        continue
+                    suffix_minimum = minimum_remaining_bits(
+                        symbol,
+                        remaining - 1,
+                        controls_left - inserted_now,
+                    )
+                    if suffix_minimum >= unreachable:
+                        continue
+                    added_bits = (
+                        control_bits + lengths[controlled_previous][symbol]
+                    )
+                    if bits + added_bits + suffix_minimum > maximum_bits:
+                        continue
+                    ranked.append(
+                        (
+                            added_bits + suffix_minimum,
+                            inserted_now,
+                            symbol,
+                            mask,
+                            controls,
+                            added_bits,
+                        )
+                    )
+            for (
+                _,
+                inserted_now,
+                symbol,
+                mask,
+                controls,
+                added_bits,
+            ) in sorted(ranked):
+                suffix = search(
+                    symbol,
+                    used_mask | mask,
+                    remaining - 1,
+                    controls_left - inserted_now,
+                    bits + added_bits,
+                )
+                if suffix is not None:
+                    suffix_symbols, suffix_assignments = suffix
+                    return (
+                        controls + (symbol,) + suffix_symbols,
+                        (symbol,) + suffix_assignments,
+                    )
+            return None
+
+        return search(
+            start_previous,
+            0,
+            len(visuals),
+            control_count,
+            start_bits,
+        )
+
+    # Solve the normal renderer-safe form first: mandatory row page, visible
+    # glyphs with any required same-page reselection, then a safe terminator.
+    for initial in sorted(initial_by_state.values()):
+        start_bits, start_previous, _, inserted, route, _ = initial
+        if inserted:
+            continue
+        controlled = internally_controlled_path(
+            start_previous=start_previous,
+            start_bits=start_bits,
+            control_count=extra_page_tokens,
+        )
+        if controlled is None:
+            continue
+        controlled_symbols, assignments = controlled
+        symbols = route + controlled_symbols
+        if len(symbols) == target_symbol_count:
+            return list(symbols), extra_page_tokens, list(assignments)
+
     def endpoint_constrained_path(
         *,
         start_previous: int,
