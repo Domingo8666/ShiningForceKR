@@ -1,0 +1,24 @@
+{
+  "artifact_kind": "sanitized-s25u-active-register-rom-source",
+  "schema_version": 2,
+  "status": "active-register-rom-source-confirmed",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_register_trace_sha256": "0f172e70a48edac1ac849469ea5709d94ccc350bb3cc6d365aefe9d4d1d70040",
+  "captured_utc": "2026-08-01T21:08:36.326411Z",
+  "analysis": {
+    "logical_read_address_count": 1,
+    "rom_value_match_count": 1,
+    "physical_source_count": 1,
+    "matching_read_hit_count": 1,
+    "read_break_hit_count": 2
+  },
+  "source_slot": "slot1",
+  "mapped_bank": 1,
+  "physical_source_offset": 27337,
+  "source_region": "original-rom",
+  "rom_source_confirmed": true,
+  "baseline_script_bytes_unchanged": true,
+  "local_payload_policy": "logical-addresses-values-opcodes-registers-and-mapper-bytes-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "correlate-original-rom-source-with-script-table"
+}
