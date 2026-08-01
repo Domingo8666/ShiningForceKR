@@ -1,0 +1,29 @@
+{
+  "artifact_kind": "sanitized-s25u-active-rom-source-role",
+  "schema_version": 1,
+  "status": "active-rom-source-role-unresolved",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_active_register_rom_source_sha256": "15b39c74b32f3c5c9920572ff0f18b84d77938a304d3386cc004e4f91c743431",
+  "source_register_trace_sha256": "0f172e70a48edac1ac849469ea5709d94ccc350bb3cc6d365aefe9d4d1d70040",
+  "source_target_population_sha256": "9f6422e64dc3127502ca43612d8dda84d4a858119517720c25192e4413051f66",
+  "captured_utc": "2026-08-01T21:48:31.002156Z",
+  "analysis": {
+    "source_executed_match_count": 0,
+    "matching_definition_event_count": 46,
+    "matching_read_event_count": 46,
+    "unique_logical_read_count": 8,
+    "target_transfer_byte_count": 192,
+    "source_script_length_match_count": 0,
+    "forward_sequential_transition_count": 0,
+    "contiguous_logical_span_bytes": 0,
+    "target_transfer_tile_count": 6,
+    "source_script_payload_match_count": 0
+  },
+  "source_role": "unclassified-data",
+  "script_record_source_confirmed": false,
+  "renderer_asset_source_candidate": false,
+  "baseline_script_bytes_unchanged": true,
+  "local_payload_policy": "addresses-opcodes-registers-record-coordinates-and-ROM-bytes-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "capture-contiguous-active-rom-read-block"
+}
