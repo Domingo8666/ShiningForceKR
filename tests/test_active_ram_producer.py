@@ -151,12 +151,13 @@ class ActiveRamProducerTests(unittest.TestCase):
     def test_selects_a_deterministic_nonzero_writer_sentinel(self) -> None:
         self.assertEqual(
             select_producer_sentinels(
-                {0xC100: 0, 0xC101: 0x12, 0xC102: 0x34, 0xC103: 0x56}
+                {0xC100: 0, 0xC101: 0x12, 0xC102: 0x34, 0xC103: 0x56},
+                limit=1,
             ),
             {0xC102},
         )
         self.assertEqual(
-            select_producer_sentinels({0xC100: 0, 0xC101: 0}),
+            select_producer_sentinels({0xC100: 0, 0xC101: 0}, limit=1),
             {0xC101},
         )
         with self.assertRaises(ValueError):

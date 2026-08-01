@@ -93,12 +93,12 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-active-ram-producer"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_active_ram_producer.json"
 )
 LOCAL_REPORT_PATH = Path("reports/local/v5_1_active_ram_producer.json")
-PRODUCER_SENTINEL_COUNT = 1
+PRODUCER_SENTINEL_COUNT = 12
 PRODUCER_WATCH_TIMEOUT_SECONDS = 240.0
 ENDPOINT_WATCH_TIMEOUT_SECONDS = 15.0
 MAX_WRITE_WATCH_HITS = 4096
