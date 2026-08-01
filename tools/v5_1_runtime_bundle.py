@@ -154,6 +154,10 @@ try:
         PUBLISH_RELATIVE_PATH as ACTIVE_RAM_REGISTER_TRACE_RELATIVE_PATH,
         validate_active_ram_register_trace,
     )
+    from .v5_1_active_register_rom_source import (
+        PUBLISH_RELATIVE_PATH as ACTIVE_REGISTER_ROM_SOURCE_RELATIVE_PATH,
+        validate_active_register_rom_source,
+    )
     from .v5_1_runtime_context_glyph_candidates import (
         PUBLISH_RELATIVE_PATH
         as RUNTIME_CONTEXT_GLYPH_CANDIDATES_RELATIVE_PATH,
@@ -397,6 +401,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as ACTIVE_RAM_REGISTER_TRACE_RELATIVE_PATH,
         validate_active_ram_register_trace,
     )
+    from v5_1_active_register_rom_source import (
+        PUBLISH_RELATIVE_PATH as ACTIVE_REGISTER_ROM_SOURCE_RELATIVE_PATH,
+        validate_active_register_rom_source,
+    )
     from v5_1_runtime_context_glyph_candidates import (
         PUBLISH_RELATIVE_PATH
         as RUNTIME_CONTEXT_GLYPH_CANDIDATES_RELATIVE_PATH,
@@ -586,6 +594,8 @@ SAFE_ARTIFACTS = {
         validate_active_ram_writer_source,
     ACTIVE_RAM_REGISTER_TRACE_RELATIVE_PATH:
         validate_active_ram_register_trace,
+    ACTIVE_REGISTER_ROM_SOURCE_RELATIVE_PATH:
+        validate_active_register_rom_source,
     RUNTIME_CONTEXT_GLYPH_CANDIDATES_RELATIVE_PATH:
         validate_runtime_context_glyph_candidates,
     RUNTIME_CONTEXT_GLYPH_REVIEW_RELATIVE_PATH:
