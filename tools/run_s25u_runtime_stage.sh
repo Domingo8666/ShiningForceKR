@@ -1081,6 +1081,43 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    if command -v timeout >/dev/null 2>&1; then
+      first_context_consumer_trace_output="$(
+        timeout -k 15s 360s \
+          python tools/v5_1_first_context_consumer_trace.py \
+          --if-needed 2>&1
+      )"
+    else
+      first_context_consumer_trace_output="$(
+        python tools/v5_1_first_context_consumer_trace.py \
+          --if-needed 2>&1
+      )"
+    fi
+    first_context_consumer_trace_status=$?
+    printf '%s\n' "$first_context_consumer_trace_output"
+    if [ "$first_context_consumer_trace_status" -ne 0 ]; then
+      stage_status="$first_context_consumer_trace_status"
+      diagnostic_trigger=probe
+      first_context_consumer_trace_failure_stage=first-context-consumer-trace
+      case "$first_context_consumer_trace_output" in
+        *"consumer trace identity"*)
+          first_context_consumer_trace_failure_stage=first-context-consumer-trace-identity
+          ;;
+        *"confirmed anchor was not reached"*)
+          first_context_consumer_trace_failure_stage=first-context-consumer-trace-anchor
+          ;;
+        *"encoding row"*|*"input is missing"*)
+          first_context_consumer_trace_failure_stage=first-context-consumer-trace-input
+          ;;
+        *"fields do not match"*|*"counts do not match"*|*"is inconsistent"*)
+          first_context_consumer_trace_failure_stage=first-context-consumer-trace-validation
+          ;;
+      esac
+      record_stage_failure "$first_context_consumer_trace_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     python tools/v5_1_decoder_caller_resolution.py --if-ready
     decoder_caller_resolution_status=$?
     if [ "$decoder_caller_resolution_status" -ne 0 ]; then
