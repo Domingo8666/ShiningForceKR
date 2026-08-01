@@ -27,6 +27,7 @@ try:
     )
     from .v5_1_confirmed_group_extract import (
         PUBLISH_RELATIVE_PATH as GROUP_EXTRACT_PATH,
+        parse_length_prefixed_group,
         validate_confirmed_group_extract,
     )
     from .v5_1_first_context_record_reinsertion import (
@@ -60,6 +61,7 @@ except ImportError:  # pragma: no cover - direct script execution
     )
     from v5_1_confirmed_group_extract import (
         PUBLISH_RELATIVE_PATH as GROUP_EXTRACT_PATH,
+        parse_length_prefixed_group,
         validate_confirmed_group_extract,
     )
     from v5_1_first_context_record_reinsertion import (
@@ -152,6 +154,7 @@ def build_translation_writes(
     font_overlay: bytes,
     reinsertion_rows: list[dict[str, object]],
     group_selector: int,
+    group_physical_start: int,
     declared_group_entry_count: int,
 ) -> tuple[list[ExpectedWrite], int, int]:
     parsed = parse_ips(font_overlay)
@@ -181,12 +184,20 @@ def build_translation_writes(
     if (
         not isinstance(group_selector, int)
         or isinstance(group_selector, bool)
+        or not isinstance(group_physical_start, int)
+        or isinstance(group_physical_start, bool)
+        or not 0 <= group_physical_start < len(target)
         or not isinstance(declared_group_entry_count, int)
         or isinstance(declared_group_entry_count, bool)
         or not 1 <= declared_group_entry_count <= 0xFF
     ):
         raise ValueError("first context group identity is invalid")
-    packed_rows = []
+    group_records = parse_length_prefixed_group(
+        target,
+        physical_start=group_physical_start,
+        entry_count=declared_group_entry_count,
+    )
+    replacements: dict[int, tuple[dict[str, object], bytes]] = {}
     ordered_rows = sorted(
         reinsertion_rows,
         key=lambda item: int(item["length_offset"]),
@@ -227,39 +238,34 @@ def build_translation_writes(
         ]
         if len(group_alias_ordinals) != 1:
             raise ValueError("first context confirmed group alias is ambiguous")
-        packed_rows.append(
-            (
-                row,
-                group_alias_ordinals[0],
-                length_offset,
-                end,
-                encoded,
-            )
-        )
-    if not packed_rows:
+        ordinal = group_alias_ordinals[0]
+        if not 0 <= ordinal < len(group_records) or ordinal in replacements:
+            raise ValueError("first context confirmed group alias is ambiguous")
+        group_record = group_records[ordinal]
+        if (
+            int(group_record["length_offset"]) != length_offset
+            or int(group_record["payload_start"]) != start
+            or int(group_record["payload_end"]) != end
+        ):
+            raise ValueError("first context confirmed group alias is ambiguous")
+        replacements[ordinal] = (row, encoded)
+    if not replacements:
         raise ValueError("first context record rows are missing")
-    ordinals = [item[1] for item in packed_rows]
-    expected_ordinals = list(
-        range(
-            declared_group_entry_count - len(packed_rows),
-            declared_group_entry_count,
-        )
-    )
-    if (
-        ordinals != expected_ordinals
-        or any(
-            left[3] != right[2]
-            for left, right in zip(packed_rows, packed_rows[1:])
-        )
-    ):
-        raise ValueError("first context records are not a contiguous group tail")
-    span_start = packed_rows[0][2]
-    span_end = packed_rows[-1][3]
+    tail_start_ordinal = min(replacements)
+    tail_records = group_records[tail_start_ordinal:]
+    span_start = int(tail_records[0]["length_offset"])
+    span_end = int(tail_records[-1]["payload_end"])
     before = target[span_start:span_end]
-    packed = b"".join(
-        bytes((len(encoded),)) + encoded
-        for _, _, _, _, encoded in packed_rows
-    )
+    packed_parts = []
+    for record in tail_records:
+        ordinal = int(record["ordinal"])
+        payload = (
+            replacements[ordinal][1]
+            if ordinal in replacements
+            else bytes(record["payload"])
+        )
+        packed_parts.append(bytes((len(payload),)) + payload)
+    packed = b"".join(packed_parts)
     if len(packed) > len(before):
         raise ValueError("first context packed group tail exceeds its span")
     after = packed + before[len(packed):]
@@ -276,7 +282,7 @@ def build_translation_writes(
             allowed_end_exclusive=span_end,
         )
     )
-    return writes, font_write_count, len(packed_rows)
+    return writes, font_write_count, len(replacements)
 
 
 def verify_translation_build(
@@ -286,6 +292,9 @@ def verify_translation_build(
     reinsertion_rows: list[dict[str, object]],
     encoding_rows: list[dict[str, object]],
     font_assignments: list[dict[str, object]],
+    group_selector: int,
+    group_physical_start: int,
+    declared_group_entry_count: int,
 ) -> dict[str, int]:
     if len(reinsertion_rows) != len(encoding_rows):
         raise ValueError("first context build verification row count disagrees")
@@ -302,15 +311,40 @@ def verify_translation_build(
     length_fields_verified = 0
     length_fields_changed = 0
     encoded_lengths_exact = 0
+    group_records = parse_length_prefixed_group(
+        baseline,
+        physical_start=group_physical_start,
+        entry_count=declared_group_entry_count,
+    )
+    selected_by_ordinal = {}
+    for row in reinsertion_rows:
+        aliases = row.get("alias_keys")
+        if not isinstance(aliases, list):
+            raise ValueError("first context build verification group alias is invalid")
+        ordinals = [
+            ordinal
+            for alias in aliases
+            if isinstance(alias, (list, tuple))
+            and len(alias) == 2
+            for selector, ordinal in [alias]
+            if selector == group_selector
+            and isinstance(ordinal, int)
+            and not isinstance(ordinal, bool)
+        ]
+        if len(ordinals) != 1 or ordinals[0] in selected_by_ordinal:
+            raise ValueError("first context build verification group alias is invalid")
+        selected_by_ordinal[ordinals[0]] = row
     packed_offsets = {}
-    cursor = min(int(row["length_offset"]) for row in reinsertion_rows)
-    for row in sorted(
-        reinsertion_rows,
-        key=lambda item: int(item["length_offset"]),
-    ):
-        encoded_bytes = int(row["encoded_payload_bytes"])
+    tail_start_ordinal = min(selected_by_ordinal)
+    cursor = int(group_records[tail_start_ordinal]["length_offset"])
+    for record in group_records[tail_start_ordinal:]:
+        ordinal = int(record["ordinal"])
+        row = selected_by_ordinal.get(ordinal)
+        if row is None:
+            cursor += 1 + int(record["record_length_bytes"])
+            continue
         packed_offsets[int(row["review_index"])] = (cursor, cursor + 1)
-        cursor += 1 + encoded_bytes
+        cursor += 1 + int(row["encoded_payload_bytes"])
     for reinsertion, encoding in zip(reinsertion_rows, encoding_rows):
         review_index = int(reinsertion["review_index"])
         length_offset, payload_start = packed_offsets[review_index]
@@ -581,6 +615,7 @@ def main() -> int:
         font_overlay=paths["font_overlay"].read_bytes(),
         reinsertion_rows=reinsertion_rows,
         group_selector=int(group_extract["group"]["selector"]),
+        group_physical_start=int(group_extract["group"]["physical_start"]),
         declared_group_entry_count=int(
             group_extract["group"]["declared_entry_count"]
         ),
@@ -593,6 +628,11 @@ def main() -> int:
         reinsertion_rows=reinsertion_rows,
         encoding_rows=encoding_rows,
         font_assignments=font_assignments,
+        group_selector=int(group_extract["group"]["selector"]),
+        group_physical_start=int(group_extract["group"]["physical_start"]),
+        declared_group_entry_count=int(
+            group_extract["group"]["declared_entry_count"]
+        ),
     )
     verification.update(
         {

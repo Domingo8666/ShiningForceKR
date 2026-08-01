@@ -23,8 +23,25 @@ STAMP = "2026-07-31T13:00:00Z"
 
 
 class FirstContextTranslationTestBuildTests(unittest.TestCase):
+    @staticmethod
+    def _target_with_group() -> tuple[bytes, list[tuple[int, int, int]]]:
+        target = bytearray(range(100))
+        cursor = 40
+        records = []
+        for ordinal, length in enumerate((2, 3, 4, 6)):
+            length_offset = cursor
+            target[cursor] = length
+            cursor += 1
+            payload_start = cursor
+            for index in range(length):
+                target[cursor + index] = 0x20 + ordinal * 8 + index
+            cursor += length
+            records.append((length_offset, payload_start, cursor))
+        return bytes(target), records
+
     def test_combines_font_and_fixed_length_record_writes(self) -> None:
-        target = bytes(range(100))
+        target, records = self._target_with_group()
+        length_offset, payload_start, payload_end = records[3]
         font_payload = b"\xFE\xFD"
         font_overlay = (
             b"PATCH"
@@ -42,14 +59,15 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
                     "target_selector": 7,
                     "target_ordinal": 3,
                     "alias_keys": [(7, 3)],
-                    "length_offset": 49,
-                    "payload_start": 50,
-                    "payload_end": 56,
+                    "length_offset": length_offset,
+                    "payload_start": payload_start,
+                    "payload_end": payload_end,
                     "encoded_payload_hex": "AABBCC",
                     "fits_in_place": True,
                 }
             ],
             group_selector=7,
+            group_physical_start=40,
             declared_group_entry_count=4,
         )
         self.assertEqual(font_count, 1)
@@ -58,31 +76,44 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
         record_write = next(
             write for write in writes if "record" in write.writer
         )
-        self.assertEqual(record_write.offset, 49)
+        self.assertEqual(record_write.offset, length_offset)
         self.assertEqual(record_write.after[:4], b"\x03\xAA\xBB\xCC")
-        self.assertEqual(record_write.after[4:], target[53:56])
+        self.assertEqual(record_write.after[4:], target[payload_start + 3:payload_end])
 
-    def test_rejects_records_that_are_not_the_group_tail(self) -> None:
-        target = bytes(range(100))
-        font_overlay = b"PATCHEOF"
-        with self.assertRaisesRegex(ValueError, "contiguous group tail"):
-            build_translation_writes(
-                target=target,
-                font_overlay=font_overlay,
-                reinsertion_rows=[{
-                    "review_index": 1,
-                    "target_selector": 7,
-                    "target_ordinal": 2,
-                    "alias_keys": [(7, 2)],
-                    "length_offset": 49,
-                    "payload_start": 50,
-                    "payload_end": 56,
-                    "encoded_payload_hex": "AABBCC",
-                    "fits_in_place": True,
-                }],
-                group_selector=7,
-                declared_group_entry_count=4,
-            )
+    def test_repacks_untranslated_records_after_changed_record(self) -> None:
+        target, records = self._target_with_group()
+        length_offset, payload_start, payload_end = records[2]
+        last_length_offset, _, last_payload_end = records[3]
+        writes, font_count, record_count = build_translation_writes(
+            target=target,
+            font_overlay=b"PATCHEOF",
+            reinsertion_rows=[{
+                "review_index": 1,
+                "target_selector": 7,
+                "target_ordinal": 2,
+                "alias_keys": [(7, 2)],
+                "length_offset": length_offset,
+                "payload_start": payload_start,
+                "payload_end": payload_end,
+                "encoded_payload_hex": "AABBCC",
+                "fits_in_place": True,
+            }],
+            group_selector=7,
+            group_physical_start=40,
+            declared_group_entry_count=4,
+        )
+        self.assertEqual(font_count, 0)
+        self.assertEqual(record_count, 1)
+        self.assertEqual(len(writes), 1)
+        record_write = writes[0]
+        self.assertEqual(record_write.offset, length_offset)
+        self.assertEqual(record_write.allowed_end_exclusive, last_payload_end)
+        self.assertEqual(record_write.after[:4], b"\x03\xAA\xBB\xCC")
+        self.assertEqual(
+            record_write.after[4:],
+            target[last_length_offset:last_payload_end]
+            + target[last_payload_end - 1:last_payload_end],
+        )
 
     def test_builds_safe_static_verification_receipt(self) -> None:
         verification = {
