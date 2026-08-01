@@ -3,8 +3,8 @@
 
 This is a baseline-only diagnostic.  It does not rewrite script bytes or copy
 candidate font pages.  The goal is to replace speculative ROM-page tests with
-one measured boundary: VRAM immediately before and after the confirmed text
-consumer returns.
+one measured boundary: VRAM immediately before the confirmed payload handoff
+and after the same two bounded frames that already captured the VDP renderer.
 """
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ try:
         REQUIRED_TOOLS,
         _load_json_object,
         _reach_exact_payload,
-        _trace_to_outer_return,
+        _trace_bounded_frames,
         analyze_trace_lines,
         validate_renderer_output_trace,
     )
@@ -37,14 +37,14 @@ except ImportError:  # pragma: no cover - direct script execution
         REQUIRED_TOOLS,
         _load_json_object,
         _reach_exact_payload,
-        _trace_to_outer_return,
+        _trace_bounded_frames,
         analyze_trace_lines,
         validate_renderer_output_trace,
     )
 
 
 ARTIFACT_KIND = "sanitized-s25u-active-vram-route"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_active_vram_route.json"
 )
@@ -537,7 +537,7 @@ def main() -> int:
             area_id=area_id,
             size=area_size,
         )
-        trace_lines, trace_local = _trace_to_outer_return(
+        trace_lines, trace_local = _trace_bounded_frames(
             client,
             ready_state=ready_state,
         )
