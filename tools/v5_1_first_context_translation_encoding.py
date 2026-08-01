@@ -3083,6 +3083,33 @@ def select_row_font_pages(
     pages: list[int | tuple[int, ...]] = []
     used_pages: set[int] = set()
     constraints = runtime_constraints or [None] * len(visual_rows)
+    fixed_lengths = _code_lengths(trees)
+    fixed_glyph_symbols = tuple(
+        range(FONT_GLYPH_FIRST_SYMBOL, FONT_GLYPH_LAST_SYMBOL + 1)
+    )
+
+    def fixed_transition(
+        previous: int,
+        sequence: tuple[int, ...],
+    ) -> tuple[int, int] | None:
+        bits = 0
+        for symbol in sequence:
+            edge = fixed_lengths.get(previous, {}).get(symbol)
+            if edge is None:
+                return None
+            bits += edge
+            previous = symbol
+        return bits, previous
+
+    @lru_cache(maxsize=None)
+    def can_reach_terminator(previous: int, glyph_count: int) -> bool:
+        if glyph_count == 0:
+            return CANDIDATE_END_SYMBOL in fixed_lengths.get(previous, {})
+        return any(
+            can_reach_terminator(symbol, glyph_count - 1)
+            for symbol in fixed_glyph_symbols
+            if symbol in fixed_lengths.get(previous, {})
+        )
     for row_index, (visuals, constraint) in enumerate(
         zip(visual_rows, constraints)
     ):
@@ -3097,13 +3124,34 @@ def select_row_font_pages(
             )
         )
         if constraint is not None and "original_symbol_count" in constraint:
+            ranked_secondary = []
+            for candidate_page in range(FONT_PAGE_COUNT):
+                if candidate_page == preferred or candidate_page in used_pages:
+                    continue
+                token = tuple(page_select_symbols(candidate_page))
+                incoming = sum(
+                    fixed_transition(previous, token) is not None
+                    for previous in fixed_glyph_symbols
+                )
+                suffix_depths = sum(
+                    can_reach_terminator(token[-1], remaining)
+                    for remaining in range(1, len(visuals))
+                )
+                if not incoming or not suffix_depths:
+                    continue
+                ranked_secondary.append(
+                    (
+                        -suffix_depths,
+                        -incoming,
+                        abs(candidate_page - preferred),
+                        candidate_page,
+                    )
+                )
             candidate_pages = tuple(
                 dict.fromkeys(
                     (
                         preferred,
-                        89,
-                        *ROW_FONT_PAGES,
-                        *range(FONT_PAGE_COUNT - 1, -1, -1),
+                        *(item[-1] for item in sorted(ranked_secondary)),
                     )
                 )
             )
@@ -3111,7 +3159,7 @@ def select_row_font_pages(
             if "original_symbol_count" in constraint:
                 candidate_pages = tuple(
                     page for page in candidate_pages if page not in used_pages
-                )[:2]
+                )[:4]
             else:
                 candidate_pages = candidate_pages[
                     :MAX_EXACT_FONT_PAGE_CANDIDATES
@@ -3155,12 +3203,17 @@ def select_row_font_pages(
                         )
             except ValueError:
                 if constraint is not None:
-                    candidate_groups = [
-                        (anchor, page) for anchor in failed_pages[:4]
-                    ]
-                    expanded_pool = tuple((*failed_pages, page))
-                    if len(expanded_pool) in {4, 8}:
-                        candidate_groups.append(expanded_pool)
+                    if "original_symbol_count" in constraint:
+                        candidate_groups = (
+                            [(failed_pages[0], page)] if failed_pages else []
+                        )
+                    else:
+                        candidate_groups = [
+                            (anchor, page) for anchor in failed_pages[:4]
+                        ]
+                        expanded_pool = tuple((*failed_pages, page))
+                        if len(expanded_pool) in {4, 8}:
+                            candidate_groups.append(expanded_pool)
                     for page_group in candidate_groups:
                         try:
                             if "original_symbol_count" in constraint:
