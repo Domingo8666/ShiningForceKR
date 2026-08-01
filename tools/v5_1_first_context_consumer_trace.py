@@ -15,7 +15,10 @@ from pathlib import Path
 
 try:
     from .patch_io import sha256_file
-    from .run_s25u_renderer_probe import HUFFMAN_VECTOR_START
+    from .run_s25u_renderer_probe import (
+        HUFFMAN_VECTOR_START,
+        _last_rom_read,
+    )
     from .run_s25u_runtime_probe import (
         McpStdioClient,
         _capture_state,
@@ -46,7 +49,6 @@ try:
         _physical_address,
         _write_a_address,
     )
-    from .v5_1_renderer_output_trace import _trace_bounded_frames
     from .v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
     from .v5_1_source_target_anchor import (
         CONFIRMED_ORDINAL,
@@ -63,7 +65,7 @@ try:
     from .v5_1_test_display_capture import _continue_until_breakpoint
 except ImportError:  # pragma: no cover - direct script execution
     from patch_io import sha256_file
-    from run_s25u_renderer_probe import HUFFMAN_VECTOR_START
+    from run_s25u_renderer_probe import HUFFMAN_VECTOR_START, _last_rom_read
     from run_s25u_runtime_probe import (
         McpStdioClient,
         _capture_state,
@@ -94,7 +96,6 @@ except ImportError:  # pragma: no cover - direct script execution
         _physical_address,
         _write_a_address,
     )
-    from v5_1_renderer_output_trace import _trace_bounded_frames
     from v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
     from v5_1_source_target_anchor import (
         CONFIRMED_ORDINAL,
@@ -122,6 +123,7 @@ LOCAL_REPORT_PATH = Path(
 MAX_VECTOR_READ_HITS = 128
 FIRST_VECTOR_TIMEOUT_SECONDS = 4.0
 NEXT_VECTOR_TIMEOUT_SECONDS = 0.75
+VECTOR_LOGICAL_RANGES = ((0x4100, 0x42FF), (0x8100, 0x82FF))
 TRACE_COUNT_KEYS = {
     "planned_decode_count",
     "expected_context_count",
@@ -607,8 +609,13 @@ def _capture_contexts(
 ) -> tuple[list[int], dict[str, object]]:
     client = McpStdioClient(_default_command())
     entry_address = f"{DECODER_ENTRY_LOGICAL:04X}"
+    vector_ranges = [
+        (f"{start:04X}", f"{end:04X}")
+        for start, end in VECTOR_LOGICAL_RANGES
+    ]
     entry_armed = False
-    local: dict[str, object] = {"anchor_hits": []}
+    vector_armed = False
+    local: dict[str, object] = {"anchor_hits": [], "vector_events": []}
 
     def arm_entry() -> None:
         nonlocal entry_armed
@@ -637,6 +644,40 @@ def _capture_contexts(
                 },
             )
             entry_armed = False
+
+    def arm_vectors() -> None:
+        nonlocal vector_armed
+        for start, end in vector_ranges:
+            client.call(
+                "set_breakpoint_range",
+                {
+                    "start_address": start,
+                    "end_address": end,
+                    "memory_area": "rom_ram",
+                    "execute": False,
+                    "read": True,
+                    "write": False,
+                },
+            )
+        vector_armed = True
+
+    def disarm_vectors() -> None:
+        nonlocal vector_armed
+        if not vector_armed:
+            return
+        for start, end in vector_ranges:
+            try:
+                client.call(
+                    "remove_breakpoint",
+                    {
+                        "address": start,
+                        "end_address": end,
+                        "memory_area": "rom_ram",
+                    },
+                )
+            except RuntimeError:
+                pass
+        vector_armed = False
 
     contexts: list[int] = []
     try:
@@ -685,20 +726,80 @@ def _capture_contexts(
         if not anchor_reached or anchor_state is None:
             raise RuntimeError("consumer trace confirmed anchor was not reached")
 
-        trace_lines, trace_window = _trace_bounded_frames(
-            client,
-            ready_state=anchor_state,
+        client.call(
+            "set_trace_log",
+            {
+                "enabled": True,
+                "cpu_irq": False,
+                "vdp_write": False,
+                "vdp_status": False,
+                "psg": False,
+                "ym2413": False,
+                "io_port": False,
+                "bank_switch": True,
+            },
         )
-        contexts, trace_diagnostics = analyze_vector_contexts_from_trace(
-            trace_lines,
+        diagnostic_lines: list[str] = []
+        for hit_index in range(MAX_VECTOR_READ_HITS):
+            arm_vectors()
+            status = _continue_until_breakpoint(
+                client,
+                FIRST_VECTOR_TIMEOUT_SECONDS
+                if hit_index == 0
+                else NEXT_VECTOR_TIMEOUT_SECONDS,
+            )
+            if status.get("at_breakpoint") is not True:
+                break
+            state, evidence = _capture_state(client)
+            trace = evidence.get("trace")
+            if isinstance(trace, dict):
+                lines = trace.get("lines")
+                if isinstance(lines, list):
+                    diagnostic_lines.extend(
+                        line for line in lines if isinstance(line, str)
+                    )
+            sample = _last_rom_read(state, evidence, rom_size)
+            event: dict[str, object] = {
+                "state": state,
+                "evidence": evidence,
+                "sample": sample,
+            }
+            if sample is not None:
+                physical = sample.get("physical_file_offset")
+                if (
+                    sample.get("classification")
+                    == "korean-huffman-vector"
+                    and isinstance(physical, int)
+                    and not isinstance(physical, bool)
+                    and HUFFMAN_VECTOR_START
+                    <= physical
+                    < HUFFMAN_VECTOR_START + 0x200
+                    and (physical - HUFFMAN_VECTOR_START) % 2 == 0
+                ):
+                    context = (physical - HUFFMAN_VECTOR_START) // 2
+                    contexts.append(context)
+                    event["context"] = context
+            local["vector_events"].append(event)
+            disarm_vectors()
+            # Read breakpoints are reported after the memory instruction has
+            # completed.  Re-arming and continuing resumes at the following
+            # instruction; stepping here would skip a possible next lookup.
+
+        _, trace_diagnostics = analyze_vector_contexts_from_trace(
+            diagnostic_lines,
             initial_slot1_bank=int(anchor_state["slot1_bank"]),
             initial_slot2_bank=int(anchor_state["slot2_bank"]),
             initial_ix=int(anchor_state["registers"]["ix"]),
             initial_iy=int(anchor_state["registers"]["iy"]),
         )
-        local["consumer_trace_window"] = trace_window
+        trace_diagnostics["logical_vector_window_read_count"] = max(
+            trace_diagnostics["logical_vector_window_read_count"],
+            len(contexts),
+        )
+        trace_diagnostics["mapped_vector_read_count"] = len(contexts)
+        local["sampling_mode"] = "post-read-breakpoint-no-extra-step"
         local["trace_diagnostics"] = trace_diagnostics
-        local["raw_trace_lines"] = trace_lines
+        local["raw_trace_lines"] = diagnostic_lines
         local["observed_contexts"] = contexts
         return contexts, local
     except Exception as error:
@@ -717,6 +818,7 @@ def _capture_contexts(
             disarm_entry()
         except RuntimeError:
             pass
+        disarm_vectors()
         try:
             client.call(
                 "set_trace_log",
