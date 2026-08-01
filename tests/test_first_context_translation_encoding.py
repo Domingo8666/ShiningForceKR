@@ -768,6 +768,30 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(padding, 1)
         self.assertEqual(assignments, [3, 4])
 
+    def test_fixed_count_solver_uses_safe_temporary_suffix_page(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x5F),
+            0x11: tree(0x11, 0x02, 0x03),
+            0x02: tree(0x02, 0x03, 0x02),
+            0x03: tree(0x03, 0x04, 0xC9),
+            0x04: tree(0x04, 0x5F, 0x04),
+        }
+        symbols, padding, assignments = solve_fixed_count_row_visual_symbols(
+            trees=trees,
+            initial_context=0xC9,
+            maximum_bits=9,
+            target_symbol_count=9,
+            page=240,
+            visuals=["text:가", "text:나"],
+        )
+        self.assertEqual(
+            symbols,
+            [0x5F, 0x11, 0x02, 0x03, 0x04, 0x5F, 0x11, 0x03, 0xC9],
+        )
+        self.assertEqual(padding, 1)
+        self.assertEqual(assignments, [3, 4])
+
     def test_builds_two_page_symbols_and_preserves_insertions(self) -> None:
         targets = [
             {"review_index": 1, "target_text": "가!"},

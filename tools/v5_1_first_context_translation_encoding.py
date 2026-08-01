@@ -2327,6 +2327,12 @@ def solve_fixed_count_row_visual_symbols(
     )
     glyph_symbol_set = set(glyph_symbols)
     row_page_token = tuple(page_select_symbols(page))
+    all_page_tokens = tuple(
+        dict.fromkeys(
+            tuple(page_select_symbols(candidate_page))
+            for candidate_page in range(FONT_PAGE_COUNT)
+        )
+    )
 
     def transition(
         previous: int,
@@ -2341,8 +2347,27 @@ def solve_fixed_count_row_visual_symbols(
             previous = symbol
         return bits, previous
 
-    selected = transition(initial_context, row_page_token)
-    if selected is None or selected[0] >= maximum_bits:
+    initial_by_state: dict[
+        tuple[int, int],
+        tuple[int, int, int, int, tuple[int, ...], tuple[int, ...]],
+    ] = {}
+    initial_routes = [(row_page_token, 0)]
+    if extra_page_tokens:
+        # A temporary page before the mandatory row page is invisible: the
+        # mandatory selection restores the correct page before any glyph.
+        initial_routes.extend(
+            (token + row_page_token, 1) for token in all_page_tokens
+        )
+    for route, inserted in initial_routes:
+        selected = transition(initial_context, route)
+        if selected is None or selected[0] >= maximum_bits:
+            continue
+        candidate = (selected[0], selected[1], 0, inserted, route, ())
+        state = (selected[1], inserted)
+        incumbent = initial_by_state.get(state)
+        if incumbent is None or candidate < incumbent:
+            initial_by_state[state] = candidate
+    if not initial_by_state:
         raise ValueError("first context fixed-count page is not selectable")
 
     candidate_order: dict[int, tuple[int, ...]] = {}
@@ -2366,7 +2391,7 @@ def solve_fixed_count_row_visual_symbols(
     # (bits, previous, used-mask, inserted-controls, route, assignments)
     frontier: list[
         tuple[int, int, int, int, tuple[int, ...], tuple[int, ...]]
-    ] = [(selected[0], selected[1], 0, 0, row_page_token, ())]
+    ] = sorted(initial_by_state.values())
     # The device runner has a 120-second guard.  A 5,000-state frontier can
     # create tens of millions of Python tuples across eight candidate pages.
     # Runtime analysis found only a handful of glyphs with a page-select exit,
@@ -2430,13 +2455,25 @@ def solve_fixed_count_row_visual_symbols(
     completed = []
     for bits, previous, _used_mask, inserted, route, assignments in frontier:
         remaining = extra_page_tokens - inserted
-        tail = row_page_token * remaining + (CANDIDATE_END_SYMBOL,)
-        ended = transition(previous, tail)
-        if ended is None or bits + ended[0] > maximum_bits:
-            continue
-        symbols = route + tail
-        if len(symbols) == target_symbol_count:
-            completed.append((bits + ended[0], symbols, assignments))
+        if remaining == 0:
+            tails = ((CANDIDATE_END_SYMBOL,),)
+        elif remaining == 1:
+            # A temporary page immediately before the terminator is also
+            # invisible because no following glyph observes that page.
+            tails = tuple(
+                token + (CANDIDATE_END_SYMBOL,) for token in all_page_tokens
+            )
+        else:
+            tails = (
+                row_page_token * remaining + (CANDIDATE_END_SYMBOL,),
+            )
+        for tail in tails:
+            ended = transition(previous, tail)
+            if ended is None or bits + ended[0] > maximum_bits:
+                continue
+            symbols = route + tail
+            if len(symbols) == target_symbol_count:
+                completed.append((bits + ended[0], symbols, assignments))
     if completed:
         _, symbols, assignments = min(completed)
         return list(symbols), extra_page_tokens, list(assignments)
