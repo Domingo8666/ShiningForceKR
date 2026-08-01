@@ -89,6 +89,15 @@ run_source_target_runtime_sequence() {
   fi
 }
 
+run_active_register_rom_source() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout -k 15s 150s \
+      python tools/v5_1_active_register_rom_source.py --if-ready
+  else
+    python tools/v5_1_active_register_rom_source.py --if-ready
+  fi
+}
+
 visible_font_catalog_ready() {
   python -c 'import json; from pathlib import Path; path=Path("analysis/local/v5_1_font_catalog.json"); value=json.loads(path.read_text(encoding="utf-8")); print("yes" if value.get("artifact_kind") == "local-v5-1-galmuri7-font-catalog" and value.get("status") == "verified-static-local-analysis" and isinstance(value.get("entries"), list) and bool(value["entries"]) else "no")' 2>/dev/null || true
 }
@@ -719,7 +728,7 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
-    python tools/v5_1_active_register_rom_source.py --if-ready
+    run_active_register_rom_source
     active_register_rom_source_status=$?
     if [ "$active_register_rom_source_status" -ne 0 ]; then
       stage_status="$active_register_rom_source_status"

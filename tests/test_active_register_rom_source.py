@@ -5,6 +5,7 @@ import unittest
 from tools.v5_1_active_register_rom_source import (
     build_active_register_rom_source,
     physical_rom_source,
+    physical_source_region,
     source_slot,
     validate_active_register_rom_source,
 )
@@ -44,10 +45,25 @@ class ActiveRegisterRomSourceTests(unittest.TestCase):
         )
         validate_active_register_rom_source(safe)
         self.assertTrue(safe["rom_source_confirmed"])
+        self.assertEqual(safe["source_region"], "original-rom")
         self.assertEqual(
             safe["next_checkpoint"],
-            "correlate-active-rom-source-with-script-or-font",
+            "correlate-original-rom-source-with-script-table",
         )
+
+    def test_classifies_known_korean_engine_regions(self) -> None:
+        self.assertEqual(physical_source_region(0x80100), "korean-huffman-vector")
+        self.assertEqual(physical_source_region(0x80300), "korean-huffman-tree")
+        self.assertEqual(
+            physical_source_region(0x87000),
+            "korean-font-runtime-primary",
+        )
+        self.assertEqual(physical_source_region(0x87400), "korean-font-page-map")
+        self.assertEqual(
+            physical_source_region(0x87A00),
+            "korean-font-runtime-secondary",
+        )
+        self.assertEqual(physical_source_region(0x88000), "korean-font-data")
 
 
 if __name__ == "__main__":

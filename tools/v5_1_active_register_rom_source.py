@@ -66,7 +66,7 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-active-register-rom-source"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_active_register_rom_source.json"
 )
@@ -90,6 +90,7 @@ TOP_LEVEL_KEYS = {
     "source_slot",
     "mapped_bank",
     "physical_source_offset",
+    "source_region",
     "rom_source_confirmed",
     "baseline_script_bytes_unchanged",
     "local_payload_policy",
@@ -153,6 +154,41 @@ def physical_rom_source(
     return bank, offset
 
 
+def physical_source_region(offset: int) -> str:
+    if not 0 <= offset < 0x17C000:
+        raise ValueError("active register physical ROM source is out of range")
+    if offset < 0x80000:
+        return "original-rom"
+    if 0x80100 <= offset < 0x80300:
+        return "korean-huffman-vector"
+    if 0x80300 <= offset < 0x808D3:
+        return "korean-huffman-tree"
+    if 0x87000 <= offset < 0x8730B:
+        return "korean-font-runtime-primary"
+    if 0x87400 <= offset < 0x874F4:
+        return "korean-font-page-map"
+    if 0x87A00 <= offset < 0x87A9D:
+        return "korean-font-runtime-secondary"
+    if 0x88000 <= offset < 0x17C000:
+        return "korean-font-data"
+    return "expanded-runtime-other"
+
+
+def next_checkpoint_for_region(region: str, *, confirmed: bool) -> str:
+    if not confirmed:
+        return "extend-active-register-rom-mapping"
+    return {
+        "original-rom": "correlate-original-rom-source-with-script-table",
+        "korean-huffman-vector": "map-active-context-vector-entry",
+        "korean-huffman-tree": "map-active-huffman-symbol",
+        "korean-font-runtime-primary": "trace-primary-font-runtime-read",
+        "korean-font-page-map": "map-active-font-page",
+        "korean-font-runtime-secondary": "trace-secondary-font-runtime-read",
+        "korean-font-data": "identify-active-font-page-and-glyph",
+        "expanded-runtime-other": "classify-expanded-runtime-source",
+    }[region]
+
+
 def build_active_register_rom_source(
     *,
     target_sha256: str,
@@ -169,6 +205,7 @@ def build_active_register_rom_source(
         and int(analysis["physical_source_count"]) == 1
         and int(analysis["rom_value_match_count"]) == 1
     )
+    source_region = physical_source_region(physical_source_offset)
     value = {
         "artifact_kind": ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
@@ -184,17 +221,14 @@ def build_active_register_rom_source(
         "source_slot": source_slot_name,
         "mapped_bank": mapped_bank,
         "physical_source_offset": physical_source_offset,
+        "source_region": source_region,
         "rom_source_confirmed": confirmed,
         "baseline_script_bytes_unchanged": True,
         "local_payload_policy": (
             "logical-addresses-values-opcodes-registers-and-mapper-bytes-local-only"
         ),
         "translation_build_eligible": False,
-        "next_checkpoint": (
-            "correlate-active-rom-source-with-script-or-font"
-            if confirmed
-            else "extend-active-register-rom-mapping"
-        ),
+        "next_checkpoint": next_checkpoint_for_region(source_region, confirmed=confirmed),
     }
     validate_active_register_rom_source(value)
     return value
@@ -219,6 +253,16 @@ def validate_active_register_rom_source(value: dict[str, object]) -> None:
         or not isinstance(value["physical_source_offset"], int)
         or isinstance(value["physical_source_offset"], bool)
         or int(value["physical_source_offset"]) < 0
+        or value["source_region"] not in {
+            "original-rom",
+            "korean-huffman-vector",
+            "korean-huffman-tree",
+            "korean-font-runtime-primary",
+            "korean-font-page-map",
+            "korean-font-runtime-secondary",
+            "korean-font-data",
+            "expanded-runtime-other",
+        }
     ):
         raise ValueError("active register ROM source policy is invalid")
     counts = value["analysis"]
@@ -243,7 +287,8 @@ def validate_active_register_rom_source(value: dict[str, object]) -> None:
         or value["rom_source_confirmed"] is not confirmed
         or value["baseline_script_bytes_unchanged"] is not True
         or value["translation_build_eligible"] is not False
-        or value["next_checkpoint"] != ("correlate-active-rom-source-with-script-or-font" if confirmed else "extend-active-register-rom-mapping")
+        or value["source_region"] != physical_source_region(int(value["physical_source_offset"]))
+        or value["next_checkpoint"] != next_checkpoint_for_region(str(value["source_region"]), confirmed=confirmed)
         or value["local_payload_policy"] != "logical-addresses-values-opcodes-registers-and-mapper-bytes-local-only"
     ):
         raise ValueError("active register ROM source result is inconsistent")
