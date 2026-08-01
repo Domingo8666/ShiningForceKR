@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 
 from tools.v5_1_active_rom_source_role import (
+    _flatten_records,
     analyze_source_role,
     build_active_rom_source_role,
     target_transfer_byte_count,
@@ -11,6 +12,17 @@ from tools.v5_1_active_rom_source_role import (
 
 
 class ActiveRomSourceRoleTests(unittest.TestCase):
+    def test_reads_records_from_the_local_population_wrapper(self) -> None:
+        record = {
+            "length_offset": 0x6ABF,
+            "payload_start": 0x6AC0,
+            "payload_end": 0x6AE0,
+        }
+        self.assertEqual(
+            _flatten_records({"analysis": {"groups": [{"records": [record]}]}}),
+            [record],
+        )
+
     def test_reads_transfer_count_from_current_vram_route_schema(self) -> None:
         self.assertEqual(
             target_transfer_byte_count({

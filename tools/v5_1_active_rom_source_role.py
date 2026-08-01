@@ -116,7 +116,10 @@ def _load_object(path: Path) -> dict[str, object]:
 
 
 def _flatten_records(population_local: dict[str, object]) -> list[dict[str, object]]:
-    groups = population_local.get("groups")
+    analysis = population_local.get("analysis")
+    if not isinstance(analysis, dict):
+        raise ValueError("active ROM source role population analysis is missing")
+    groups = analysis.get("groups")
     if not isinstance(groups, list):
         raise ValueError("active ROM source role target groups are missing")
     records: list[dict[str, object]] = []
