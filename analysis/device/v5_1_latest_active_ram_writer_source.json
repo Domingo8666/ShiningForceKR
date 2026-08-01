@@ -3,23 +3,23 @@
   "schema_version": 1,
   "status": "active-ram-writer-source-classified",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "source_active_ram_producer_sha256": "61d7c830633d5ef31c84a5b51309b29a5e7dbc83cb21fe51c2f84329ed3ae04e",
-  "captured_utc": "2026-08-01T19:42:31.356267Z",
+  "source_active_ram_producer_sha256": "19a6bf7074c5badd26b6b919cfc00289b04696a0e396e51d06cd02c0551111f9",
+  "captured_utc": "2026-08-01T20:00:23.460533Z",
   "analysis": {
-    "rom_window_source_event_count": 0,
-    "candidate_event_count": 1,
-    "memory_source_event_count": 0,
-    "io_source_event_count": 0,
-    "unresolved_source_event_count": 0,
-    "classified_event_count": 1,
     "system_ram_source_event_count": 0,
-    "immediate_source_event_count": 0,
-    "register_source_event_count": 1
+    "unresolved_source_event_count": 0,
+    "register_source_event_count": 0,
+    "memory_source_event_count": 0,
+    "candidate_event_count": 1,
+    "classified_event_count": 1,
+    "immediate_source_event_count": 1,
+    "rom_window_source_event_count": 0,
+    "io_source_event_count": 0
   },
   "writer_sentinel_confirmed": true,
-  "writer_source_class": "register",
+  "writer_source_class": "immediate",
   "baseline_script_bytes_unchanged": true,
   "local_payload_policy": "writer-opcodes-registers-pcs-and-source-addresses-local-only",
   "translation_build_eligible": false,
-  "next_checkpoint": "trace-active-ram-writer-register-input"
+  "next_checkpoint": "map-active-ram-writer-immediate-input"
 }
