@@ -125,7 +125,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             visuals=[f"text:{index}" for index in range(9)],
         )
         self.assertEqual(assignments, list(range(0x02, 0x0B)))
-        self.assertEqual(symbols, assignments)
+        self.assertEqual(symbols, [*assignments, 0xC9])
         self.assertEqual(
             direct_renderer_font_tile_offset(21, 0x05),
             direct_renderer_font_tile_offset(21, 0x02) + 3 * 32,
@@ -135,7 +135,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         trees = {
             0xC9: tree(0xC9, 0x02, 0xFE),
             0x02: tree(0x02, 0x03, 0xFE),
-            0x03: tree(0x03, 0x03, 0xFE),
+            0x03: tree(0x03, 0x03, 0xC9),
         }
         symbols, assignments = solve_direct_renderer_proof_symbols(
             trees=trees,
@@ -143,13 +143,14 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             maximum_bits=8,
             visuals=["text:가", "technical-blank", "technical-blank"],
         )
-        self.assertEqual(symbols, [0x02, 0x03, 0x03])
-        self.assertEqual(assignments, symbols)
+        self.assertEqual(symbols, [0x02, 0x03, 0x03, 0xC9])
+        self.assertEqual(assignments, symbols[:-1])
 
     def test_direct_renderer_accepts_traced_page_marker_as_a_slot(self) -> None:
         trees = {
             0xC9: tree(0xC9, 0x5F, 0xFE),
             0x5F: tree(0x5F, 0x02, 0xFE),
+            0x02: tree(0x02, 0xC9, 0xFE),
         }
         symbols, assignments = solve_direct_renderer_proof_symbols(
             trees=trees,
@@ -157,19 +158,19 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             maximum_bits=8,
             visuals=["text:두", "text:고"],
         )
-        self.assertEqual(symbols, [0x5F, 0x02])
-        self.assertEqual(assignments, symbols)
+        self.assertEqual(symbols, [0x5F, 0x02, 0xC9])
+        self.assertEqual(assignments, symbols[:-1])
         self.assertGreater(
             direct_renderer_font_tile_offset(21, 0x5F),
             direct_renderer_font_tile_offset(21, 0x5E),
         )
 
     def test_first_row_direct_renderer_omits_inline_page_token(self) -> None:
-        direct_symbols = list(range(0x02, 0x0C))
+        direct_symbols = [*range(0x02, 0x0B), 0xC9]
         with patch(
             "tools.v5_1_first_context_translation_encoding."
             "solve_direct_renderer_proof_symbols",
-            return_value=(direct_symbols, direct_symbols),
+            return_value=(direct_symbols, direct_symbols[:-1]),
         ):
             counts, rows, assignments = build_single_page_symbol_rows(
                 trees={},
@@ -187,11 +188,11 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(rows[0]["symbols"], direct_symbols)
         self.assertEqual(rows[0]["runtime_symbol_count"], 10)
         self.assertEqual(rows[0]["page_select_count"], 0)
-        self.assertEqual(rows[0]["terminator_count"], 0)
+        self.assertEqual(rows[0]["terminator_count"], 1)
         self.assertTrue(rows[0]["direct_renderer_proof"])
         self.assertEqual(counts["planned_page_select_count"], 0)
-        self.assertEqual(counts["planned_terminator_count"], 0)
-        self.assertEqual(len(assignments[0]), 20)
+        self.assertEqual(counts["planned_terminator_count"], 1)
+        self.assertEqual(len(assignments[0]), 18)
         self.assertEqual(assignments[0][0]["visual"], "text:가")
         self.assertTrue(assignments[0][0]["direct_renderer_page"])
         self.assertEqual(

@@ -353,17 +353,8 @@ def verify_translation_build(
             decoded == expected_symbols
             and decoded_bits == expected_bits
             and len(expected_symbols) == runtime_symbol_count
-            and (
-                (
-                    encoding.get("direct_renderer_proof") is True
-                    and encoding.get("terminator_count") == 0
-                    and CANDIDATE_END_SYMBOL not in expected_symbols
-                )
-                or (
-                    encoding.get("direct_renderer_proof") is not True
-                    and expected_symbols[-1] == CANDIDATE_END_SYMBOL
-                )
-            )
+            and encoding.get("terminator_count", 1) == 1
+            and expected_symbols[-1] == CANDIDATE_END_SYMBOL
         ):
             roundtrips += 1
         else:

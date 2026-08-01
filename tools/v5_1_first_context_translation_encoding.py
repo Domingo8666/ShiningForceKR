@@ -1311,10 +1311,10 @@ def solve_direct_renderer_proof_symbols(
     The runtime consumer renders every decoded non-terminator symbol through
     its already-selected page.  Pick distinct glyph symbols so each on-screen
     position can receive an independently audited tile.  The consumer trace
-    proved that this path reads a fixed count and renders through the nominal
-    terminator, so this proof deliberately emits glyphs in every consumed slot
-    and does not append the disproven terminator.  A depth-first route finder
-    keeps only one candidate path in memory.  This matters on the Termux target,
+    proved that this path reads a fixed count, including the nominal terminator;
+    keeping that terminator is required to preserve consecutive dialogue flow.
+    A depth-first route finder keeps only one candidate path in memory.  This
+    matters on the Termux target,
     where materializing and sorting a beam of tuple paths can be killed by the
     Android low-memory manager before Python can publish a failure artifact.
     """
@@ -1341,7 +1341,11 @@ def solve_direct_renderer_proof_symbols(
             raise ValueError("direct renderer proof route search limit exceeded")
         remaining = len(visuals) - len(assignments)
         if remaining == 0:
-            return bits <= maximum_bits
+            end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
+            return (
+                end_length is not None
+                and bits + int(end_length) <= maximum_bits
+            )
 
         candidates = []
         visual = visuals[len(assignments)]
@@ -1353,9 +1357,11 @@ def solve_direct_renderer_proof_symbols(
             ):
                 continue
             total = bits + int(code_length)
-            if total > maximum_bits:
+            if total >= maximum_bits:
                 continue
             next_codes = lengths.get(symbol, {})
+            if remaining == 1 and CANDIDATE_END_SYMBOL not in next_codes:
+                continue
             candidates.append(
                 (
                     int(code_length),
@@ -1376,7 +1382,7 @@ def solve_direct_renderer_proof_symbols(
 
     if not search(initial_context, 0):
         raise ValueError("direct renderer proof has no Huffman glyph route")
-    return assignments.copy(), assignments
+    return [*assignments, CANDIDATE_END_SYMBOL], assignments
 
 
 def direct_renderer_font_tile_offset(page: int, symbol: int) -> int:
@@ -4103,7 +4109,7 @@ def build_single_page_symbol_rows(
                 int(constraint["original_symbol_count"])
                 + DIRECT_RENDERER_EXTRA_SYMBOL_COUNT
             )
-            renderer_glyph_count = runtime_symbol_count
+            renderer_glyph_count = runtime_symbol_count - 1
             if len(visuals) > renderer_glyph_count:
                 raise ValueError(
                     "direct renderer proof has insufficient visible slots"
@@ -4126,7 +4132,7 @@ def build_single_page_symbol_rows(
             padding_count = 0
             page_select_count = 0
             fixed_count_padding_symbol_count = renderer_glyph_count - len(visuals)
-            terminator_count = 0
+            terminator_count = 1
             direct_renderer_page = True
         elif constraint is None:
             if len(row_pages) != 1:
@@ -4966,10 +4972,7 @@ def _main() -> int:
                 or decoded_bits != bits
                 or bits > route_capacity_bits
                 or len(symbols) != runtime_symbol_count
-                or (
-                    row.get("direct_renderer_proof") is not True
-                    and symbols[-1] != CANDIDATE_END_SYMBOL
-                )
+                or symbols[-1] != CANDIDATE_END_SYMBOL
             ):
                 raise PatchError(
                     "first context fixed-count Huffman roundtrip disagrees"
