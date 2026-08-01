@@ -1,0 +1,29 @@
+{
+  "artifact_kind": "sanitized-s25u-active-rom-path-scope",
+  "schema_version": 1,
+  "status": "active-rom-path-scope-bounded",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_active_register_rom_source_sha256": "ea47c762d1cfeab3f3e9e036507072e265e30f27c7dd0b65c72affbdbbd2d7fe",
+  "source_active_rom_source_role_sha256": "fb67ed07c6e44cb96223eb36c92541887513d0fbac4a4e2cd4cab27847334c33",
+  "source_active_rom_read_block_sha256": "135d7310c8e381bd57f1882ca580bb20eb0e7a65935b1c747cc9b8523fdee43b",
+  "source_active_rom_lookup_index_producer_sha256": "04d00d483588ba81db684e82171cdd7fec0262b1bfeca847314ab5c8ff899165",
+  "captured_utc": "2026-08-01T23:46:31.463737Z",
+  "analysis": {
+    "script_projection_match_count": 0,
+    "repeated_read_occurrence_count": 38,
+    "read_occurrence_count": 46,
+    "unique_logical_read_count": 8,
+    "target_transfer_byte_count": 192,
+    "target_transfer_tile_count": 6,
+    "source_executed_match_count": 0,
+    "physical_projection_byte_span": 23,
+    "matching_predecessor_count": 46
+  },
+  "path_scope": "repeated-interleaved-renderer-asset-candidate",
+  "current_path_relevant_to_translation_fix": false,
+  "translated_glyph_path_confirmed": false,
+  "baseline_script_bytes_unchanged": true,
+  "local_payload_policy": "aggregate-counts-and-classification-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "capture-translated-test-rom-vram-difference"
+}

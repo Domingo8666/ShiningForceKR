@@ -175,6 +175,17 @@ else
       diagnostic_trigger=probe
       record_stage_failure active-rom-lookup-index-producer
     fi
+  elif [ "$critical_path_focus" = "active-rom-path-scope" ]; then
+    echo "SFKR critical path: classifying whether the ROM path can explain translated glyphs."
+    write_next_step \
+      "현재 ROM 읽기 경로가 번역 글자 경로인지 반복 비문자 타일 경로인지 판정하고 있습니다."
+    python tools/v5_1_active_rom_path_scope.py --if-ready
+    active_rom_path_scope_status=$?
+    if [ "$active_rom_path_scope_status" -ne 0 ]; then
+      stage_status="$active_rom_path_scope_status"
+      diagnostic_trigger=probe
+      record_stage_failure active-rom-path-scope
+    fi
   elif [ "$critical_path_focus" = "active-rom-cursor-reset" ]; then
     echo "SFKR critical path: resolving the ROM cursor reset and stride."
     write_next_step \

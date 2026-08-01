@@ -166,6 +166,7 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn("v5_1_active_rom_lookup_index_producer.py", RUNTIME_STAGE)
         self.assertIn('"active-rom-cursor-reset"', RUNTIME_STAGE)
         self.assertIn("v5_1_active_rom_cursor_reset.py", RUNTIME_STAGE)
+        self.assertIn("v5_1_active_rom_path_scope.py", RUNTIME_STAGE)
         self.assertLess(
             RUNTIME_STAGE.index('"active-rom-source-role"'),
             RUNTIME_STAGE.index('"active-rom-read-block"'),
@@ -176,6 +177,10 @@ class S25UAutopilotTests(unittest.TestCase):
         )
         self.assertLess(
             RUNTIME_STAGE.index('"active-rom-lookup-index-producer"'),
+            RUNTIME_STAGE.index('"active-rom-path-scope"'),
+        )
+        self.assertLess(
+            RUNTIME_STAGE.index('"active-rom-path-scope"'),
             RUNTIME_STAGE.index('"active-rom-cursor-reset"'),
         )
         self.assertLess(
@@ -194,6 +199,10 @@ class S25UAutopilotTests(unittest.TestCase):
         )
         self.assertIn(
             "analysis/device/v5_1_latest_active_rom_cursor_reset.json",
+            SCRIPT,
+        )
+        self.assertIn(
+            "analysis/device/v5_1_latest_active_rom_path_scope.json",
             SCRIPT,
         )
 

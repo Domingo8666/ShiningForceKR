@@ -170,6 +170,10 @@ try:
         PUBLISH_RELATIVE_PATH as ACTIVE_ROM_LOOKUP_INDEX_RELATIVE_PATH,
         validate_active_rom_lookup_index_producer,
     )
+    from .v5_1_active_rom_path_scope import (
+        PUBLISH_RELATIVE_PATH as ACTIVE_ROM_PATH_SCOPE_RELATIVE_PATH,
+        validate_active_rom_path_scope,
+    )
     from .v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ACTIVE_ROM_CURSOR_RESET_RELATIVE_PATH,
         validate_active_rom_cursor_reset,
@@ -437,6 +441,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as ACTIVE_ROM_LOOKUP_INDEX_RELATIVE_PATH,
         validate_active_rom_lookup_index_producer,
     )
+    from v5_1_active_rom_path_scope import (
+        PUBLISH_RELATIVE_PATH as ACTIVE_ROM_PATH_SCOPE_RELATIVE_PATH,
+        validate_active_rom_path_scope,
+    )
     from v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ACTIVE_ROM_CURSOR_RESET_RELATIVE_PATH,
         validate_active_rom_cursor_reset,
@@ -642,6 +650,8 @@ SAFE_ARTIFACTS = {
         validate_active_rom_read_block,
     ACTIVE_ROM_LOOKUP_INDEX_RELATIVE_PATH:
         validate_active_rom_lookup_index_producer,
+    ACTIVE_ROM_PATH_SCOPE_RELATIVE_PATH:
+        validate_active_rom_path_scope,
     ACTIVE_ROM_CURSOR_RESET_RELATIVE_PATH:
         validate_active_rom_cursor_reset,
     CRITICAL_PATH_RELATIVE_PATH:

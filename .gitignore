@@ -25,6 +25,7 @@ evidence/local/
 *.rar
 
 # Generated
+.tools/
 build/*
 analysis/local/
 reports/*

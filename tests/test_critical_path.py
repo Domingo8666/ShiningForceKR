@@ -27,6 +27,10 @@ from tools.v5_1_active_rom_lookup_index_producer import (
     PUBLISH_RELATIVE_PATH as ROM_LOOKUP_INDEX_PATH,
     build_active_rom_lookup_index_producer,
 )
+from tools.v5_1_active_rom_path_scope import (
+    PUBLISH_RELATIVE_PATH as ROM_PATH_SCOPE_PATH,
+    build_active_rom_path_scope,
+)
 from tools.v5_1_active_rom_cursor_reset import (
     PUBLISH_RELATIVE_PATH as ROM_CURSOR_RESET_PATH,
     build_active_rom_cursor_reset,
@@ -35,6 +39,7 @@ from tools.v5_1_critical_path import (
     CURSOR_RESET_STAGE,
     FOCUSED_STAGE,
     LOOKUP_INDEX_STAGE,
+    PATH_SCOPE_STAGE,
     READ_BLOCK_STAGE,
     SOURCE_ROLE_STAGE,
     select_critical_path,
@@ -255,6 +260,36 @@ class CriticalPathTests(unittest.TestCase):
                 captured_utc="2026-08-02T00:00:00Z",
             )
             self._write_json(root / ROM_LOOKUP_INDEX_PATH, lookup)
+            selected = select_critical_path(root, rom_path)
+            self.assertIsNotNone(selected)
+            assert selected is not None
+            self.assertEqual(selected["selected_stage"], PATH_SCOPE_STAGE)
+
+            path_scope = build_active_rom_path_scope(
+                target_sha256=target_sha256,
+                source_active_register_rom_source_sha256=source_sha256,
+                source_active_rom_source_role_sha256=role_sha256,
+                source_active_rom_read_block_sha256=sha256_file(
+                    root / ROM_READ_BLOCK_PATH
+                ),
+                source_active_rom_lookup_index_producer_sha256=sha256_file(
+                    root / ROM_LOOKUP_INDEX_PATH
+                ),
+                analysis={
+                    "read_occurrence_count": 46,
+                    "unique_logical_read_count": 8,
+                    "physical_projection_byte_span": 64,
+                    "repeated_read_occurrence_count": 38,
+                    "target_transfer_byte_count": 192,
+                    "target_transfer_tile_count": 6,
+                    "matching_predecessor_count": 46,
+                    "script_projection_match_count": 0,
+                    "source_executed_match_count": 0,
+                },
+                path_scope="translation-path-unresolved",
+                captured_utc="2026-08-02T00:00:00Z",
+            )
+            self._write_json(root / ROM_PATH_SCOPE_PATH, path_scope)
             selected = select_critical_path(root, rom_path)
             self.assertIsNotNone(selected)
             assert selected is not None

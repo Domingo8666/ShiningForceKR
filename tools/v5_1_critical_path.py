@@ -32,6 +32,10 @@ try:
         PUBLISH_RELATIVE_PATH as ROM_LOOKUP_INDEX_PATH,
         validate_active_rom_lookup_index_producer,
     )
+    from .v5_1_active_rom_path_scope import (
+        PUBLISH_RELATIVE_PATH as ROM_PATH_SCOPE_PATH,
+        validate_active_rom_path_scope,
+    )
     from .v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ROM_CURSOR_RESET_PATH,
         validate_active_rom_cursor_reset,
@@ -60,6 +64,10 @@ except ImportError:  # pragma: no cover - direct script execution
         PUBLISH_RELATIVE_PATH as ROM_LOOKUP_INDEX_PATH,
         validate_active_rom_lookup_index_producer,
     )
+    from v5_1_active_rom_path_scope import (
+        PUBLISH_RELATIVE_PATH as ROM_PATH_SCOPE_PATH,
+        validate_active_rom_path_scope,
+    )
     from v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ROM_CURSOR_RESET_PATH,
         validate_active_rom_cursor_reset,
@@ -74,6 +82,7 @@ FOCUSED_STAGE = "active-register-rom-source"
 SOURCE_ROLE_STAGE = "active-rom-source-role"
 READ_BLOCK_STAGE = "active-rom-read-block"
 LOOKUP_INDEX_STAGE = "active-rom-lookup-index-producer"
+PATH_SCOPE_STAGE = "active-rom-path-scope"
 CURSOR_RESET_STAGE = "active-rom-cursor-reset"
 FALLBACK_STAGE = "continue"
 STAGE_POLICIES = {
@@ -104,6 +113,14 @@ STAGE_POLICIES = {
             "current-rom-lookup-candidate-ready-current-index-producer-missing"
         ),
         "next_checkpoint": "trace-active-rom-lookup-index-producer",
+    },
+    PATH_SCOPE_STAGE: {
+        "confirmed_boundary": "active-vram-to-incremental-rom-source-path",
+        "blocked_boundary": "incremental-rom-source-path-to-translation-relevance",
+        "selection_reason": (
+            "current-incremental-source-ready-current-path-scope-missing"
+        ),
+        "next_checkpoint": "classify-active-rom-path-scope",
     },
     CURSOR_RESET_STAGE: {
         "confirmed_boundary": "active-vram-to-incremental-rom-cursor",
@@ -281,6 +298,37 @@ def _cursor_reset_current(
     )
 
 
+def _path_scope_current(
+    root: Path,
+    *,
+    target_sha256: str,
+    source_sha256: str,
+    role_sha256: str,
+    read_block_sha256: str,
+    lookup_sha256: str,
+) -> dict[str, object] | None:
+    path = root / ROM_PATH_SCOPE_PATH
+    if not path.is_file():
+        return None
+    try:
+        value = _load_object(path)
+        validate_active_rom_path_scope(value)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    if (
+        value.get("target_sha256") != target_sha256
+        or value.get("source_active_register_rom_source_sha256")
+        != source_sha256
+        or value.get("source_active_rom_source_role_sha256") != role_sha256
+        or value.get("source_active_rom_read_block_sha256")
+        != read_block_sha256
+        or value.get("source_active_rom_lookup_index_producer_sha256")
+        != lookup_sha256
+    ):
+        return None
+    return value
+
+
 def _build_selection(
     *,
     target_sha256: str,
@@ -379,6 +427,22 @@ def select_critical_path(root: Path, rom_path: Path) -> dict[str, object] | None
             validate_active_rom_lookup_index_producer(lookup)
             if lookup.get("producer_class") == "incremental-cursor-candidate":
                 lookup_sha256 = sha256_file(lookup_path)
+                path_scope = _path_scope_current(
+                    root,
+                    target_sha256=target_sha256,
+                    source_sha256=source_sha256,
+                    role_sha256=role_sha256,
+                    read_block_sha256=read_block_sha256,
+                    lookup_sha256=lookup_sha256,
+                )
+                if path_scope is None:
+                    return _build_selection(
+                        target_sha256=target_sha256,
+                        trace_sha256=trace_sha256,
+                        stage=PATH_SCOPE_STAGE,
+                    )
+                if path_scope.get("current_path_relevant_to_translation_fix") is False:
+                    return None
                 if not _cursor_reset_current(
                     root,
                     target_sha256=target_sha256,
