@@ -820,6 +820,43 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(padding, 1)
         self.assertEqual(assignments, [3, 4])
 
+    def test_fixed_count_solver_bounds_three_page_token_layout(self) -> None:
+        three_way = ParsedTree(
+            previous_symbol=0x02,
+            pointer=0,
+            structure_offset=0,
+            structure_bits=5,
+            leaf_count=3,
+            symbol_offset=0,
+            root=HuffmanNode(
+                left=HuffmanNode(symbol=0x03),
+                right=HuffmanNode(
+                    left=HuffmanNode(symbol=0x04),
+                    right=HuffmanNode(symbol=0xC9),
+                ),
+            ),
+        )
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x5F),
+            0x11: tree(0x11, 0x02, 0x11),
+            0x02: three_way,
+            0x03: tree(0x03, 0x5F, 0x03),
+            0x04: tree(0x04, 0x5F, 0x04),
+        }
+        symbols, padding, assignments = solve_fixed_count_row_visual_symbols(
+            trees=trees,
+            initial_context=0xC9,
+            maximum_bits=14,
+            target_symbol_count=12,
+            page=240,
+            visuals=["text:가", "text:나"],
+        )
+        self.assertEqual(len(symbols), 12)
+        self.assertEqual(symbols[-1], 0xC9)
+        self.assertEqual(padding, 2)
+        self.assertEqual(assignments, [3, 4])
+
     def test_fixed_count_solver_splits_visible_glyphs_across_two_pages(self) -> None:
         trees = {
             0xC9: tree(0xC9, 0x5F, 0xC9),

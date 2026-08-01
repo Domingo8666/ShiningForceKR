@@ -2651,7 +2651,13 @@ def solve_fixed_count_row_visual_symbols(
 
     # Solve the normal renderer-safe form first: mandatory row page, visible
     # glyphs with any required same-page reselection, then a safe terminator.
-    for initial in sorted(initial_by_state.values()):
+    # Two or more extra controls make the exact used-mask search too expensive
+    # for the phone's 120-second guard.  The bounded endpoint-ranked frontier
+    # below covers that layout in roughly linear time.
+    exact_initials = (
+        [] if extra_page_tokens >= 2 else sorted(initial_by_state.values())
+    )
+    for initial in exact_initials:
         start_bits, start_previous, _, inserted, route, _ = initial
         if inserted:
             continue
@@ -2751,7 +2757,7 @@ def solve_fixed_count_row_visual_symbols(
     # First solve the two fully renderer-safe edge cases with an endpoint-aware
     # search.  Unlike a beam, it never discards the only state capable of
     # reaching the required terminator route.
-    for initial in sorted(initial_by_state.values()):
+    for initial in exact_initials:
         start_bits, start_previous, _, inserted, route, _ = initial
         if inserted == extra_page_tokens:
             tails = direct_end_by_previous
