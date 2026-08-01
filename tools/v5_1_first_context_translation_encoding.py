@@ -266,6 +266,11 @@ ACTIVE_FAILURE_ROW_INDEX = 0
 ACTIVE_FAILURE_DETAIL = "none"
 FAILURE_STEPS = {
     "input",
+    "locate-preserved-occurrences",
+    "load-runtime-trees",
+    "build-runtime-codec-constraints",
+    "build-runtime-layout-rows",
+    "build-character-assignments",
     "select-row-font-pages",
     "build-symbol-rows",
     "build-font-overlay",
@@ -284,6 +289,9 @@ FAILURE_KINDS = {
 }
 FAILURE_DETAILS = {
     "none",
+    "layout-runtime-compaction-shape",
+    "layout-hangul-sequence-change",
+    "layout-control-count-not-nine",
     "solve-unconstrained-row",
     "solve-proven-exact-row",
     "solve-proven-bounded-row",
@@ -765,10 +773,11 @@ def build_runtime_layout_rows(
             )
             control_symbols = target_symbol_count - len(compact_text) - 1
             ACTIVE_FAILURE_ROW_INDEX = expected_index
-            ACTIVE_FAILURE_DETAIL = (
-                f"layout-approved-{len(target_text)}-runtime-"
-                f"{len(compact_text)}-controls-{control_symbols}"
-            )
+            ACTIVE_FAILURE_DETAIL = "layout-runtime-compaction-shape"
+            if approved_hangul != compact_hangul:
+                ACTIVE_FAILURE_DETAIL = "layout-hangul-sequence-change"
+            elif control_symbols != 9:
+                ACTIVE_FAILURE_DETAIL = "layout-control-count-not-nine"
             if (
                 not compact_text
                 or approved_hangul != compact_hangul
