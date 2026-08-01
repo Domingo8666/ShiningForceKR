@@ -774,15 +774,18 @@ def build_runtime_layout_rows(
     target_rows: list[dict[str, object]],
     runtime_constraints: list[dict[str, object]],
     compact_review_indexes: tuple[int, ...] = (1,),
+    technical_proof_prefixes: bool = False,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-    """Build renderer-only rows without changing the approved translation.
+    """Build renderer-only rows without modifying the approved source rows.
 
     Some runtime records leave fewer than three symbols for the mandatory font
     page control.  Explicitly selected rows may also need a different control
     count after a route has been proved unreachable.  Remove only ASCII layout
     spacing/punctuation, preserve every Hangul syllable, and choose the smallest
     compatible deletion.  The approved rows remain untouched and every runtime-
-    only transform is returned as a local audit record.
+    only transform is returned as a local audit record.  A non-release
+    technical build may additionally use an explicitly audited short clause
+    to prove the codec before record expansion is implemented.
     """
 
     global ACTIVE_FAILURE_ROW_INDEX, ACTIVE_FAILURE_DETAIL
@@ -882,11 +885,61 @@ def build_runtime_layout_rows(
                         page_token_count,
                     )
                 )
+            technical_proof_only = False
             if not eligible_variants:
-                ACTIVE_FAILURE_DETAIL = "layout-no-compatible-control-count"
-                raise ValueError(
-                    "first context runtime layout compaction is not safe"
-                )
+                if technical_proof_prefixes:
+                    possible_visible_counts = [
+                        target_symbol_count - 1 - 3 * page_token_count
+                        for page_token_count in range(1, 9)
+                        if target_symbol_count
+                        - 1
+                        - 3 * page_token_count
+                        > 0
+                    ]
+                    clause = target_text.split(",", 1)[0]
+                    clause = "".join(
+                        character
+                        for character in clause
+                        if character not in " \t\r\n,.?;:"
+                    )
+                    proof_candidates = []
+                    for visible_count in possible_visible_counts:
+                        if target_text.endswith("!"):
+                            candidate = clause + "!"
+                            if len(candidate) == visible_count:
+                                proof_candidates.append(
+                                    (candidate, visible_count)
+                                )
+                        compact_base = "".join(
+                            character
+                            for character in target_text
+                            if character not in " \t\r\n,.?;:!"
+                        )
+                        if len(compact_base) >= visible_count:
+                            proof_candidates.append(
+                                (compact_base[:visible_count], visible_count)
+                            )
+                    if proof_candidates:
+                        compact_text, visible_count = proof_candidates[0]
+                        control_symbols = (
+                            target_symbol_count - visible_count - 1
+                        )
+                        eligible_variants.append(
+                            (
+                                0,
+                                len(target_text) - visible_count,
+                                "technical-codec-proof-short-clause",
+                                compact_text,
+                                control_symbols,
+                                control_symbols // 3,
+                            )
+                        )
+                        technical_proof_only = True
+                if not eligible_variants:
+                    ACTIVE_FAILURE_DETAIL = "layout-no-compatible-control-count"
+                    raise ValueError(
+                        "first context runtime layout compaction is not safe"
+                    )
             (
                 _,
                 _,
@@ -898,6 +951,11 @@ def build_runtime_layout_rows(
             ACTIVE_LAYOUT_COMPACT_COUNT = len(compact_text)
             ACTIVE_LAYOUT_CONTROL_COUNT = control_symbols
             runtime_row["target_text"] = compact_text
+            runtime_hangul = "".join(
+                character
+                for character in compact_text
+                if _is_hangul_syllable(character)
+            )
             audit.append(
                 {
                     "review_index": expected_index,
@@ -911,7 +969,10 @@ def build_runtime_layout_rows(
                         target_text.endswith("!")
                         and not compact_text.endswith("!")
                     ),
-                    "hangul_sequence_preserved": True,
+                    "hangul_sequence_preserved": (
+                        runtime_hangul == approved_hangul
+                    ),
+                    "technical_proof_only": technical_proof_only,
                     "runtime_symbol_count": target_symbol_count,
                     "required_page_token_count": page_token_count,
                 }
@@ -4491,6 +4552,7 @@ def _main() -> int:
     target_rows, layout_compactions = build_runtime_layout_rows(
         target_rows=approved_target_rows,
         runtime_constraints=runtime_constraints,
+        technical_proof_prefixes=True,
     )
     ACTIVE_FAILURE_ROW_INDEX = 0
     ACTIVE_FAILURE_DETAIL = "none"

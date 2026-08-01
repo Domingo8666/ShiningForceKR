@@ -133,6 +133,26 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 runtime_constraints=[{"original_symbol_count": 19}],
             )
 
+    def test_builds_an_audited_short_clause_for_the_codec_proof(self) -> None:
+        approved = [{
+            "review_index": 1,
+            "target_text": "두고 봐라, 미샤엘라!",
+        }]
+        runtime, audit = build_runtime_layout_rows(
+            target_rows=approved,
+            runtime_constraints=[{"original_symbol_count": 9}],
+            technical_proof_prefixes=True,
+        )
+        self.assertEqual(runtime[0]["target_text"], "두고봐라!")
+        self.assertEqual(approved[0]["target_text"], "두고 봐라, 미샤엘라!")
+        self.assertEqual(
+            audit[0]["layout_action"],
+            "technical-codec-proof-short-clause",
+        )
+        self.assertTrue(audit[0]["technical_proof_only"])
+        self.assertFalse(audit[0]["hangul_sequence_preserved"])
+        self.assertEqual(audit[0]["required_page_token_count"], 1)
+
     def test_adapts_layout_compaction_to_runtime_symbol_count(self) -> None:
         runtime, audit = build_runtime_layout_rows(
             target_rows=[{
