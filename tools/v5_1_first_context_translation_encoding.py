@@ -2369,10 +2369,9 @@ def solve_fixed_count_row_visual_symbols(
     ] = [(selected[0], selected[1], 0, 0, row_page_token, ())]
     # The device runner has a 120-second guard.  A 5,000-state frontier can
     # create tens of millions of Python tuples across eight candidate pages.
-    # The glyph graph is dense; retaining the best 256 distinct routes per
-    # depth preserves diverse used-slot masks while keeping the whole five-row
-    # solve comfortably bounded on the S25U.
-    beam_width = min(MAX_BOUNDED_SINGLE_PAGE_STATES, 256)
+    # Runtime analysis found only a handful of glyphs with a page-select exit,
+    # so the frontier rank below explicitly preserves those scarce states.
+    beam_width = min(MAX_BOUNDED_SINGLE_PAGE_STATES, 64)
     for _depth in range(len(visuals)):
         next_by_state: dict[
             tuple[int, int, int],
@@ -2417,6 +2416,10 @@ def solve_fixed_count_row_visual_symbols(
         frontier = sorted(
             next_by_state.values(),
             key=lambda item: (
+                (
+                    extra_page_tokens > item[3]
+                    and transition(item[1], row_page_token) is None
+                ),
                 item[0],
                 CANDIDATE_END_SYMBOL not in lengths.get(item[1], {}),
                 -len(set(lengths.get(item[1], {})) & glyph_symbol_set),
@@ -2635,6 +2638,16 @@ def select_row_font_pages(
                         )
             except ValueError:
                 if constraint is not None:
+                    # Every reviewed row fits in one 76-glyph custom page.
+                    # Fixed-count multi-page fallback explores a much larger
+                    # state space and previously hid a single-page miss behind
+                    # the device runner's 120-second timeout.  Try all bounded
+                    # single-page candidates and then report a precise route
+                    # failure instead.
+                    if "original_symbol_count" in constraint:
+                        if len(failed_pages) < MAX_EXACT_FONT_PAGE_CANDIDATES:
+                            failed_pages.append(page)
+                        continue
                     candidate_groups = [
                         (anchor, page) for anchor in failed_pages[:4]
                     ]
