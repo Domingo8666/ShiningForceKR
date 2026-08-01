@@ -2785,7 +2785,10 @@ def solve_fixed_count_row_visual_symbols(
     # create tens of millions of Python tuples across eight candidate pages.
     # Runtime analysis found only a handful of glyphs with a page-select exit,
     # so the frontier rank below explicitly preserves those scarce states.
-    beam_width = min(MAX_BOUNDED_SINGLE_PAGE_STATES, 128)
+    beam_width = min(
+        MAX_BOUNDED_SINGLE_PAGE_STATES,
+        1024 if extra_page_tokens >= 2 else 128,
+    )
     for _depth in range(len(visuals)):
         next_by_state: dict[
             tuple[int, int, int],
@@ -3049,6 +3052,11 @@ def solve_fixed_count_row_multi_page_visual_symbols(
                 )
         raise ValueError(
             "first context row has no two-page fixed-count route"
+        )
+
+    if required_page_tokens >= 3:
+        raise ValueError(
+            "first context row has no bounded multi-page fixed-count route"
         )
 
     symbols, padding_count, assignments, assignment_pages = (
