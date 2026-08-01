@@ -1001,11 +1001,13 @@ def pad_row_to_runtime_symbol_count(
 
     Runtime screenshots proved that the dialogue consumer does not stop after
     the first ``0xC9``.  A shorter replacement therefore lets preserved suffix
-    bits decode as visible garbage.  Keep the reviewed visible route, remove
-    its final terminator, then search only renderer-inert page selections and
-    terminators until the final terminator lands at the original symbol count.
-    The returned stream is later encoded and decoded with the fixed-count
-    codec, so no preserved suffix bit is consumed by the caller.
+    bits decode as visible garbage.  Prefix the reviewed visible route with
+    only renderer-inert page selections (and terminators only when necessary)
+    until its final terminator lands at the runtime symbol count.  Prefix
+    padding is important because a visible glyph need not have a direct edge
+    to a page-selection token.  The returned stream is later encoded and
+    decoded with the fixed-count codec, so no preserved suffix bit is consumed
+    by the caller.
     """
 
     if (
@@ -1037,36 +1039,37 @@ def pad_row_to_runtime_symbol_count(
             previous = symbol
         return bit_count, previous
 
-    visible_prefix = tuple(symbols[:-1])
-    visible_route = transition(initial_context, visible_prefix)
-    if visible_route is None:
-        raise ValueError("first context visible route is not Huffman encodable")
-    visible_bits, visible_context = visible_route
-    remaining_symbols = target_symbol_count - len(visible_prefix)
-    if remaining_symbols < 1:
-        raise ValueError("first context runtime count has no final terminator slot")
+    visible_route = tuple(symbols)
+    padding_symbols = target_symbol_count - len(symbols)
 
     page_tokens = tuple(
         dict.fromkeys(
             tuple(page_select_symbols(page)) for page in range(FONT_PAGE_COUNT)
         )
     )
-    # Heap order chooses the lowest-bit fixed-count route first.  Paths are
-    # private/local only and never appear in the sanitized receipt.
-    heap: list[tuple[int, tuple[int, ...], int, int, int]] = [
-        (visible_bits, (), 0, visible_context, 0)
+    # Prefer page controls over extra terminators, then the lowest-bit route.
+    # Paths are private/local only and never appear in the sanitized receipt.
+    heap: list[tuple[int, int, tuple[int, ...], int, int, int]] = [
+        (0, 0, (), 0, initial_context, 0)
     ]
-    best: dict[tuple[int, int], int] = {(0, visible_context): visible_bits}
+    best: dict[tuple[int, int], tuple[int, int]] = {
+        (0, initial_context): (0, 0)
+    }
     while heap:
-        bits, path, used, previous, page_token_count = heappop(heap)
-        if bits != best.get((used, previous)):
+        (
+            terminator_padding_count,
+            bits,
+            path,
+            used,
+            previous,
+            page_token_count,
+        ) = heappop(heap)
+        if (terminator_padding_count, bits) != best.get((used, previous)):
             continue
-        if used == remaining_symbols - 1:
-            final = transition(previous, (CANDIDATE_END_SYMBOL,))
-            if final is not None and bits + final[0] <= maximum_bits:
-                padded = list(
-                    visible_prefix + path + (CANDIDATE_END_SYMBOL,)
-                )
+        if used == padding_symbols:
+            visible = transition(previous, visible_route)
+            if visible is not None and bits + visible[0] <= maximum_bits:
+                padded = list(path + visible_route)
                 return (
                     padded,
                     len(padded) - len(symbols),
@@ -1074,11 +1077,11 @@ def pad_row_to_runtime_symbol_count(
                 )
             continue
 
-        candidates = ((CANDIDATE_END_SYMBOL,), *page_tokens)
+        candidates = (*page_tokens, (CANDIDATE_END_SYMBOL,))
         unique: dict[tuple[int, int, int], tuple[int, ...]] = {}
         for token in candidates:
             next_used = used + len(token)
-            if next_used >= remaining_symbols:
+            if next_used > padding_symbols:
                 continue
             encoded = transition(previous, token)
             if encoded is None:
@@ -1088,16 +1091,21 @@ def pad_row_to_runtime_symbol_count(
             unique.items()
         ):
             next_bits = bits + added_bits
-            if next_bits > maximum_bits:
+            if next_bits >= maximum_bits:
                 continue
             next_used = used + token_length
             state = (next_used, next_previous)
-            if next_bits >= best.get(state, maximum_bits + 1):
+            next_terminators = terminator_padding_count + int(
+                token == (CANDIDATE_END_SYMBOL,)
+            )
+            rank = (next_terminators, next_bits)
+            if rank >= best.get(state, (0x1001, maximum_bits + 1)):
                 continue
-            best[state] = next_bits
+            best[state] = rank
             heappush(
                 heap,
                 (
+                    next_terminators,
                     next_bits,
                     path + token,
                     next_used,

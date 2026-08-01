@@ -714,7 +714,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 symbols=[0x5F, 0x11, 0x02, 0x03, 0xC9],
             )
         )
-        self.assertEqual(symbols, [0x5F, 0x11, 0x02, 0x03, 0xC9, 0xC9])
+        self.assertEqual(symbols, [0xC9, 0x5F, 0x11, 0x02, 0x03, 0xC9])
         self.assertEqual(padding_symbols, 1)
         self.assertEqual(padding_pages, 0)
 
