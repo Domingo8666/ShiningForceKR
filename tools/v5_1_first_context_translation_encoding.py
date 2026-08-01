@@ -58,6 +58,10 @@ try:
     from .v5_1_first_context_translation_review import (
         LOCAL_REPORT_PATH as LOCAL_REVIEW_PATH,
     )
+    from .v5_1_active_vram_route import (
+        PUBLISH_RELATIVE_PATH as ACTIVE_VRAM_ROUTE_PATH,
+        validate_active_vram_route,
+    )
     from .v5_1_font_catalog import parse_bdf_glyphs
     from .v5_1_renderer_output_trace import _load_json_object
     from .v5_1_runtime_context_glyph_preservation import (
@@ -123,6 +127,10 @@ except ImportError:  # pragma: no cover - direct script execution
     from v5_1_first_context_translation_review import (
         LOCAL_REPORT_PATH as LOCAL_REVIEW_PATH,
     )
+    from v5_1_active_vram_route import (
+        PUBLISH_RELATIVE_PATH as ACTIVE_VRAM_ROUTE_PATH,
+        validate_active_vram_route,
+    )
     from v5_1_font_catalog import parse_bdf_glyphs
     from v5_1_renderer_output_trace import _load_json_object
     from v5_1_runtime_context_glyph_preservation import (
@@ -161,12 +169,10 @@ SCHEMA_VERSION = 1
 # original decoded symbol count and verified with the fixed-count codec.
 PROVEN_ROW_FONT_PAGES = (240, 241, 242, 243)
 ROW_FONT_PAGES = PROVEN_ROW_FONT_PAGES + (239,)
-# The first-context consumer trace proved that this dialogue path renders a
-# fixed symbol count directly: the nominal 0x5F page token operands appeared
-# on screen and the decoder performed one lookup after the nominal terminator.
-# Keep this as an explicitly bounded technical proof until the surrounding
-# consumer contract is fully recovered.  Page 21 is the independently mapped
-# implicit page for this visible entry.
+# Quarantined legacy proof settings.  Runtime screenshots disproved the premise
+# that every decoded value on this path is an ordinary glyph slot.  These
+# helpers remain only so old local artifacts can still be validated; the active
+# build path below must not select them.
 DIRECT_RENDERER_PROOF_PAGE = 21
 # The first outgoing symbol is 0x5F.  The traced consumer does not dispatch it
 # as a page-select command on this path; it advances the fixed render slot.
@@ -4646,6 +4652,7 @@ def _main() -> int:
         "local_context": root / LOCAL_CONTEXT_PATH,
         "local_projection": root / LOCAL_PROJECTION_PATH,
         "visible_entry_proof": root / VISIBLE_ENTRY_PROOF_PATH,
+        "active_vram_route": root / ACTIVE_VRAM_ROUTE_PATH,
         "patch": root / PATCH_PATH,
         "bdf": root / LOCAL_BDF_PATH,
         "target": root / TARGET_PATH,
@@ -4665,11 +4672,24 @@ def _main() -> int:
     local_context = _load_json_object(paths["local_context"])
     local_projection = _load_json_object(paths["local_projection"])
     visible_entry_proof = _load_json_object(paths["visible_entry_proof"])
+    active_vram_route = _load_json_object(paths["active_vram_route"])
     validate_first_context_translation_capacity(capacity)
     validate_first_context_translation_approval(approval)
     validate_local_first_context_translation_approval(local_approval)
     validate_runtime_context_glyph_preservation(preservation)
     validate_visible_entry_proof(visible_entry_proof)
+    validate_active_vram_route(active_vram_route)
+    if active_vram_route["translation_build_eligible"] is not True:
+        if args.if_ready:
+            print(
+                "First context translation encoding waits for a measured "
+                "active VRAM font route"
+            )
+            return 0
+        raise ValueError(
+            "first context translation encoding has no measured active VRAM "
+            "font route"
+        )
     ACTIVE_FAILURE_CATEGORY = "identity"
     if (
         capacity["target_sha256"] != approval["target_sha256"]
@@ -4682,6 +4702,8 @@ def _main() -> int:
         or local_context.get("target_sha256") != capacity["target_sha256"]
         or local_projection.get("target_sha256") != capacity["target_sha256"]
         or visible_entry_proof.get("baseline_target_sha256")
+        != capacity["target_sha256"]
+        or active_vram_route.get("target_sha256")
         != capacity["target_sha256"]
     ):
         raise ValueError("first context translation encoding identity disagrees")
@@ -4778,37 +4800,6 @@ def _main() -> int:
         )
         for assignment in character_assignments
     }
-    direct_renderer_pages = (DIRECT_RENDERER_PROOF_PAGE,)
-    try:
-        local_unicode_mapping = _load_json_object(
-            root / LOCAL_VISIBLE_UNICODE_MAPPING_PATH
-        )
-        local_mapping = local_unicode_mapping.get("mapping")
-        raw_page_candidates = (
-            local_mapping.get("initial_page_candidates")
-            if isinstance(local_mapping, dict)
-            else None
-        )
-        candidate_pages = tuple(
-            sorted(
-                {
-                    int(candidate["page"])
-                    for candidate in raw_page_candidates
-                    if isinstance(candidate, dict)
-                    and isinstance(candidate.get("page"), int)
-                    and not isinstance(candidate.get("page"), bool)
-                    and 0 <= int(candidate["page"]) < FONT_PAGE_COUNT
-                }
-            )
-        ) if isinstance(raw_page_candidates, list) else ()
-        if (
-            local_unicode_mapping.get("target_sha256")
-            == capacity["target_sha256"]
-            and 1 <= len(candidate_pages) <= 16
-        ):
-            direct_renderer_pages = candidate_pages
-    except (OSError, ValueError, json.JSONDecodeError):
-        pass
     ACTIVE_FAILURE_CATEGORY = "row-route"
     ACTIVE_FAILURE_STEP = "select-row-font-pages"
     selected_row_font_pages = select_row_font_pages(
@@ -4816,8 +4807,7 @@ def _main() -> int:
         target_rows=target_rows,
         preserved_by_row=rendered_preserved_by_row,
         runtime_constraints=runtime_constraints,
-        direct_renderer_first_row=True,
-        direct_renderer_pages=direct_renderer_pages,
+        direct_renderer_first_row=False,
     )
     ACTIVE_FAILURE_STEP = "build-symbol-rows"
     (
@@ -4830,8 +4820,7 @@ def _main() -> int:
         preserved_by_row=rendered_preserved_by_row,
         runtime_constraints=runtime_constraints,
         pages=selected_row_font_pages,
-        direct_renderer_first_row=True,
-        direct_renderer_pages=direct_renderer_pages,
+        direct_renderer_first_row=False,
     )
     symbol_counts["preserved_non_text_glyph_occurrence_count"] = sum(
         len(row) for row in preserved_by_row

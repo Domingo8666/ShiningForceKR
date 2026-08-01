@@ -679,6 +679,16 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_active_vram_route.py --if-ready
+    active_vram_route_status=$?
+    if [ "$active_vram_route_status" -ne 0 ]; then
+      stage_status="$active_vram_route_status"
+      diagnostic_trigger=probe
+      record_stage_failure active-vram-route
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     runtime_context_glyph_candidates_output="$(
       python tools/v5_1_runtime_context_glyph_candidates.py --if-ready 2>&1
     )"
@@ -889,6 +899,17 @@ else
           ;;
       esac
       record_stage_failure "$first_context_translation_capacity_failure_stage"
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
+    if ! python -c 'import json; from pathlib import Path; from tools.v5_1_active_vram_route import validate_active_vram_route; path=Path("analysis/device/v5_1_latest_active_vram_route.json"); value=json.loads(path.read_text(encoding="utf-8")); validate_active_vram_route(value); print("yes" if value.get("translation_build_eligible") is True else "no")' 2>/dev/null |
+      grep -qx yes; then
+      printf '%s\n' \
+        'First-context translation build waits for a measured active VRAM font route'
+      stage_status=8
+      diagnostic_trigger=probe
+      record_stage_failure first-context-active-vram-route
     fi
   fi
 

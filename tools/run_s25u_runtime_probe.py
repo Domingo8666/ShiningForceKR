@@ -183,6 +183,8 @@ RUNTIME_FAILURE_STAGES = {
     "context-glyph-demand-mapping",
     "context-glyph-demand-input",
     "context-glyph-demand-validation",
+    "active-vram-route",
+    "first-context-active-vram-route",
     "runtime-context-glyph-candidates",
     "context-glyph-candidates-identity",
     "context-glyph-candidates-mapping",
