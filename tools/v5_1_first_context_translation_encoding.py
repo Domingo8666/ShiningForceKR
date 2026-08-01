@@ -170,7 +170,7 @@ ROW_FONT_PAGES = PROVEN_ROW_FONT_PAGES + (239,)
 DIRECT_RENDERER_PROOF_PAGE = 21
 DIRECT_RENDERER_GLYPH_LAST_SYMBOL = 0x5E
 DIRECT_RENDERER_EXTRA_SYMBOL_COUNT = 1
-DIRECT_RENDERER_BEAM_WIDTH = 4096
+DIRECT_RENDERER_BEAM_WIDTH = 512
 LOCAL_VISIBLE_UNICODE_MAPPING_PATH = Path(
     "reports/local/v5_1_visible_unicode_mapping.json"
 )
@@ -5051,8 +5051,11 @@ def main() -> int:
         result = _main()
     except (
         AssertionError,
+        AttributeError,
         IndexError,
         KeyError,
+        MemoryError,
+        OSError,
         PatchError,
         RuntimeError,
         TypeError,
