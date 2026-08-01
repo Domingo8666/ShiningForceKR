@@ -2399,6 +2399,119 @@ def solve_fixed_count_row_visual_symbols(
         if candidates:
             safe_suffix_by_previous[previous] = min(candidates)
 
+    direct_end_by_previous: dict[int, tuple[int, tuple[int, ...]]] = {}
+    for previous in range(0x100):
+        encoded = transition(previous, (CANDIDATE_END_SYMBOL,))
+        if encoded is not None:
+            direct_end_by_previous[previous] = (
+                encoded[0],
+                (CANDIDATE_END_SYMBOL,),
+            )
+
+    def endpoint_constrained_path(
+        *,
+        start_previous: int,
+        start_bits: int,
+        tail_by_previous: dict[int, tuple[int, tuple[int, ...]]],
+    ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+        """Find a distinct-glyph path that is proved to reach its safe tail."""
+
+        unreachable = maximum_bits + 1
+
+        @lru_cache(maxsize=None)
+        def minimum_remaining_bits(previous: int, remaining: int) -> int:
+            if remaining == 0:
+                tail = tail_by_previous.get(previous)
+                return unreachable if tail is None else tail[0]
+            best = unreachable
+            for symbol in candidate_order[previous]:
+                suffix = minimum_remaining_bits(symbol, remaining - 1)
+                if suffix >= unreachable:
+                    continue
+                best = min(best, lengths[previous][symbol] + suffix)
+            return best
+
+        if (
+            start_bits
+            + minimum_remaining_bits(start_previous, len(visuals))
+            > maximum_bits
+        ):
+            return None
+        expanded = 0
+        best_bits: dict[tuple[int, int, int], int] = {}
+
+        def search(
+            previous: int,
+            used_mask: int,
+            remaining: int,
+            bits: int,
+        ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+            nonlocal expanded
+            expanded += 1
+            if expanded > 100_000:
+                return None
+            state = (previous, used_mask, remaining)
+            if bits >= best_bits.get(state, maximum_bits + 1):
+                return None
+            best_bits[state] = bits
+            if remaining == 0:
+                tail = tail_by_previous.get(previous)
+                if tail is None or bits + tail[0] > maximum_bits:
+                    return None
+                return tail[1], ()
+            ranked = []
+            for symbol in candidate_order[previous]:
+                mask = 1 << (symbol - FONT_GLYPH_FIRST_SYMBOL)
+                if used_mask & mask:
+                    continue
+                suffix_minimum = minimum_remaining_bits(symbol, remaining - 1)
+                if suffix_minimum >= unreachable:
+                    continue
+                added_bits = lengths[previous][symbol]
+                if bits + added_bits + suffix_minimum > maximum_bits:
+                    continue
+                ranked.append((added_bits + suffix_minimum, symbol, mask))
+            for _, symbol, mask in sorted(ranked):
+                added_bits = lengths[previous][symbol]
+                suffix = search(
+                    symbol,
+                    used_mask | mask,
+                    remaining - 1,
+                    bits + added_bits,
+                )
+                if suffix is not None:
+                    suffix_symbols, suffix_assignments = suffix
+                    return (
+                        (symbol,) + suffix_symbols,
+                        (symbol,) + suffix_assignments,
+                    )
+            return None
+
+        return search(start_previous, 0, len(visuals), start_bits)
+
+    # First solve the two fully renderer-safe edge cases with an endpoint-aware
+    # search.  Unlike a beam, it never discards the only state capable of
+    # reaching the required terminator route.
+    for initial in sorted(initial_by_state.values()):
+        start_bits, start_previous, _, inserted, route, _ = initial
+        if inserted == extra_page_tokens:
+            tails = direct_end_by_previous
+        elif inserted + 1 == extra_page_tokens:
+            tails = safe_suffix_by_previous
+        else:
+            continue
+        endpoint = endpoint_constrained_path(
+            start_previous=start_previous,
+            start_bits=start_bits,
+            tail_by_previous=tails,
+        )
+        if endpoint is None:
+            continue
+        endpoint_symbols, assignments = endpoint
+        symbols = route + endpoint_symbols
+        if len(symbols) == target_symbol_count:
+            return list(symbols), extra_page_tokens, list(assignments)
+
     # (bits, previous, used-mask, inserted-controls, route, assignments)
     frontier: list[
         tuple[int, int, int, int, tuple[int, ...], tuple[int, ...]]
