@@ -920,7 +920,10 @@ def build_runtime_codec_constraints(
     projection_pairs: list[dict[str, object]],
     runtime_records: list[dict[str, int]] | None = None,
 ) -> list[dict[str, int]]:
-    if runtime_records is not None and len(runtime_records) != len(context_rows):
+    global ACTIVE_FAILURE_ROW_INDEX
+    if runtime_records is not None and not (
+        1 <= len(runtime_records) <= len(context_rows)
+    ):
         raise ValueError("first context runtime record count disagrees")
     pair_index = {
         (pair.get("source_section_index"), pair.get("source_line_index")): pair
@@ -930,6 +933,7 @@ def build_runtime_codec_constraints(
     constraints = []
     known = bytes((1,)) * len(target)
     for row_index, context_row in enumerate(context_rows):
+        ACTIVE_FAILURE_ROW_INDEX = row_index + 1
         if (
             not isinstance(context_row, dict)
             or context_row.get("mapping_status") != "unique"
@@ -939,7 +943,7 @@ def build_runtime_codec_constraints(
         if not isinstance(observation, dict):
             raise ValueError("first context runtime observation is missing")
         initial_context = observation.get("initial_context")
-        if runtime_records is None:
+        if runtime_records is None or row_index >= len(runtime_records):
             pair = pair_index.get(
                 (
                     context_row.get("source_section_index"),
@@ -952,7 +956,7 @@ def build_runtime_codec_constraints(
         if not isinstance(target_record, dict):
             raise ValueError("first context runtime target record is missing")
         if runtime_records is not None:
-            initial_context = target_record.get("initial_context")
+            initial_context = CANDIDATE_END_SYMBOL
         length_offset = target_record.get("length_offset")
         record_length = target_record.get("record_length_bytes")
         if (
@@ -4353,7 +4357,7 @@ def _main() -> int:
     runtime_records = resolve_runtime_records_from_visible_anchor(
         target=target,
         runtime_entry=visible_entry_proof["runtime_entry"],
-        row_count=len(context_rows),
+        row_count=1,
     )
     runtime_constraints = build_runtime_codec_constraints(
         target=target,

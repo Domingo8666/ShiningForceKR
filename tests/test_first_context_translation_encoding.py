@@ -1080,7 +1080,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(constraints[0]["original_symbol_count"], 6)
 
         anchored_constraints = build_runtime_codec_constraints(
-            target=b"\x00\x01\x00",
+            target=b"\x01\x00\x01\x00",
             trees=trees,
             context_rows=[
                 {
@@ -1088,21 +1088,35 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                     "source_section_index": 1,
                     "source_line_index": 2,
                     "observation": {"initial_context": 0x11},
-                }
+                },
+                {
+                    "mapping_status": "unique",
+                    "source_section_index": 1,
+                    "source_line_index": 3,
+                    "observation": {"initial_context": 0x11},
+                },
             ],
             projection_pairs=[
                 {
                     "source_section_index": 1,
                     "source_line_index": 2,
                     "target_record": {
-                        "length_offset": 0,
+                        "length_offset": 3,
                         "record_length_bytes": 0,
                     },
-                }
+                },
+                {
+                    "source_section_index": 1,
+                    "source_line_index": 3,
+                    "target_record": {
+                        "length_offset": 2,
+                        "record_length_bytes": 1,
+                    },
+                },
             ],
             runtime_records=[
                 {
-                    "length_offset": 1,
+                    "length_offset": 0,
                     "record_length_bytes": 1,
                     "initial_context": 0xC9,
                 }
@@ -1110,6 +1124,8 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         )
         self.assertEqual(anchored_constraints[0]["original_encoded_bits"], 6)
         self.assertEqual(anchored_constraints[0]["original_symbol_count"], 6)
+        self.assertEqual(anchored_constraints[1]["original_encoded_bits"], 6)
+        self.assertEqual(anchored_constraints[1]["original_symbol_count"], 6)
 
     def test_builds_safe_ready_receipt_without_local_payload(self) -> None:
         counts = {
