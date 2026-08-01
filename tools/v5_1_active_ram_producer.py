@@ -93,7 +93,7 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-active-ram-producer"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_active_ram_producer.json"
 )
@@ -846,13 +846,9 @@ def main() -> int:
         )
         for address in addresses:
             latest_writer_event[address] = event_index
-        if target_addresses.issubset(latest_writer_event):
-            # The sentinel is a discovery breakpoint, not a frame-by-frame
-            # trace.  Remove it immediately after the first decoded writer so
-            # the emulator can run uninterrupted to the proven entry anchor.
-            for start, end in list(armed_write_ranges):
-                _remove_range(client, start, end)
-                armed_write_ranges.remove((start, end))
+        # Keep the single sentinel armed through the target decoder entry.
+        # The last writer, rather than the first buffer-clear/fill writer, is
+        # the candidate that produced the bytes consumed by the renderer.
 
     try:
         rom = rom_path.read_bytes()
