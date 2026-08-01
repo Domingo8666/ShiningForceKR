@@ -17,6 +17,7 @@ try:
         _default_command,
         _parse_mapper,
         _runtime_failure_receipt,
+        _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
     from .v5_1_active_ram_producer import (
@@ -32,10 +33,7 @@ try:
     from .v5_1_renderer_output_trace import (
         DEFAULT_ROM,
         REQUIRED_TOOLS,
-        _remove_breakpoint,
-        _set_execute_breakpoint,
     )
-    from .v5_1_runtime_hit_resolver import _read_addresses
     from .v5_1_test_display_capture import (
         _continue_until_breakpoint,
         _set_unlimited_fast_forward,
@@ -47,6 +45,7 @@ except ImportError:  # pragma: no cover - direct script execution
         _default_command,
         _parse_mapper,
         _runtime_failure_receipt,
+        _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
     from v5_1_active_ram_producer import _capture_producer_state, _load_json_object
@@ -59,10 +58,7 @@ except ImportError:  # pragma: no cover - direct script execution
     from v5_1_renderer_output_trace import (
         DEFAULT_ROM,
         REQUIRED_TOOLS,
-        _remove_breakpoint,
-        _set_execute_breakpoint,
     )
-    from v5_1_runtime_hit_resolver import _read_addresses
     from v5_1_test_display_capture import (
         _continue_until_breakpoint,
         _set_unlimited_fast_forward,
@@ -75,9 +71,9 @@ PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_active_register_rom_source.json"
 )
 LOCAL_REPORT_PATH = Path("reports/local/v5_1_active_register_rom_source.json")
-WATCH_TIMEOUT_SECONDS = 240.0
+WATCH_TIMEOUT_SECONDS = 120.0
 COUNT_KEYS = {
-    "execute_break_hit_count",
+    "read_break_hit_count",
     "matching_read_hit_count",
     "logical_read_address_count",
     "physical_source_count",
@@ -114,6 +110,31 @@ def source_slot(address: int) -> str:
     if 0x8000 <= address < 0xC000:
         return "slot2"
     raise ValueError("active register source is outside the ROM windows")
+
+
+def _set_read_breakpoint(client: McpStdioClient, address: int) -> None:
+    client.call(
+        "set_breakpoint_range",
+        {
+            "start_address": f"{address:04X}",
+            "end_address": f"{address:04X}",
+            "memory_area": "rom_ram",
+            "execute": False,
+            "read": True,
+            "write": False,
+        },
+    )
+
+
+def _remove_read_breakpoint(client: McpStdioClient, address: int) -> None:
+    client.call(
+        "remove_breakpoint",
+        {
+            "address": f"{address:04X}",
+            "end_address": f"{address:04X}",
+            "memory_area": "rom_ram",
+        },
+    )
 
 
 def physical_rom_source(
@@ -298,7 +319,7 @@ def main() -> int:
         areas = client.call("list_memory_areas")
         ram_area = _select_ram_area(areas)
         mapper_offset = int(ram_area["size"]) - 4
-        _set_execute_breakpoint(client, expected_pc)
+        _set_read_breakpoint(client, logical_source)
         execute_armed = True
         _set_unlimited_fast_forward(client, True)
         fast_forward = True
@@ -312,9 +333,14 @@ def main() -> int:
             state, _ = _capture_producer_state(client)
             registers = state["registers"]
             assert isinstance(registers, dict)
-            reads = _read_addresses(expected_opcodes, {key: int(value) for key, value in registers.items()})
-            if int(state["executing_bank"]) == expected_bank and reads == expected_reads:
+            expected_pc_after = (expected_pc + len(expected_opcodes)) & 0xFFFF
+            if int(state["executing_bank"]) == expected_bank and int(state["pc_after"]) == expected_pc_after:
                 selected_state = state
+                _set_unlimited_fast_forward(client, False)
+                fast_forward = False
+                _remove_read_breakpoint(client, logical_source)
+                execute_armed = False
+                _step_instruction_and_wait(client)
                 mapper_payload = client.call("read_memory", {"area": int(ram_area["id"]), "offset": f"{mapper_offset:04X}", "size": 4})
                 break
         if selected_state is None or mapper_payload is None:
@@ -327,14 +353,14 @@ def main() -> int:
             try: _set_unlimited_fast_forward(client, False)
             except Exception: pass
         if execute_armed:
-            try: _remove_breakpoint(client, expected_pc)
+            try: _remove_read_breakpoint(client, logical_source)
             except Exception: pass
         client.close()
     _, slot0, slot1, slot2 = _parse_mapper(mapper_payload.get("data"))
     mapped_bank, physical_offset = physical_rom_source(logical_source, slot0_bank=slot0, slot1_bank=slot1, slot2_bank=slot2, rom_size=len(rom))
     expected_value = int(trace_local.get("expected_value", -1))
     rom_value = rom[physical_offset]
-    counts = {"execute_break_hit_count": hit_count, "matching_read_hit_count": 1, "logical_read_address_count": 1, "physical_source_count": 1, "rom_value_match_count": int(rom_value == expected_value)}
+    counts = {"read_break_hit_count": hit_count, "matching_read_hit_count": 1, "logical_read_address_count": 1, "physical_source_count": 1, "rom_value_match_count": int(rom_value == expected_value)}
     captured_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     safe = build_active_register_rom_source(target_sha256=target_sha256, source_register_trace_sha256=trace_sha256, analysis=counts, source_slot_name=source_slot(logical_source), mapped_bank=mapped_bank, physical_source_offset=physical_offset, captured_utc=captured_utc)
     local = {"artifact_kind": "local-s25u-active-register-rom-source", "schema_version": 1, "target_sha256": target_sha256, "source_register_trace_sha256": trace_sha256, "captured_utc": captured_utc, "logical_source": logical_source, "mapped_bank": mapped_bank, "physical_source_offset": physical_offset, "rom_value": rom_value, "expected_value": expected_value, "selected_definition": selected, "selected_state": selected_state, "mapper": mapper_payload, "publication_policy": "never-publish-logical-addresses-values-opcodes-registers-or-mapper-bytes"}

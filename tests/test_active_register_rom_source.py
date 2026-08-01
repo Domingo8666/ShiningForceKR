@@ -31,7 +31,7 @@ class ActiveRegisterRomSourceTests(unittest.TestCase):
             target_sha256="a" * 64,
             source_register_trace_sha256="b" * 64,
             analysis={
-                "execute_break_hit_count": 3,
+                "read_break_hit_count": 3,
                 "matching_read_hit_count": 1,
                 "logical_read_address_count": 1,
                 "physical_source_count": 1,
