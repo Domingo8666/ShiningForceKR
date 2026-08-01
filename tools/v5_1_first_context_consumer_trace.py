@@ -20,7 +20,9 @@ try:
         McpStdioClient,
         _capture_state,
         _default_command,
+        _runtime_failure_receipt,
         _step_instruction_and_wait,
+        _write_runtime_failure_receipt,
     )
     from .v5_1_first_context_translation_encoding import (
         CANDIDATE_END_SYMBOL,
@@ -44,7 +46,7 @@ try:
         _physical_address,
         _write_a_address,
     )
-    from .v5_1_renderer_output_trace import _trace_to_outer_return
+    from .v5_1_renderer_output_trace import _trace_bounded_frames
     from .v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
     from .v5_1_source_target_anchor import (
         CONFIRMED_ORDINAL,
@@ -66,7 +68,9 @@ except ImportError:  # pragma: no cover - direct script execution
         McpStdioClient,
         _capture_state,
         _default_command,
+        _runtime_failure_receipt,
         _step_instruction_and_wait,
+        _write_runtime_failure_receipt,
     )
     from v5_1_first_context_translation_encoding import (
         CANDIDATE_END_SYMBOL,
@@ -90,7 +94,7 @@ except ImportError:  # pragma: no cover - direct script execution
         _physical_address,
         _write_a_address,
     )
-    from v5_1_renderer_output_trace import _trace_to_outer_return
+    from v5_1_renderer_output_trace import _trace_bounded_frames
     from v5_1_runtime_hit_resolver import _parse_trace_line, _read_addresses
     from v5_1_source_target_anchor import (
         CONFIRMED_ORDINAL,
@@ -554,10 +558,9 @@ def _capture_contexts(
         if not anchor_reached:
             raise RuntimeError("consumer trace confirmed anchor was not reached")
 
-        trace_lines, trace_window = _trace_to_outer_return(
+        trace_lines, trace_window = _trace_bounded_frames(
             client,
             ready_state=anchor_state,
-            outermost=False,
         )
         contexts = extract_vector_contexts_from_trace(
             trace_lines,
@@ -568,6 +571,17 @@ def _capture_contexts(
         local["raw_trace_lines"] = trace_lines
         local["observed_contexts"] = contexts
         return contexts, local
+    except Exception as error:
+        receipt = _runtime_failure_receipt(
+            "candidate-probe",
+            error,
+            client,
+        )
+        _write_runtime_failure_receipt(
+            Path(__file__).resolve().parents[1],
+            receipt,
+        )
+        raise
     finally:
         try:
             disarm_entry()
