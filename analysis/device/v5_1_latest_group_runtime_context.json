@@ -3,10 +3,10 @@
   "schema_version": 1,
   "status": "runtime-group-context-partial-coverage",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "source_group_extract_sha256": "b4ba6c3afc0f12b7674e44e2cac190e4d7c33ce4b86d1008b836638d2ab1aac6",
-  "source_context_resolution_sha256": "b4ef32b86ef13529e758294eed595bf929fa604566ba25cc08c148bc5b505299",
+  "source_group_extract_sha256": "80c157e417e661e8ace4a42d4f6957f024f9087f8b867875c6bfcfe71cc05067",
+  "source_context_resolution_sha256": "4861b77ed8d6775c0eee9b8b0ac0f77cbe88ce22de6725ae131544f1d1ed4bd4",
   "source_renderer_observation_sha256": "b86e487b138d44cd9ea89fb8c1a18fee55b688769ec5d90809e814578e1ee6d8",
-  "captured_utc": "2026-08-01T11:54:36.302726Z",
+  "captured_utc": "2026-08-01T12:31:16.169316Z",
   "group": {
     "selector": 2,
     "declared_record_count": 148,
