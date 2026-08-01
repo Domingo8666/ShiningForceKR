@@ -130,6 +130,16 @@ def _flatten_records(population_local: dict[str, object]) -> list[dict[str, obje
     return records
 
 
+def target_transfer_byte_count(route_safe: dict[str, object]) -> int:
+    analysis = route_safe.get("analysis")
+    if not isinstance(analysis, dict):
+        raise ValueError("active ROM source role VRAM route analysis is missing")
+    value = analysis.get("ram_backed_vdp_data_write_count")
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError("active ROM source role VRAM transfer count is invalid")
+    return value
+
+
 def _physical_pc(bank: int, pc: int) -> int:
     if pc < 0x4000:
         return pc
@@ -429,7 +439,7 @@ def main() -> int:
     ):
         raise ValueError("active ROM source role local mapping disagrees")
     reads, executed, matching_events = collect_matching_reads(lines, selected)
-    target_transfer_count = int(route_safe["analysis"]["target_transfer_count"])
+    target_transfer_count = target_transfer_byte_count(route_safe)
     records = _flatten_records(population_local)
     counts, local_analysis = analyze_source_role(
         logical_reads=reads,

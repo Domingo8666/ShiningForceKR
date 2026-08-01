@@ -5,11 +5,23 @@ import unittest
 from tools.v5_1_active_rom_source_role import (
     analyze_source_role,
     build_active_rom_source_role,
+    target_transfer_byte_count,
     validate_active_rom_source_role,
 )
 
 
 class ActiveRomSourceRoleTests(unittest.TestCase):
+    def test_reads_transfer_count_from_current_vram_route_schema(self) -> None:
+        self.assertEqual(
+            target_transfer_byte_count({
+                "analysis": {
+                    "ram_backed_vdp_data_write_count": 192,
+                    "resolved_vram_data_write_count": 192,
+                }
+            }),
+            192,
+        )
+
     def test_classifies_a_script_payload_before_renderer_data(self) -> None:
         counts, result = analyze_source_role(
             logical_reads=list(range(0x6AC0, 0x6AE0)),
