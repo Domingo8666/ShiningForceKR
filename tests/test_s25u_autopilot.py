@@ -157,6 +157,14 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn("timeout -k 15s 150s", RUNTIME_STAGE)
         self.assertIn("run_active_register_rom_source", RUNTIME_STAGE)
 
+    def test_runtime_stage_classifies_source_before_treating_it_as_text(self) -> None:
+        self.assertIn('"active-rom-source-role"', RUNTIME_STAGE)
+        self.assertIn("v5_1_active_rom_source_role.py", RUNTIME_STAGE)
+        self.assertLess(
+            RUNTIME_STAGE.index('"active-rom-source-role"'),
+            RUNTIME_STAGE.index("if decoder_selection_ready || group_selection_ready; then"),
+        )
+
     def test_autopilot_retries_only_transient_runtime_failures(self) -> None:
         self.assertIn('SFKR_RUNTIME_TIMEOUT:-300', SCRIPT)
         self.assertIn('if [ "$runtime_timeout" -lt 300 ]', SCRIPT)

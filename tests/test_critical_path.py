@@ -15,8 +15,13 @@ from tools.v5_1_active_register_rom_source import (
     PUBLISH_RELATIVE_PATH as ROM_SOURCE_PATH,
     build_active_register_rom_source,
 )
+from tools.v5_1_active_rom_source_role import (
+    PUBLISH_RELATIVE_PATH as ROM_SOURCE_ROLE_PATH,
+    build_active_rom_source_role,
+)
 from tools.v5_1_critical_path import (
     FOCUSED_STAGE,
+    SOURCE_ROLE_STAGE,
     select_critical_path,
     validate_critical_path,
 )
@@ -76,27 +81,68 @@ class CriticalPathTests(unittest.TestCase):
             self.assertEqual(selected["selected_stage"], FOCUSED_STAGE)
             self.assertFalse(selected["translation_build_eligible"])
 
-    def test_skips_focus_when_mapping_is_already_current(self) -> None:
+    def _write_current_mapping(
+        self, root: Path, target_sha256: str
+    ) -> dict[str, object]:
+        trace_sha256 = sha256_file(root / REGISTER_TRACE_PATH)
+        mapped = build_active_register_rom_source(
+            target_sha256=target_sha256,
+            source_register_trace_sha256=trace_sha256,
+            analysis={
+                "read_break_hit_count": 1,
+                "matching_read_hit_count": 1,
+                "logical_read_address_count": 1,
+                "physical_source_count": 1,
+                "rom_value_match_count": 1,
+            },
+            source_slot_name="slot2",
+            mapped_bank=1,
+            physical_source_offset=0x4123,
+            captured_utc="2026-08-02T00:00:00Z",
+        )
+        self._write_json(root / ROM_SOURCE_PATH, mapped)
+        return mapped
+
+    def test_selects_role_classification_when_mapping_is_current(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             rom_path, target_sha256 = self._ready_root(root)
-            trace_sha256 = sha256_file(root / REGISTER_TRACE_PATH)
-            mapped = build_active_register_rom_source(
+            self._write_current_mapping(root, target_sha256)
+            selected = select_critical_path(root, rom_path)
+            self.assertIsNotNone(selected)
+            assert selected is not None
+            self.assertEqual(selected["selected_stage"], SOURCE_ROLE_STAGE)
+
+    def test_skips_focus_when_role_is_already_current(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            rom_path, target_sha256 = self._ready_root(root)
+            self._write_current_mapping(root, target_sha256)
+            role = build_active_rom_source_role(
                 target_sha256=target_sha256,
-                source_register_trace_sha256=trace_sha256,
+                source_active_register_rom_source_sha256=sha256_file(
+                    root / ROM_SOURCE_PATH
+                ),
+                source_register_trace_sha256=sha256_file(
+                    root / REGISTER_TRACE_PATH
+                ),
+                source_target_population_sha256="d" * 64,
                 analysis={
-                    "read_break_hit_count": 1,
-                    "matching_read_hit_count": 1,
-                    "logical_read_address_count": 1,
-                    "physical_source_count": 1,
-                    "rom_value_match_count": 1,
+                    "matching_definition_event_count": 32,
+                    "matching_read_event_count": 32,
+                    "unique_logical_read_count": 32,
+                    "contiguous_logical_span_bytes": 32,
+                    "forward_sequential_transition_count": 31,
+                    "source_script_payload_match_count": 0,
+                    "source_script_length_match_count": 0,
+                    "source_executed_match_count": 0,
+                    "target_transfer_byte_count": 192,
+                    "target_transfer_tile_count": 6,
                 },
-                source_slot_name="slot2",
-                mapped_bank=1,
-                physical_source_offset=0x4123,
+                source_role_name="renderer-source-candidate",
                 captured_utc="2026-08-02T00:00:00Z",
             )
-            self._write_json(root / ROM_SOURCE_PATH, mapped)
+            self._write_json(root / ROM_SOURCE_ROLE_PATH, role)
             self.assertIsNone(select_critical_path(root, rom_path))
 
     def test_does_not_focus_without_current_prerequisites(self) -> None:

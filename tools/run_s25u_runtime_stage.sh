@@ -142,6 +142,17 @@ else
       diagnostic_trigger=probe
       record_stage_failure active-register-rom-source
     fi
+  elif [ "$critical_path_focus" = "active-rom-source-role" ]; then
+    echo "SFKR critical path: classifying the confirmed ROM source role."
+    write_next_step \
+      "확정된 ROM 바이트가 대사·코드·렌더 데이터 중 무엇인지 자동 분류하고 있습니다."
+    python tools/v5_1_active_rom_source_role.py --if-ready
+    active_rom_source_role_status=$?
+    if [ "$active_rom_source_role_status" -ne 0 ]; then
+      stage_status="$active_rom_source_role_status"
+      diagnostic_trigger=probe
+      record_stage_failure active-rom-source-role
+    fi
   else
   if decoder_selection_ready || group_selection_ready; then
     echo "SFKR runtime stage: using the confirmed decoder stream."

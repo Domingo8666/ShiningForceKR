@@ -158,6 +158,14 @@ try:
         PUBLISH_RELATIVE_PATH as ACTIVE_REGISTER_ROM_SOURCE_RELATIVE_PATH,
         validate_active_register_rom_source,
     )
+    from .v5_1_active_rom_source_role import (
+        PUBLISH_RELATIVE_PATH as ACTIVE_ROM_SOURCE_ROLE_RELATIVE_PATH,
+        validate_active_rom_source_role,
+    )
+    from .v5_1_critical_path import (
+        PUBLISH_RELATIVE_PATH as CRITICAL_PATH_RELATIVE_PATH,
+        validate_critical_path,
+    )
     from .v5_1_runtime_context_glyph_candidates import (
         PUBLISH_RELATIVE_PATH
         as RUNTIME_CONTEXT_GLYPH_CANDIDATES_RELATIVE_PATH,
@@ -405,6 +413,14 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as ACTIVE_REGISTER_ROM_SOURCE_RELATIVE_PATH,
         validate_active_register_rom_source,
     )
+    from v5_1_active_rom_source_role import (
+        PUBLISH_RELATIVE_PATH as ACTIVE_ROM_SOURCE_ROLE_RELATIVE_PATH,
+        validate_active_rom_source_role,
+    )
+    from v5_1_critical_path import (
+        PUBLISH_RELATIVE_PATH as CRITICAL_PATH_RELATIVE_PATH,
+        validate_critical_path,
+    )
     from v5_1_runtime_context_glyph_candidates import (
         PUBLISH_RELATIVE_PATH
         as RUNTIME_CONTEXT_GLYPH_CANDIDATES_RELATIVE_PATH,
@@ -596,6 +612,10 @@ SAFE_ARTIFACTS = {
         validate_active_ram_register_trace,
     ACTIVE_REGISTER_ROM_SOURCE_RELATIVE_PATH:
         validate_active_register_rom_source,
+    ACTIVE_ROM_SOURCE_ROLE_RELATIVE_PATH:
+        validate_active_rom_source_role,
+    CRITICAL_PATH_RELATIVE_PATH:
+        validate_critical_path,
     RUNTIME_CONTEXT_GLYPH_CANDIDATES_RELATIVE_PATH:
         validate_runtime_context_glyph_candidates,
     RUNTIME_CONTEXT_GLYPH_REVIEW_RELATIVE_PATH:

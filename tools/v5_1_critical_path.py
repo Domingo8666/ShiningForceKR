@@ -20,6 +20,10 @@ try:
         PUBLISH_RELATIVE_PATH as ROM_SOURCE_PATH,
         validate_active_register_rom_source,
     )
+    from .v5_1_active_rom_source_role import (
+        PUBLISH_RELATIVE_PATH as ROM_SOURCE_ROLE_PATH,
+        validate_active_rom_source_role,
+    )
     from .v5_1_renderer_output_trace import DEFAULT_ROM
 except ImportError:  # pragma: no cover - direct script execution
     from patch_io import sha256_file
@@ -32,14 +36,33 @@ except ImportError:  # pragma: no cover - direct script execution
         PUBLISH_RELATIVE_PATH as ROM_SOURCE_PATH,
         validate_active_register_rom_source,
     )
+    from v5_1_active_rom_source_role import (
+        PUBLISH_RELATIVE_PATH as ROM_SOURCE_ROLE_PATH,
+        validate_active_rom_source_role,
+    )
     from v5_1_renderer_output_trace import DEFAULT_ROM
 
 
 ARTIFACT_KIND = "sanitized-s25u-critical-path"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path("analysis/device/v5_1_latest_critical_path.json")
 FOCUSED_STAGE = "active-register-rom-source"
+SOURCE_ROLE_STAGE = "active-rom-source-role"
 FALLBACK_STAGE = "continue"
+STAGE_POLICIES = {
+    FOCUSED_STAGE: {
+        "confirmed_boundary": "active-vram-to-register-rom-window-read",
+        "blocked_boundary": "logical-rom-window-read-to-physical-rom-source",
+        "selection_reason": "current-register-trace-ready-current-rom-source-missing",
+        "next_checkpoint": "map-active-register-rom-source",
+    },
+    SOURCE_ROLE_STAGE: {
+        "confirmed_boundary": "active-vram-to-physical-rom-source",
+        "blocked_boundary": "physical-rom-source-to-source-role",
+        "selection_reason": "current-rom-source-ready-current-role-missing",
+        "next_checkpoint": "classify-active-rom-source-role",
+    },
+}
 TOP_LEVEL_KEYS = {
     "artifact_kind",
     "schema_version",
@@ -115,6 +138,53 @@ def _rom_source_current(
     )
 
 
+def _source_role_current(
+    root: Path,
+    *,
+    target_sha256: str,
+    source_sha256: str,
+) -> bool:
+    path = root / ROM_SOURCE_ROLE_PATH
+    if not path.is_file():
+        return False
+    try:
+        value = _load_object(path)
+        validate_active_rom_source_role(value)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    return (
+        value.get("target_sha256") == target_sha256
+        and value.get("source_active_register_rom_source_sha256") == source_sha256
+    )
+
+
+def _build_selection(
+    *,
+    target_sha256: str,
+    trace_sha256: str,
+    stage: str,
+) -> dict[str, object]:
+    policy = STAGE_POLICIES[stage]
+    generated_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    value = {
+        "artifact_kind": ARTIFACT_KIND,
+        "schema_version": SCHEMA_VERSION,
+        "status": "one-unresolved-boundary-selected",
+        "target_sha256": target_sha256,
+        "source_register_trace_sha256": trace_sha256,
+        "selected_stage": stage,
+        "confirmed_boundary": policy["confirmed_boundary"],
+        "blocked_boundary": policy["blocked_boundary"],
+        "selection_reason": policy["selection_reason"],
+        "generated_utc": generated_utc,
+        "baseline_script_bytes_unchanged": True,
+        "translation_build_eligible": False,
+        "next_checkpoint": policy["next_checkpoint"],
+    }
+    validate_critical_path(value)
+    return value
+
+
 def select_critical_path(root: Path, rom_path: Path) -> dict[str, object] | None:
     """Return a focused stage only when all of its prerequisites are current."""
 
@@ -124,51 +194,49 @@ def select_critical_path(root: Path, rom_path: Path) -> dict[str, object] | None
     trace_ready, trace_sha256 = _trace_ready(root, target_sha256)
     if not trace_ready or trace_sha256 is None:
         return None
-    if _rom_source_current(
+    source_current = _rom_source_current(
         root,
         target_sha256=target_sha256,
         trace_sha256=trace_sha256,
+    )
+    if not source_current:
+        return _build_selection(
+            target_sha256=target_sha256,
+            trace_sha256=trace_sha256,
+            stage=FOCUSED_STAGE,
+        )
+    source_sha256 = sha256_file(root / ROM_SOURCE_PATH)
+    if not _source_role_current(
+        root,
+        target_sha256=target_sha256,
+        source_sha256=source_sha256,
     ):
-        return None
-    generated_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-    value = {
-        "artifact_kind": ARTIFACT_KIND,
-        "schema_version": SCHEMA_VERSION,
-        "status": "one-unresolved-boundary-selected",
-        "target_sha256": target_sha256,
-        "source_register_trace_sha256": trace_sha256,
-        "selected_stage": FOCUSED_STAGE,
-        "confirmed_boundary": "active-vram-to-register-rom-window-read",
-        "blocked_boundary": "logical-rom-window-read-to-physical-rom-source",
-        "selection_reason": "current-register-trace-ready-current-rom-source-missing",
-        "generated_utc": generated_utc,
-        "baseline_script_bytes_unchanged": True,
-        "translation_build_eligible": False,
-        "next_checkpoint": "map-active-register-rom-source",
-    }
-    validate_critical_path(value)
-    return value
+        return _build_selection(
+            target_sha256=target_sha256,
+            trace_sha256=trace_sha256,
+            stage=SOURCE_ROLE_STAGE,
+        )
+    return None
 
 
 def validate_critical_path(value: dict[str, object]) -> None:
     if set(value) != TOP_LEVEL_KEYS:
         raise ValueError("critical path fields do not match")
+    stage = value.get("selected_stage")
+    policy = STAGE_POLICIES.get(str(stage))
     if (
         value.get("artifact_kind") != ARTIFACT_KIND
         or value.get("schema_version") != SCHEMA_VERSION
         or value.get("status") != "one-unresolved-boundary-selected"
         or not _is_sha256(value.get("target_sha256"))
         or not _is_sha256(value.get("source_register_trace_sha256"))
-        or value.get("selected_stage") != FOCUSED_STAGE
-        or value.get("confirmed_boundary")
-        != "active-vram-to-register-rom-window-read"
-        or value.get("blocked_boundary")
-        != "logical-rom-window-read-to-physical-rom-source"
-        or value.get("selection_reason")
-        != "current-register-trace-ready-current-rom-source-missing"
+        or policy is None
+        or value.get("confirmed_boundary") != policy["confirmed_boundary"]
+        or value.get("blocked_boundary") != policy["blocked_boundary"]
+        or value.get("selection_reason") != policy["selection_reason"]
         or value.get("baseline_script_bytes_unchanged") is not True
         or value.get("translation_build_eligible") is not False
-        or value.get("next_checkpoint") != "map-active-register-rom-source"
+        or value.get("next_checkpoint") != policy["next_checkpoint"]
     ):
         raise ValueError("critical path policy is invalid")
     try:
