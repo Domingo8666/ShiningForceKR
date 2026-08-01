@@ -146,6 +146,24 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(symbols, [0x02, 0x03, 0x03])
         self.assertEqual(assignments, symbols)
 
+    def test_direct_renderer_accepts_traced_page_marker_as_a_slot(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xFE),
+            0x5F: tree(0x5F, 0x02, 0xFE),
+        }
+        symbols, assignments = solve_direct_renderer_proof_symbols(
+            trees=trees,
+            initial_context=0xC9,
+            maximum_bits=8,
+            visuals=["text:두", "text:고"],
+        )
+        self.assertEqual(symbols, [0x5F, 0x02])
+        self.assertEqual(assignments, symbols)
+        self.assertGreater(
+            direct_renderer_font_tile_offset(21, 0x5F),
+            direct_renderer_font_tile_offset(21, 0x5E),
+        )
+
     def test_first_row_direct_renderer_omits_inline_page_token(self) -> None:
         direct_symbols = list(range(0x02, 0x0C))
         with patch(

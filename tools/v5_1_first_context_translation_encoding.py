@@ -168,7 +168,10 @@ ROW_FONT_PAGES = PROVEN_ROW_FONT_PAGES + (239,)
 # consumer contract is fully recovered.  Page 21 is the independently mapped
 # implicit page for this visible entry.
 DIRECT_RENDERER_PROOF_PAGE = 21
-DIRECT_RENDERER_GLYPH_LAST_SYMBOL = 0x5E
+# The first outgoing symbol is 0x5F.  The traced consumer does not dispatch it
+# as a page-select command on this path; it advances the fixed render slot.
+# The page still has room for this tile (symbol 0x5F is tile index 93 of 96).
+DIRECT_RENDERER_GLYPH_LAST_SYMBOL = 0x5F
 DIRECT_RENDERER_EXTRA_SYMBOL_COUNT = 1
 DIRECT_RENDERER_SEARCH_NODE_LIMIT = 50_000
 LOCAL_VISIBLE_UNICODE_MAPPING_PATH = Path(
