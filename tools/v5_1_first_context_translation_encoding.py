@@ -2185,7 +2185,9 @@ def select_row_font_pages(
                     solve_exact_length_row_visual_symbols(
                         trees=trees,
                         initial_context=int(constraint["initial_context"]),
-                        target_bits=int(constraint["original_encoded_bits"]),
+                        target_bits=(
+                            int(constraint["original_record_length_bytes"]) * 8
+                        ),
                         page=page,
                         visuals=visuals,
                     )
@@ -2204,8 +2206,11 @@ def select_row_font_pages(
                                 initial_context=int(
                                     constraint["initial_context"]
                                 ),
-                                target_bits=int(
-                                    constraint["original_encoded_bits"]
+                                target_bits=(
+                                    int(
+                                        constraint["original_record_length_bytes"]
+                                    )
+                                    * 8
                                 ),
                                 pages=page_group,
                                 visuals=visuals,
@@ -2246,7 +2251,7 @@ def select_row_font_pages(
                 if len(pages) == row_index + 1:
                     continue
             target_bits = (
-                int(constraint["original_encoded_bits"])
+                int(constraint["original_record_length_bytes"]) * 8
                 if constraint is not None
                 else 0
             )
@@ -2331,7 +2336,7 @@ def build_single_page_symbol_rows(
             assignment_pages = [page] * len(assignments)
         else:
             initial_context = int(constraint["initial_context"])
-            target_bits = int(constraint["original_encoded_bits"])
+            target_bits = int(constraint["original_record_length_bytes"]) * 8
             storage_capacity_bits = (
                 int(constraint["original_record_length_bytes"]) * 8
             )

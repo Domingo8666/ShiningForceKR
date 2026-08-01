@@ -130,11 +130,11 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         diagnostic.assert_called_once_with(
             trees={},
             initial_context=0xC9,
-            target_bits=4,
+            target_bits=8,
             pages=(240,),
             visuals=["text:가"],
         )
-        self.assertEqual(caught.exception.target_bits, 4)
+        self.assertEqual(caught.exception.target_bits, 8)
         self.assertEqual(caught.exception.candidate_bits, 6)
 
     def test_searches_past_an_unusable_extra_row_page(self) -> None:
@@ -301,7 +301,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 }],
             )
 
-        self.assertEqual(caught.exception.target_bits, 150)
+        self.assertEqual(caught.exception.target_bits, 152)
         self.assertEqual(caught.exception.candidate_bits, 137)
         diagnostic.assert_called_once()
 
