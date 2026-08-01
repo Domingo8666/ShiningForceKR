@@ -42,6 +42,7 @@ from tools.v5_1_critical_path import (
     PATH_SCOPE_STAGE,
     READ_BLOCK_STAGE,
     SOURCE_ROLE_STAGE,
+    TRANSLATED_VRAM_DIFF_STAGE,
     select_critical_path,
     validate_critical_path,
 )
@@ -330,6 +331,38 @@ class CriticalPathTests(unittest.TestCase):
             )
             self._write_json(root / ROM_CURSOR_RESET_PATH, cursor)
             self.assertIsNone(select_critical_path(root, rom_path))
+
+            nontext_scope = build_active_rom_path_scope(
+                target_sha256=target_sha256,
+                source_active_register_rom_source_sha256=source_sha256,
+                source_active_rom_source_role_sha256=role_sha256,
+                source_active_rom_read_block_sha256=sha256_file(
+                    root / ROM_READ_BLOCK_PATH
+                ),
+                source_active_rom_lookup_index_producer_sha256=sha256_file(
+                    root / ROM_LOOKUP_INDEX_PATH
+                ),
+                analysis={
+                    "read_occurrence_count": 46,
+                    "unique_logical_read_count": 8,
+                    "physical_projection_byte_span": 64,
+                    "repeated_read_occurrence_count": 38,
+                    "target_transfer_byte_count": 192,
+                    "target_transfer_tile_count": 6,
+                    "matching_predecessor_count": 46,
+                    "script_projection_match_count": 0,
+                    "source_executed_match_count": 0,
+                },
+                path_scope="repeated-interleaved-renderer-asset-candidate",
+                captured_utc="2026-08-02T00:00:00Z",
+            )
+            self._write_json(root / ROM_PATH_SCOPE_PATH, nontext_scope)
+            selected = select_critical_path(root, rom_path)
+            self.assertIsNotNone(selected)
+            assert selected is not None
+            self.assertEqual(
+                selected["selected_stage"], TRANSLATED_VRAM_DIFF_STAGE
+            )
 
     def test_does_not_focus_without_current_prerequisites(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

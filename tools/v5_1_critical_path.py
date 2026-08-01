@@ -36,6 +36,13 @@ try:
         PUBLISH_RELATIVE_PATH as ROM_PATH_SCOPE_PATH,
         validate_active_rom_path_scope,
     )
+    from .v5_1_first_context_translated_vram_diff import (
+        PUBLISH_RELATIVE_PATH as TRANSLATED_VRAM_DIFF_PATH,
+        validate_first_context_translated_vram_diff,
+    )
+    from .v5_1_first_context_translation_test_build import (
+        PUBLISH_RELATIVE_PATH as TRANSLATION_TEST_BUILD_PATH,
+    )
     from .v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ROM_CURSOR_RESET_PATH,
         validate_active_rom_cursor_reset,
@@ -68,6 +75,13 @@ except ImportError:  # pragma: no cover - direct script execution
         PUBLISH_RELATIVE_PATH as ROM_PATH_SCOPE_PATH,
         validate_active_rom_path_scope,
     )
+    from v5_1_first_context_translated_vram_diff import (
+        PUBLISH_RELATIVE_PATH as TRANSLATED_VRAM_DIFF_PATH,
+        validate_first_context_translated_vram_diff,
+    )
+    from v5_1_first_context_translation_test_build import (
+        PUBLISH_RELATIVE_PATH as TRANSLATION_TEST_BUILD_PATH,
+    )
     from v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ROM_CURSOR_RESET_PATH,
         validate_active_rom_cursor_reset,
@@ -83,6 +97,7 @@ SOURCE_ROLE_STAGE = "active-rom-source-role"
 READ_BLOCK_STAGE = "active-rom-read-block"
 LOOKUP_INDEX_STAGE = "active-rom-lookup-index-producer"
 PATH_SCOPE_STAGE = "active-rom-path-scope"
+TRANSLATED_VRAM_DIFF_STAGE = "first-context-translated-vram-diff"
 CURSOR_RESET_STAGE = "active-rom-cursor-reset"
 FALLBACK_STAGE = "continue"
 STAGE_POLICIES = {
@@ -121,6 +136,14 @@ STAGE_POLICIES = {
             "current-incremental-source-ready-current-path-scope-missing"
         ),
         "next_checkpoint": "classify-active-rom-path-scope",
+    },
+    TRANSLATED_VRAM_DIFF_STAGE: {
+        "confirmed_boundary": "approved-translation-to-static-test-rom",
+        "blocked_boundary": "static-test-rom-to-translated-glyph-vram",
+        "selection_reason": (
+            "current-rom-path-is-nontext-capture-baseline-test-vram-difference"
+        ),
+        "next_checkpoint": "capture-translated-test-rom-vram-difference",
     },
     CURSOR_RESET_STAGE: {
         "confirmed_boundary": "active-vram-to-incremental-rom-cursor",
@@ -329,6 +352,27 @@ def _path_scope_current(
     return value
 
 
+def _translated_vram_diff_current(
+    root: Path,
+    *,
+    target_sha256: str,
+) -> bool:
+    path = root / TRANSLATED_VRAM_DIFF_PATH
+    build_path = root / TRANSLATION_TEST_BUILD_PATH
+    if not path.is_file() or not build_path.is_file():
+        return False
+    try:
+        value = _load_object(path)
+        validate_first_context_translated_vram_diff(value)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    return (
+        value.get("baseline_target_sha256") == target_sha256
+        and value.get("first_context_translation_test_build_sha256")
+        == sha256_file(build_path)
+    )
+
+
 def _build_selection(
     *,
     target_sha256: str,
@@ -442,6 +486,15 @@ def select_critical_path(root: Path, rom_path: Path) -> dict[str, object] | None
                         stage=PATH_SCOPE_STAGE,
                     )
                 if path_scope.get("current_path_relevant_to_translation_fix") is False:
+                    if not _translated_vram_diff_current(
+                        root,
+                        target_sha256=target_sha256,
+                    ):
+                        return _build_selection(
+                            target_sha256=target_sha256,
+                            trace_sha256=trace_sha256,
+                            stage=TRANSLATED_VRAM_DIFF_STAGE,
+                        )
                     return None
                 if not _cursor_reset_current(
                     root,

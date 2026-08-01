@@ -186,6 +186,17 @@ else
       diagnostic_trigger=probe
       record_stage_failure active-rom-path-scope
     fi
+  elif [ "$critical_path_focus" = "first-context-translated-vram-diff" ]; then
+    echo "SFKR critical path: comparing baseline and translated dialogue VRAM."
+    write_next_step \
+      "기준 ROM과 번역 ROM을 같은 대사 지점에서 각각 콜드부팅해 실제 한글 글꼴 VRAM 유입을 비교하고 있습니다."
+    python tools/v5_1_first_context_translated_vram_diff.py --if-ready
+    translated_vram_diff_status=$?
+    if [ "$translated_vram_diff_status" -ne 0 ]; then
+      stage_status="$translated_vram_diff_status"
+      diagnostic_trigger=probe
+      record_stage_failure first-context-translated-vram-diff
+    fi
   elif [ "$critical_path_focus" = "active-rom-cursor-reset" ]; then
     echo "SFKR critical path: resolving the ROM cursor reset and stride."
     write_next_step \

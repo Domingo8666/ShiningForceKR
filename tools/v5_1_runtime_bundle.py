@@ -174,6 +174,10 @@ try:
         PUBLISH_RELATIVE_PATH as ACTIVE_ROM_PATH_SCOPE_RELATIVE_PATH,
         validate_active_rom_path_scope,
     )
+    from .v5_1_first_context_translated_vram_diff import (
+        PUBLISH_RELATIVE_PATH as TRANSLATED_VRAM_DIFF_RELATIVE_PATH,
+        validate_first_context_translated_vram_diff,
+    )
     from .v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ACTIVE_ROM_CURSOR_RESET_RELATIVE_PATH,
         validate_active_rom_cursor_reset,
@@ -445,6 +449,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as ACTIVE_ROM_PATH_SCOPE_RELATIVE_PATH,
         validate_active_rom_path_scope,
     )
+    from v5_1_first_context_translated_vram_diff import (
+        PUBLISH_RELATIVE_PATH as TRANSLATED_VRAM_DIFF_RELATIVE_PATH,
+        validate_first_context_translated_vram_diff,
+    )
     from v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ACTIVE_ROM_CURSOR_RESET_RELATIVE_PATH,
         validate_active_rom_cursor_reset,
@@ -652,6 +660,8 @@ SAFE_ARTIFACTS = {
         validate_active_rom_lookup_index_producer,
     ACTIVE_ROM_PATH_SCOPE_RELATIVE_PATH:
         validate_active_rom_path_scope,
+    TRANSLATED_VRAM_DIFF_RELATIVE_PATH:
+        validate_first_context_translated_vram_diff,
     ACTIVE_ROM_CURSOR_RESET_RELATIVE_PATH:
         validate_active_rom_cursor_reset,
     CRITICAL_PATH_RELATIVE_PATH:
