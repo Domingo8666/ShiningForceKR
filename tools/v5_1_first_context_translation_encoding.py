@@ -4833,7 +4833,7 @@ def _main() -> int:
     }
     ACTIVE_FAILURE_CATEGORY = "font-input"
     ACTIVE_FAILURE_STEP = "build-font-overlay"
-    writes = []
+    writes_by_range: dict[tuple[int, int], ExpectedWrite] = {}
     all_assignments = []
     for row_index, assignments in enumerate(assignments_by_row, start=1):
         for assignment in assignments:
@@ -4883,20 +4883,26 @@ def _main() -> int:
                 )
             before = sparse.data[start:end]
             if before != after:
-                writes.append(
-                    ExpectedWrite(
-                        writer=(
-                            f"first-context-row-{row_index}-font-"
-                            f"{page:02x}-{symbol:02x}"
-                        ),
-                        purpose="first-context-technical-test-only",
-                        offset=start,
-                        before=before,
-                        after=after,
-                        allowed_start=start,
-                        allowed_end_exclusive=end,
-                    )
+                write = ExpectedWrite(
+                    writer=(
+                        f"first-context-row-{row_index}-font-"
+                        f"{page:02x}-{symbol:02x}"
+                    ),
+                    purpose="first-context-technical-test-only",
+                    offset=start,
+                    before=before,
+                    after=after,
+                    allowed_start=start,
+                    allowed_end_exclusive=end,
                 )
+                write_range = (start, end)
+                existing = writes_by_range.get(write_range)
+                if existing is None:
+                    writes_by_range[write_range] = write
+                elif existing.before != before or existing.after != after:
+                    raise PatchError(
+                        "first context font assignments collide"
+                    )
             all_assignments.append(
                 {
                     "row_index": row_index,
@@ -4907,6 +4913,7 @@ def _main() -> int:
                     "tile_sha256": sha256_bytes(after),
                 }
             )
+    writes = list(writes_by_range.values())
     ACTIVE_FAILURE_CATEGORY = "font-overlay"
     _, font_audit = apply_expected_writes(sparse.data, writes)
     font_overlay = expected_writes_to_ips(writes)
