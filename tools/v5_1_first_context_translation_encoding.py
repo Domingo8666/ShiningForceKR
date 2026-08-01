@@ -2599,6 +2599,12 @@ def select_row_font_pages(
             candidate_pages = candidate_pages[
                 :MAX_EXACT_FONT_PAGE_CANDIDATES
             ]
+            if "original_symbol_count" in constraint:
+                # These five destination pages were already proved writable
+                # and selectable by the live renderer.  Fixed-count routing is
+                # the expensive part, so do not spend the S25U time budget on
+                # seven speculative alternatives after the proven page.
+                candidate_pages = candidate_pages[:1]
         failed_pages: list[int] = []
         for page in candidate_pages:
             if page in used_pages:
