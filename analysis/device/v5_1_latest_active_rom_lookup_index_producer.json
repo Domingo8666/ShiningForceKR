@@ -1,0 +1,33 @@
+{
+  "artifact_kind": "sanitized-s25u-active-rom-lookup-index-producer",
+  "schema_version": 1,
+  "status": "active-rom-lookup-index-producer-bounded",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_active_rom_read_block_sha256": "9c99ebcff2236bb7e02bee74cdf901e67ac1654841f8b525ab8a92d08626b51b",
+  "source_active_rom_source_role_sha256": "da5d2f0d33495787f23f44a50192f674bd80e8f851ab9a663f6562646afb0a1f",
+  "source_register_trace_sha256": "0f172e70a48edac1ac849469ea5709d94ccc350bb3cc6d365aefe9d4d1d70040",
+  "captured_utc": "2026-08-01T22:38:12.792045Z",
+  "analysis": {
+    "split_pointer_definition_count": 0,
+    "memory_pointer_definition_count": 0,
+    "target_unique_logical_read_count": 8,
+    "unique_predecessor_instruction_count": 1,
+    "literal_pointer_definition_count": 0,
+    "matched_predecessor_definition_count": 46,
+    "stack_pointer_definition_count": 0,
+    "maximum_backtrack_instruction_count": 4,
+    "arithmetic_pointer_definition_count": 0,
+    "target_event_count": 46,
+    "incremental_pointer_definition_count": 46,
+    "unknown_pointer_definition_count": 0,
+    "address_register_candidate_count": 1
+  },
+  "address_operand_kind": "bc-indirect",
+  "producer_class": "incremental-cursor-candidate",
+  "producer_candidate_bounded": true,
+  "lookup_index_producer_confirmed": false,
+  "baseline_script_bytes_unchanged": true,
+  "local_payload_policy": "addresses-opcodes-registers-values-and-event-indices-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "capture-cursor-reset-and-stride"
+}
