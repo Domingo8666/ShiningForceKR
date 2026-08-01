@@ -311,8 +311,11 @@ FAILURE_STEPS = {
 }
 FAILURE_KINDS = {
     "AssertionError",
+    "AttributeError",
     "IndexError",
     "KeyError",
+    "MemoryError",
+    "OSError",
     "PatchError",
     "RowRouteError",
     "RuntimeError",
@@ -329,6 +332,7 @@ FAILURE_DETAILS = {
     "solve-proven-exact-row",
     "solve-proven-bounded-row",
     "solve-proven-multi-page-row",
+    "solve-direct-renderer-first-row",
     "solve-extra-single-page-row",
     "solve-extra-multi-page-row",
     "validate-row-assignments",
@@ -3722,6 +3726,8 @@ def select_row_font_pages(
     target_rows: list[dict[str, object]],
     preserved_by_row: list[list[dict[str, int]]],
     runtime_constraints: list[dict[str, object]] | None = None,
+    direct_renderer_first_row: bool = False,
+    direct_renderer_pages: tuple[int, ...] = (DIRECT_RENDERER_PROOF_PAGE,),
 ) -> tuple[int | tuple[int, ...], ...]:
     global ACTIVE_FAILURE_ROW_INDEX, ACTIVE_FAILURE_DETAIL
     visual_rows = build_row_visuals(
@@ -3732,6 +3738,12 @@ def select_row_font_pages(
         visual_rows
     ):
         raise ValueError("first context runtime constraint count does not match")
+    if direct_renderer_first_row and (
+        not direct_renderer_pages
+        or len(direct_renderer_pages) != len(set(direct_renderer_pages))
+        or any(not 0 <= page < FONT_PAGE_COUNT for page in direct_renderer_pages)
+    ):
+        raise ValueError("direct renderer proof page candidates are invalid")
     pages: list[int | tuple[int, ...]] = []
     used_pages: set[int] = set()
     constraints = runtime_constraints or [None] * len(visual_rows)
@@ -3766,6 +3778,14 @@ def select_row_font_pages(
         zip(visual_rows, constraints)
     ):
         ACTIVE_FAILURE_ROW_INDEX = row_index + 1
+        if direct_renderer_first_row and row_index == 0:
+            # The consumer trace disproved inline page selection for this row.
+            # Do not spend time finding a route that the direct renderer branch
+            # will immediately discard, and reserve every candidate implicit
+            # page so later rows cannot overwrite its duplicated proof tiles.
+            pages.append(direct_renderer_pages[0])
+            used_pages.update(direct_renderer_pages)
+            continue
         ACTIVE_FAILURE_DETAIL = (
             "solve-proven-exact-row"
             if row_index < len(PROVEN_ROW_FONT_PAGES)
@@ -4775,6 +4795,8 @@ def _main() -> int:
         target_rows=target_rows,
         preserved_by_row=rendered_preserved_by_row,
         runtime_constraints=runtime_constraints,
+        direct_renderer_first_row=True,
+        direct_renderer_pages=direct_renderer_pages,
     )
     ACTIVE_FAILURE_STEP = "build-symbol-rows"
     (

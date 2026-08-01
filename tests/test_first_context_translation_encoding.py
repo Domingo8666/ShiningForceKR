@@ -168,6 +168,43 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             for assignment in assignments[0][2:]
         ))
 
+    def test_skips_disproven_page_route_for_direct_renderer_row(self) -> None:
+        targets = [{"target_text": "가"}, {"target_text": "나"}]
+        constraints = [
+            {
+                "initial_context": 0xC9,
+                "original_encoded_bits": 8,
+                "original_record_length_bytes": 1,
+            }
+            for _ in targets
+        ]
+        with patch(
+            "tools.v5_1_first_context_translation_encoding."
+            "solve_bounded_length_row_visual_symbols",
+            return_value=([0x02, 0xC9], 0, [0x02]),
+        ) as solver:
+            pages = select_row_font_pages(
+                trees={},
+                target_rows=targets,
+                preserved_by_row=[[], []],
+                runtime_constraints=constraints,
+                direct_renderer_first_row=True,
+                direct_renderer_pages=(21, 22),
+            )
+        self.assertEqual(pages, (21, 241))
+        solver.assert_called_once()
+
+    def test_accepts_direct_renderer_failure_diagnostics(self) -> None:
+        failure = build_first_context_translation_encoding_failure(
+            category="row-route",
+            captured_utc=STAMP,
+            failure_step="build-symbol-rows",
+            failure_kind="MemoryError",
+            failure_row_index=1,
+            failure_detail="solve-direct-renderer-first-row",
+        )
+        validate_first_context_translation_encoding_failure(failure)
+
     def test_compacts_only_ascii_layout_and_preserves_hangul_sequence(self) -> None:
         approved = [{
             "review_index": 1,
