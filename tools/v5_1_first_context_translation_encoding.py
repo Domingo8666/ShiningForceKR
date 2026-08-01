@@ -2784,6 +2784,173 @@ def solve_fixed_count_row_multi_page_visual_symbols(
 ) -> tuple[list[int], int, list[int], list[int]]:
     """Jointly choose multi-page glyph slots for one fixed-count row."""
 
+    candidate_pages = tuple(dict.fromkeys(pages))
+    required_page_tokens = target_symbol_count - len(visuals) - 1
+    if required_page_tokens >= 0 and required_page_tokens % 3 == 0:
+        required_page_tokens //= 3
+    else:
+        required_page_tokens = -1
+
+    # The reviewed first row has exactly two page-select tokens in its fixed
+    # output count.  Solve that structure directly: one visible segment on
+    # each page, with no invisible padding and no exact-bit sweep.
+    if required_page_tokens == 2 and len(candidate_pages) == 2:
+        lengths = _code_lengths(trees)
+        glyph_symbols = tuple(
+            range(FONT_GLYPH_FIRST_SYMBOL, FONT_GLYPH_LAST_SYMBOL + 1)
+        )
+
+        def transition(
+            previous: int,
+            sequence: tuple[int, ...],
+        ) -> tuple[int, int] | None:
+            bits = 0
+            for symbol in sequence:
+                code_length = lengths.get(previous, {}).get(symbol)
+                if code_length is None:
+                    return None
+                bits += code_length
+                previous = symbol
+            return bits, previous
+
+        def segment_path(
+            *,
+            start_previous: int,
+            glyph_count: int,
+            bit_limit: int,
+            tail_by_previous: dict[int, tuple[int, tuple[int, ...]]],
+        ) -> tuple[tuple[int, ...], tuple[int, ...], int] | None:
+            unreachable = bit_limit + 1
+
+            @lru_cache(maxsize=None)
+            def minimum_bits(previous: int, remaining: int) -> int:
+                if remaining == 0:
+                    tail = tail_by_previous.get(previous)
+                    return unreachable if tail is None else tail[0]
+                best = unreachable
+                for symbol in glyph_symbols:
+                    edge = lengths.get(previous, {}).get(symbol)
+                    if edge is None:
+                        continue
+                    suffix = minimum_bits(symbol, remaining - 1)
+                    if suffix < unreachable:
+                        best = min(best, edge + suffix)
+                return best
+
+            if minimum_bits(start_previous, glyph_count) > bit_limit:
+                return None
+            expanded = 0
+            best_seen: dict[tuple[int, int, int], int] = {}
+
+            def search(
+                previous: int,
+                used_mask: int,
+                remaining: int,
+                bits: int,
+            ) -> tuple[tuple[int, ...], tuple[int, ...], int] | None:
+                nonlocal expanded
+                expanded += 1
+                if expanded > 100_000:
+                    return None
+                state = (previous, used_mask, remaining)
+                if bits >= best_seen.get(state, bit_limit + 1):
+                    return None
+                best_seen[state] = bits
+                if remaining == 0:
+                    tail = tail_by_previous.get(previous)
+                    if tail is None or bits + tail[0] > bit_limit:
+                        return None
+                    return tail[1], (), bits + tail[0]
+                ranked = []
+                for symbol in glyph_symbols:
+                    edge = lengths.get(previous, {}).get(symbol)
+                    if edge is None:
+                        continue
+                    mask = 1 << (symbol - FONT_GLYPH_FIRST_SYMBOL)
+                    if used_mask & mask:
+                        continue
+                    suffix = minimum_bits(symbol, remaining - 1)
+                    if suffix >= unreachable or bits + edge + suffix > bit_limit:
+                        continue
+                    ranked.append((edge + suffix, symbol, mask, edge))
+                for _, symbol, mask, edge in sorted(ranked):
+                    suffix = search(
+                        symbol,
+                        used_mask | mask,
+                        remaining - 1,
+                        bits + edge,
+                    )
+                    if suffix is not None:
+                        suffix_symbols, suffix_assignments, total_bits = suffix
+                        return (
+                            (symbol,) + suffix_symbols,
+                            (symbol,) + suffix_assignments,
+                            total_bits,
+                        )
+                return None
+
+            return search(start_previous, 0, glyph_count, 0)
+
+        direct_end = {}
+        for previous in range(0x100):
+            encoded = transition(previous, (CANDIDATE_END_SYMBOL,))
+            if encoded is not None:
+                direct_end[previous] = (encoded[0], (CANDIDATE_END_SYMBOL,))
+
+        for first_page, second_page in (
+            candidate_pages,
+            tuple(reversed(candidate_pages)),
+        ):
+            first_token = tuple(page_select_symbols(first_page))
+            second_token = tuple(page_select_symbols(second_page))
+            selected = transition(initial_context, first_token)
+            if selected is None or selected[0] >= maximum_bits:
+                continue
+            transition_to_second = {}
+            for previous in range(0x100):
+                encoded = transition(previous, second_token)
+                if encoded is not None:
+                    transition_to_second[previous] = (encoded[0], second_token)
+            for split in range(1, len(visuals)):
+                suffix = segment_path(
+                    start_previous=second_token[-1],
+                    glyph_count=len(visuals) - split,
+                    bit_limit=maximum_bits - selected[0],
+                    tail_by_previous=direct_end,
+                )
+                if suffix is None:
+                    continue
+                suffix_symbols, suffix_assignments, suffix_bits = suffix
+                prefix_limit = maximum_bits - selected[0] - suffix_bits
+                if prefix_limit <= 0:
+                    continue
+                prefix = segment_path(
+                    start_previous=selected[1],
+                    glyph_count=split,
+                    bit_limit=prefix_limit,
+                    tail_by_previous=transition_to_second,
+                )
+                if prefix is None:
+                    continue
+                prefix_symbols, prefix_assignments, _ = prefix
+                symbols = first_token + prefix_symbols + suffix_symbols
+                if len(symbols) != target_symbol_count:
+                    continue
+                assignments = prefix_assignments + suffix_assignments
+                assignment_pages = (
+                    (first_page,) * split
+                    + (second_page,) * (len(visuals) - split)
+                )
+                return (
+                    list(symbols),
+                    0,
+                    list(assignments),
+                    list(assignment_pages),
+                )
+        raise ValueError(
+            "first context row has no two-page fixed-count route"
+        )
+
     symbols, padding_count, assignments, assignment_pages = (
         solve_bounded_length_row_multi_page_visual_symbols(
             trees=trees,
@@ -2925,16 +3092,21 @@ def select_row_font_pages(
                 (preferred, 89, *range(FONT_PAGE_COUNT - 1, -1, -1))
             )
         )
+        if constraint is not None and "original_symbol_count" in constraint:
+            candidate_pages = tuple(
+                dict.fromkeys(
+                    (
+                        preferred,
+                        *ROW_FONT_PAGES,
+                        89,
+                        *range(FONT_PAGE_COUNT - 1, -1, -1),
+                    )
+                )
+            )
         if constraint is not None:
             candidate_pages = candidate_pages[
                 :MAX_EXACT_FONT_PAGE_CANDIDATES
             ]
-            if "original_symbol_count" in constraint:
-                # These five destination pages were already proved writable
-                # and selectable by the live renderer.  Fixed-count routing is
-                # the expensive part, so do not spend the S25U time budget on
-                # seven speculative alternatives after the proven page.
-                candidate_pages = candidate_pages[:1]
         failed_pages: list[int] = []
         for page in candidate_pages:
             if page in used_pages:
@@ -2974,16 +3146,6 @@ def select_row_font_pages(
                         )
             except ValueError:
                 if constraint is not None:
-                    # Every reviewed row fits in one 76-glyph custom page.
-                    # Fixed-count multi-page fallback explores a much larger
-                    # state space and previously hid a single-page miss behind
-                    # the device runner's 120-second timeout.  Try all bounded
-                    # single-page candidates and then report a precise route
-                    # failure instead.
-                    if "original_symbol_count" in constraint:
-                        if len(failed_pages) < MAX_EXACT_FONT_PAGE_CANDIDATES:
-                            failed_pages.append(page)
-                        continue
                     candidate_groups = [
                         (anchor, page) for anchor in failed_pages[:4]
                     ]

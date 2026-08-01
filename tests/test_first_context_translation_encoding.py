@@ -30,6 +30,7 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     solve_bounded_length_row_visual_symbols,
     solve_bounded_length_row_multi_page_visual_symbols,
     solve_fixed_count_row_visual_symbols,
+    solve_fixed_count_row_multi_page_visual_symbols,
     solve_exact_length_row_multi_page_visual_symbols,
     solve_exact_length_row_visual_symbols,
     solve_row_visual_symbols,
@@ -791,6 +792,34 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         )
         self.assertEqual(padding, 1)
         self.assertEqual(assignments, [3, 4])
+
+    def test_fixed_count_solver_splits_visible_glyphs_across_two_pages(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x5F),
+            0x11: tree(0x11, 0x02, 0x03),
+            0x02: tree(0x02, 0x04, 0x02),
+            0x04: tree(0x04, 0x5F, 0x04),
+            0x03: tree(0x03, 0x05, 0x03),
+            0x05: tree(0x05, 0xC9, 0x05),
+        }
+        symbols, padding, assignments, pages = (
+            solve_fixed_count_row_multi_page_visual_symbols(
+                trees=trees,
+                initial_context=0xC9,
+                maximum_bits=9,
+                target_symbol_count=9,
+                pages=(240, 241),
+                visuals=["text:가", "text:나"],
+            )
+        )
+        self.assertEqual(
+            symbols,
+            [0x5F, 0x11, 0x02, 0x04, 0x5F, 0x11, 0x03, 0x05, 0xC9],
+        )
+        self.assertEqual(padding, 0)
+        self.assertEqual(assignments, [4, 5])
+        self.assertEqual(pages, [240, 241])
 
     def test_builds_two_page_symbols_and_preserves_insertions(self) -> None:
         targets = [
