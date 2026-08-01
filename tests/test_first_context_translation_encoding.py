@@ -96,6 +96,19 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 runtime_constraints=[{"original_symbol_count": 19}],
             )
 
+    def test_adapts_layout_compaction_to_runtime_symbol_count(self) -> None:
+        runtime, audit = build_runtime_layout_rows(
+            target_rows=[{
+                "review_index": 1,
+                "target_text": "가나 다라, 마바사아!",
+            }],
+            runtime_constraints=[{"original_symbol_count": 20}],
+        )
+        self.assertEqual(runtime[0]["target_text"], "가나다라,마바사아!")
+        self.assertEqual(audit[0]["layout_action"], "remove-ascii-spaces")
+        self.assertEqual(audit[0]["runtime_character_count"], 10)
+        self.assertEqual(audit[0]["required_page_token_count"], 3)
+
     def test_builds_a_proven_row_with_the_joint_bounded_solver(self) -> None:
         target = [{"review_index": 1, "target_text": "가"}]
         constraints = [{

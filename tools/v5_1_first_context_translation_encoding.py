@@ -291,7 +291,7 @@ FAILURE_DETAILS = {
     "none",
     "layout-runtime-compaction-shape",
     "layout-hangul-sequence-change",
-    "layout-control-count-not-nine",
+    "layout-no-compatible-control-count",
     "solve-unconstrained-row",
     "solve-proven-exact-row",
     "solve-proven-bounded-row",
@@ -757,51 +757,83 @@ def build_runtime_layout_rows(
             raise ValueError("first context runtime layout fields are invalid")
         runtime_row = dict(target_row)
         if expected_index in compact_indexes:
-            compact_text = target_text.replace(" ", "")
-            removed_trailing_exclamation = int(compact_text.endswith("!"))
-            if removed_trailing_exclamation:
-                compact_text = compact_text[:-1]
             approved_hangul = "".join(
                 character
                 for character in target_text
                 if _is_hangul_syllable(character)
             )
-            compact_hangul = "".join(
-                character
-                for character in compact_text
-                if _is_hangul_syllable(character)
-            )
-            control_symbols = target_symbol_count - len(compact_text) - 1
             ACTIVE_FAILURE_ROW_INDEX = expected_index
             ACTIVE_FAILURE_DETAIL = "layout-runtime-compaction-shape"
-            if approved_hangul != compact_hangul:
-                ACTIVE_FAILURE_DETAIL = "layout-hangul-sequence-change"
-            elif control_symbols != 9:
-                ACTIVE_FAILURE_DETAIL = "layout-control-count-not-nine"
-            if (
-                not compact_text
-                or approved_hangul != compact_hangul
-                or control_symbols != 9
-            ):
+            variants = [
+                (
+                    "remove-ascii-spaces",
+                    target_text.replace(" ", ""),
+                ),
+            ]
+            if target_text.endswith("!"):
+                variants.extend(
+                    (
+                        ("remove-trailing-exclamation", target_text[:-1]),
+                        (
+                            "remove-ascii-spaces-and-trailing-exclamation",
+                            target_text.replace(" ", "")[:-1],
+                        ),
+                    )
+                )
+            eligible_variants = []
+            for layout_action, candidate_text in dict.fromkeys(variants):
+                candidate_hangul = "".join(
+                    character
+                    for character in candidate_text
+                    if _is_hangul_syllable(character)
+                )
+                if approved_hangul != candidate_hangul:
+                    ACTIVE_FAILURE_DETAIL = "layout-hangul-sequence-change"
+                    continue
+                control_symbols = target_symbol_count - len(candidate_text) - 1
+                if control_symbols < 3 or control_symbols % 3:
+                    continue
+                page_token_count = control_symbols // 3
+                eligible_variants.append(
+                    (
+                        abs(page_token_count - 3),
+                        len(target_text) - len(candidate_text),
+                        layout_action,
+                        candidate_text,
+                        control_symbols,
+                        page_token_count,
+                    )
+                )
+            if not eligible_variants:
+                ACTIVE_FAILURE_DETAIL = "layout-no-compatible-control-count"
                 raise ValueError(
                     "first context runtime layout compaction is not safe"
                 )
+            (
+                _,
+                _,
+                layout_action,
+                compact_text,
+                control_symbols,
+                page_token_count,
+            ) = min(eligible_variants)
             runtime_row["target_text"] = compact_text
             audit.append(
                 {
                     "review_index": expected_index,
-                    "layout_action": (
-                        "remove-ascii-spaces-and-trailing-exclamation"
-                    ),
+                    "layout_action": layout_action,
                     "approved_character_count": len(target_text),
                     "runtime_character_count": len(compact_text),
-                    "removed_ascii_space_count": target_text.count(" "),
-                    "removed_trailing_exclamation_count": (
-                        removed_trailing_exclamation
+                    "removed_ascii_space_count": (
+                        target_text.count(" ") - compact_text.count(" ")
+                    ),
+                    "removed_trailing_exclamation_count": int(
+                        target_text.endswith("!")
+                        and not compact_text.endswith("!")
                     ),
                     "hangul_sequence_preserved": True,
                     "runtime_symbol_count": target_symbol_count,
-                    "required_page_token_count": control_symbols // 3,
+                    "required_page_token_count": page_token_count,
                 }
             )
         output.append(runtime_row)
