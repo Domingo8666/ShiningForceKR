@@ -745,41 +745,26 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(padding_pages, 1)
 
     def test_fixed_count_solver_retries_joint_glyph_assignments(self) -> None:
-        exact = [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x11, 0x02, 0x04, 0xC9]
-        with (
-            patch(
-                "tools.v5_1_first_context_translation_encoding."
-                "solve_bounded_length_row_visual_symbols",
-                return_value=([0x5F, 0x11, 0x02, 0x03, 0x04, 0xC9], 0, [3, 4]),
-            ),
-            patch(
-                "tools.v5_1_first_context_translation_encoding."
-                "pad_row_to_runtime_symbol_count",
-                side_effect=ValueError("compact assignment has no bridge"),
-            ),
-            patch(
-                "tools.v5_1_first_context_translation_encoding.encode_symbols",
-                return_value=(b"", 6),
-            ),
-            patch(
-                "tools.v5_1_first_context_translation_encoding."
-                "solve_exact_length_row_visual_symbols",
-                side_effect=lambda **kwargs: (
-                    (exact, 1, [3, 4])
-                    if kwargs["target_bits"] == 7
-                    else (_ for _ in ()).throw(ValueError("not this length"))
-                ),
-            ),
-        ):
-            symbols, padding, assignments = solve_fixed_count_row_visual_symbols(
-                trees={},
-                initial_context=0xC9,
-                maximum_bits=8,
-                target_symbol_count=9,
-                page=240,
-                visuals=["text:가", "text:나"],
-            )
-        self.assertEqual(symbols, exact)
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x5F),
+            0x11: tree(0x11, 0x02, 0x11),
+            0x02: tree(0x02, 0x03, 0x04),
+            0x03: tree(0x03, 0x04, 0x5F),
+            0x04: tree(0x04, 0xC9, 0x04),
+        }
+        symbols, padding, assignments = solve_fixed_count_row_visual_symbols(
+            trees=trees,
+            initial_context=0xC9,
+            maximum_bits=9,
+            target_symbol_count=9,
+            page=240,
+            visuals=["text:가", "text:나"],
+        )
+        self.assertEqual(
+            symbols,
+            [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x11, 0x02, 0x04, 0xC9],
+        )
         self.assertEqual(padding, 1)
         self.assertEqual(assignments, [3, 4])
 
