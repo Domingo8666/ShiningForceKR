@@ -1047,37 +1047,102 @@ def pad_row_to_runtime_symbol_count(
             tuple(page_select_symbols(page)) for page in range(FONT_PAGE_COUNT)
         )
     )
+    page_by_token = {
+        tuple(page_select_symbols(page)): page for page in range(FONT_PAGE_COUNT)
+    }
+    atoms: list[tuple[tuple[int, ...], int | None]] = []
+    symbol_index = 0
+    while symbol_index < len(visible_route):
+        token = tuple(visible_route[symbol_index:symbol_index + 3])
+        page = page_by_token.get(token)
+        if page is not None:
+            atoms.append((token, page))
+            symbol_index += 3
+        else:
+            atoms.append(((visible_route[symbol_index],), None))
+            symbol_index += 1
+
+    # Jointly place controls only at atomic boundaries.  At a boundary before
+    # another visible glyph, reselect only the current page so glyph meaning is
+    # unchanged.  Before a mandatory page selection or the final terminator,
+    # any page token is safe because no glyph can observe the temporary page.
     # Prefer page controls over extra terminators, then the lowest-bit route.
     # Paths are private/local only and never appear in the sanitized receipt.
-    heap: list[tuple[int, int, tuple[int, ...], int, int, int]] = [
-        (0, 0, (), 0, initial_context, 0)
-    ]
-    best: dict[tuple[int, int], tuple[int, int]] = {
-        (0, initial_context): (0, 0)
+    heap: list[
+        tuple[int, int, tuple[int, ...], int, int, int, int, int]
+    ] = [(0, 0, (), 0, 0, initial_context, -1, 0)]
+    best: dict[tuple[int, int, int, int], tuple[int, int]] = {
+        (0, 0, initial_context, -1): (0, 0)
     }
     while heap:
         (
             terminator_padding_count,
             bits,
             path,
+            atom_index,
             used,
             previous,
+            current_page,
             page_token_count,
         ) = heappop(heap)
-        if (terminator_padding_count, bits) != best.get((used, previous)):
+        state = (atom_index, used, previous, current_page)
+        if (terminator_padding_count, bits) != best.get(state):
             continue
-        if used == padding_symbols:
-            visible = transition(previous, visible_route)
-            if visible is not None and bits + visible[0] <= maximum_bits:
-                padded = list(path + visible_route)
-                return (
-                    padded,
-                    len(padded) - len(symbols),
-                    page_token_count,
-                )
+        if atom_index == len(atoms):
+            if used == padding_symbols:
+                return list(path), padding_symbols, page_token_count
             continue
 
-        candidates = (*page_tokens, (CANDIDATE_END_SYMBOL,))
+        mandatory, mandatory_page = atoms[atom_index]
+        encoded_mandatory = transition(previous, mandatory)
+        if encoded_mandatory is not None:
+            mandatory_bits, mandatory_previous = encoded_mandatory
+            next_bits = bits + mandatory_bits
+            if next_bits <= maximum_bits:
+                next_page = (
+                    mandatory_page
+                    if mandatory_page is not None
+                    else current_page
+                )
+                next_state = (
+                    atom_index + 1,
+                    used,
+                    mandatory_previous,
+                    next_page,
+                )
+                rank = (terminator_padding_count, next_bits)
+                if rank < best.get(
+                    next_state,
+                    (0x1001, maximum_bits + 1),
+                ):
+                    best[next_state] = rank
+                    heappush(
+                        heap,
+                        (
+                            terminator_padding_count,
+                            next_bits,
+                            path + mandatory,
+                            atom_index + 1,
+                            used,
+                            mandatory_previous,
+                            next_page,
+                            page_token_count,
+                        ),
+                    )
+
+        if used >= padding_symbols:
+            continue
+        final_terminator_next = (
+            atom_index == len(atoms) - 1
+            and mandatory == (CANDIDATE_END_SYMBOL,)
+        )
+        if mandatory_page is not None or final_terminator_next or current_page < 0:
+            candidate_pages = page_tokens
+        else:
+            candidate_pages = (tuple(page_select_symbols(current_page)),)
+        candidates = tuple(candidate_pages)
+        if final_terminator_next:
+            candidates += ((CANDIDATE_END_SYMBOL,),)
         unique: dict[tuple[int, int, int], tuple[int, ...]] = {}
         for token in candidates:
             next_used = used + len(token)
@@ -1094,22 +1159,25 @@ def pad_row_to_runtime_symbol_count(
             if next_bits >= maximum_bits:
                 continue
             next_used = used + token_length
-            state = (next_used, next_previous)
+            next_page = page_by_token.get(token, current_page)
+            next_state = (atom_index, next_used, next_previous, next_page)
             next_terminators = terminator_padding_count + int(
                 token == (CANDIDATE_END_SYMBOL,)
             )
             rank = (next_terminators, next_bits)
-            if rank >= best.get(state, (0x1001, maximum_bits + 1)):
+            if rank >= best.get(next_state, (0x1001, maximum_bits + 1)):
                 continue
-            best[state] = rank
+            best[next_state] = rank
             heappush(
                 heap,
                 (
                     next_terminators,
                     next_bits,
                     path + token,
+                    atom_index,
                     next_used,
                     next_previous,
+                    next_page,
                     page_token_count + int(token_length == 3),
                 ),
             )

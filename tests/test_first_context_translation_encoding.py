@@ -714,9 +714,34 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 symbols=[0x5F, 0x11, 0x02, 0x03, 0xC9],
             )
         )
-        self.assertEqual(symbols, [0xC9, 0x5F, 0x11, 0x02, 0x03, 0xC9])
+        self.assertEqual(symbols, [0x5F, 0x11, 0x02, 0x03, 0xC9, 0xC9])
         self.assertEqual(padding_symbols, 1)
         self.assertEqual(padding_pages, 0)
+
+    def test_places_fixed_count_page_padding_between_visible_glyphs(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x5F),
+            0x11: tree(0x11, 0x02, 0x11),
+            0x02: tree(0x02, 0x03, 0x04),
+            0x03: tree(0x03, 0x04, 0x5F),
+            0x04: tree(0x04, 0xC9, 0x04),
+        }
+        symbols, padding_symbols, padding_pages = (
+            pad_row_to_runtime_symbol_count(
+                trees=trees,
+                initial_context=0xC9,
+                maximum_bits=9,
+                target_symbol_count=9,
+                symbols=[0x5F, 0x11, 0x02, 0x03, 0x04, 0xC9],
+            )
+        )
+        self.assertEqual(
+            symbols,
+            [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x11, 0x02, 0x04, 0xC9],
+        )
+        self.assertEqual(padding_symbols, 3)
+        self.assertEqual(padding_pages, 1)
 
     def test_builds_two_page_symbols_and_preserves_insertions(self) -> None:
         targets = [
