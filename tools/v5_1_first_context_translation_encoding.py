@@ -1307,9 +1307,11 @@ def solve_direct_renderer_proof_symbols(
 
     The runtime consumer renders every decoded non-terminator symbol through
     its already-selected page.  Pick distinct glyph symbols so each on-screen
-    position can receive an independently audited tile, then place the known
-    terminator in the final fixed-count slot.  A depth-first route finder keeps
-    only one candidate path in memory.  This matters on the Termux target,
+    position can receive an independently audited tile.  The consumer trace
+    proved that this path reads a fixed count and renders through the nominal
+    terminator, so this proof deliberately emits glyphs in every consumed slot
+    and does not append the disproven terminator.  A depth-first route finder
+    keeps only one candidate path in memory.  This matters on the Termux target,
     where materializing and sorting a beam of tuple paths can be killed by the
     Android low-memory manager before Python can publish a failure artifact.
     """
@@ -1335,22 +1337,16 @@ def solve_direct_renderer_proof_symbols(
             raise ValueError("direct renderer proof route search limit exceeded")
         remaining = visible_glyph_count - len(assignments)
         if remaining == 0:
-            end_length = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
-            return (
-                end_length is not None
-                and bits + int(end_length) <= maximum_bits
-            )
+            return bits <= maximum_bits
 
         candidates = []
         for symbol, code_length in lengths.get(previous, {}).items():
             if symbol not in glyph_symbols or symbol in used:
                 continue
             total = bits + int(code_length)
-            if total >= maximum_bits:
+            if total > maximum_bits:
                 continue
             next_codes = lengths.get(symbol, {})
-            if remaining == 1 and CANDIDATE_END_SYMBOL not in next_codes:
-                continue
             candidates.append(
                 (
                     int(code_length),
@@ -1369,8 +1365,7 @@ def solve_direct_renderer_proof_symbols(
 
     if not search(initial_context, 0):
         raise ValueError("direct renderer proof has no Huffman glyph route")
-    symbols = [*assignments, CANDIDATE_END_SYMBOL]
-    return symbols, assignments
+    return assignments.copy(), assignments
 
 
 def direct_renderer_font_tile_offset(page: int, symbol: int) -> int:
@@ -4097,7 +4092,7 @@ def build_single_page_symbol_rows(
                 int(constraint["original_symbol_count"])
                 + DIRECT_RENDERER_EXTRA_SYMBOL_COUNT
             )
-            renderer_glyph_count = runtime_symbol_count - 1
+            renderer_glyph_count = runtime_symbol_count
             if len(visuals) > renderer_glyph_count:
                 raise ValueError(
                     "direct renderer proof has insufficient visible slots"
@@ -4120,6 +4115,7 @@ def build_single_page_symbol_rows(
             padding_count = 0
             page_select_count = 0
             fixed_count_padding_symbol_count = renderer_glyph_count - len(visuals)
+            terminator_count = 0
             direct_renderer_page = True
         elif constraint is None:
             if len(row_pages) != 1:
@@ -4273,6 +4269,7 @@ def build_single_page_symbol_rows(
             )
         if not direct_renderer_page:
             page_select_count = 1 + padding_count
+            terminator_count = 1
         if constraint is None:
             runtime_symbol_count = len(symbols)
             fixed_count_padding_symbol_count = 0
@@ -4298,6 +4295,7 @@ def build_single_page_symbol_rows(
                 "fixed_count_padding_symbol_count": (
                     fixed_count_padding_symbol_count
                 ),
+                "terminator_count": terminator_count,
                 "preserved_non_text_glyph_count": sum(
                     visual.startswith("preserved:")
                     for visual in renderer_visuals
@@ -4351,7 +4349,9 @@ def build_single_page_symbol_rows(
             int(row["page_select_count"]) for row in rows
         ),
         "preserved_non_text_glyph_occurrence_count": preserved_count,
-        "planned_terminator_count": len(rows),
+        "planned_terminator_count": sum(
+            int(row["terminator_count"]) for row in rows
+        ),
         "planned_total_symbol_count": sum(len(row["symbols"]) for row in rows),
         "fixed_count_padding_symbol_count": sum(
             int(row["fixed_count_padding_symbol_count"]) for row in rows
@@ -4947,7 +4947,10 @@ def _main() -> int:
                 or decoded_bits != bits
                 or bits > route_capacity_bits
                 or len(symbols) != runtime_symbol_count
-                or symbols[-1] != CANDIDATE_END_SYMBOL
+                or (
+                    row.get("direct_renderer_proof") is not True
+                    and symbols[-1] != CANDIDATE_END_SYMBOL
+                )
             ):
                 raise PatchError(
                     "first context fixed-count Huffman roundtrip disagrees"
