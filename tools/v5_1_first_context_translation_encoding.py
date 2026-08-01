@@ -726,7 +726,9 @@ def build_runtime_layout_rows(
     transform is returned as a local audit record.
     """
 
+    global ACTIVE_FAILURE_ROW_INDEX, ACTIVE_FAILURE_DETAIL
     if len(target_rows) != len(runtime_constraints):
+        ACTIVE_FAILURE_DETAIL = "layout-row-count-mismatch"
         raise ValueError("first context runtime layout row count does not match")
     compact_indexes = set(compact_review_indexes)
     output: list[dict[str, object]] = []
@@ -762,6 +764,11 @@ def build_runtime_layout_rows(
                 if _is_hangul_syllable(character)
             )
             control_symbols = target_symbol_count - len(compact_text) - 1
+            ACTIVE_FAILURE_ROW_INDEX = expected_index
+            ACTIVE_FAILURE_DETAIL = (
+                f"layout-approved-{len(target_text)}-runtime-"
+                f"{len(compact_text)}-controls-{control_symbols}"
+            )
             if (
                 not compact_text
                 or approved_hangul != compact_hangul
@@ -3956,6 +3963,7 @@ def _main() -> int:
     sparse = extract_bps_target_literals(patch)
     reference_glyphs = parse_bdf_glyphs(bdf)
     ACTIVE_FAILURE_CATEGORY = "input"
+    ACTIVE_FAILURE_STEP = "locate-preserved-occurrences"
     preserved_by_row = locate_preserved_occurrences(
         context_rows=context_rows,
         projection_pairs=projection_pairs,
@@ -3968,6 +3976,7 @@ def _main() -> int:
     # target already carries its own punctuation and digits, so retain the
     # source occurrences in the private audit while rendering target text only.
     rendered_preserved_by_row = [[] for _ in preserved_by_row]
+    ACTIVE_FAILURE_STEP = "load-runtime-trees"
     trees = load_trees_at(
         sparse.data,
         sparse.known,
@@ -3975,16 +3984,21 @@ def _main() -> int:
         KO_TREE_BANK_BASE,
         KO_VECTOR_ENTRIES,
     )
+    ACTIVE_FAILURE_STEP = "build-runtime-codec-constraints"
     runtime_constraints = build_runtime_codec_constraints(
         target=target,
         trees=trees,
         context_rows=context_rows,
         projection_pairs=projection_pairs,
     )
+    ACTIVE_FAILURE_STEP = "build-runtime-layout-rows"
     target_rows, layout_compactions = build_runtime_layout_rows(
         target_rows=approved_target_rows,
         runtime_constraints=runtime_constraints,
     )
+    ACTIVE_FAILURE_ROW_INDEX = 0
+    ACTIVE_FAILURE_DETAIL = "none"
+    ACTIVE_FAILURE_STEP = "build-character-assignments"
     _, character_assignments = build_character_assignments(
         target_rows=target_rows,
         hangul_assignments=hangul_assignments,
