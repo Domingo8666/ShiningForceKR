@@ -192,18 +192,14 @@ def build_translation_writes(
         key=lambda item: int(item["length_offset"]),
     )
     for row in ordered_rows:
-        target_selector = row.get("target_selector")
-        target_ordinal = row.get("target_ordinal")
+        alias_keys = row.get("alias_keys")
         length_offset = row.get("length_offset")
         start = row.get("payload_start")
         end = row.get("payload_end")
         encoded_hex = row.get("encoded_payload_hex")
         fits = row.get("fits_in_place")
         if (
-            not isinstance(target_selector, int)
-            or isinstance(target_selector, bool)
-            or not isinstance(target_ordinal, int)
-            or isinstance(target_ordinal, bool)
+            not isinstance(alias_keys, list)
             or not isinstance(length_offset, int)
             or isinstance(length_offset, bool)
             or not isinstance(start, int)
@@ -219,12 +215,30 @@ def build_translation_writes(
         encoded = bytes.fromhex(encoded_hex)
         if not 1 <= len(encoded) <= min(0xFF, end - start):
             raise ValueError("first context record write exceeds its payload")
+        group_alias_ordinals = [
+            ordinal
+            for alias in alias_keys
+            if isinstance(alias, (list, tuple))
+            and len(alias) == 2
+            for selector, ordinal in [alias]
+            if selector == group_selector
+            and isinstance(ordinal, int)
+            and not isinstance(ordinal, bool)
+        ]
+        if len(group_alias_ordinals) != 1:
+            raise ValueError("first context confirmed group alias is ambiguous")
         packed_rows.append(
-            (row, target_selector, target_ordinal, length_offset, end, encoded)
+            (
+                row,
+                group_alias_ordinals[0],
+                length_offset,
+                end,
+                encoded,
+            )
         )
     if not packed_rows:
         raise ValueError("first context record rows are missing")
-    ordinals = [item[2] for item in packed_rows]
+    ordinals = [item[1] for item in packed_rows]
     expected_ordinals = list(
         range(
             declared_group_entry_count - len(packed_rows),
@@ -232,20 +246,19 @@ def build_translation_writes(
         )
     )
     if (
-        any(item[1] != group_selector for item in packed_rows)
-        or ordinals != expected_ordinals
+        ordinals != expected_ordinals
         or any(
-            left[4] != right[3]
+            left[3] != right[2]
             for left, right in zip(packed_rows, packed_rows[1:])
         )
     ):
         raise ValueError("first context records are not a contiguous group tail")
-    span_start = packed_rows[0][3]
-    span_end = packed_rows[-1][4]
+    span_start = packed_rows[0][2]
+    span_end = packed_rows[-1][3]
     before = target[span_start:span_end]
     packed = b"".join(
         bytes((len(encoded),)) + encoded
-        for _, _, _, _, _, encoded in packed_rows
+        for _, _, _, _, encoded in packed_rows
     )
     if len(packed) > len(before):
         raise ValueError("first context packed group tail exceeds its span")
