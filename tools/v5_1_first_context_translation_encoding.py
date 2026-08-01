@@ -2850,7 +2850,7 @@ def solve_fixed_count_row_multi_page_visual_symbols(
             ) -> tuple[tuple[int, ...], tuple[int, ...], int] | None:
                 nonlocal expanded
                 expanded += 1
-                if expanded > 10_000:
+                if expanded > 2_000:
                     return None
                 state = (previous, used_mask, remaining)
                 if bits >= best_seen.get(state, bit_limit + 1):
@@ -2914,7 +2914,7 @@ def solve_fixed_count_row_multi_page_visual_symbols(
             split_order = sorted(
                 range(1, len(visuals)),
                 key=lambda split: (abs(len(visuals) - 2 * split), split),
-            )
+            )[:3]
             for split in split_order:
                 suffix = segment_path(
                     start_previous=second_token[-1],
