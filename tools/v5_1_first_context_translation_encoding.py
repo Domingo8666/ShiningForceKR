@@ -2182,10 +2182,10 @@ def select_row_font_pages(
                         visuals=visuals,
                     )
                 else:
-                    solve_exact_length_row_visual_symbols(
+                    solve_bounded_length_row_visual_symbols(
                         trees=trees,
                         initial_context=int(constraint["initial_context"]),
-                        target_bits=(
+                        maximum_bits=(
                             int(constraint["original_record_length_bytes"]) * 8
                         ),
                         page=page,
@@ -2201,12 +2201,12 @@ def select_row_font_pages(
                         candidate_groups.append(expanded_pool)
                     for page_group in candidate_groups:
                         try:
-                            solve_exact_length_row_multi_page_visual_symbols(
+                            solve_bounded_length_row_multi_page_visual_symbols(
                                 trees=trees,
                                 initial_context=int(
                                     constraint["initial_context"]
                                 ),
-                                target_bits=(
+                                maximum_bits=(
                                     int(
                                         constraint["original_record_length_bytes"]
                                     )
@@ -2230,26 +2230,6 @@ def select_row_font_pages(
             used_pages.add(page)
             break
         else:
-            if constraint is not None:
-                storage_capacity_bits = (
-                    int(constraint["original_record_length_bytes"]) * 8
-                )
-                for page in failed_pages:
-                    try:
-                        solve_bounded_length_row_visual_symbols(
-                            trees=trees,
-                            initial_context=int(constraint["initial_context"]),
-                            maximum_bits=storage_capacity_bits,
-                            page=page,
-                            visuals=visuals,
-                        )
-                    except ValueError:
-                        continue
-                    pages.append(page)
-                    used_pages.add(page)
-                    break
-                if len(pages) == row_index + 1:
-                    continue
             target_bits = (
                 int(constraint["original_record_length_bytes"]) * 8
                 if constraint is not None
@@ -2342,7 +2322,7 @@ def build_single_page_symbol_rows(
             )
             route_capacity_bits = target_bits
             ACTIVE_FAILURE_DETAIL = (
-                "solve-proven-exact-row"
+                "solve-proven-bounded-row"
                 if expected_index <= len(PROVEN_ROW_FONT_PAGES)
                 else "solve-extra-single-page-row"
             )
@@ -2353,10 +2333,10 @@ def build_single_page_symbol_rows(
                         symbols,
                         padding_count,
                         assignments,
-                    ) = solve_exact_length_row_visual_symbols(
+                    ) = solve_bounded_length_row_visual_symbols(
                         trees=trees,
                         initial_context=initial_context,
-                        target_bits=target_bits,
+                        maximum_bits=target_bits,
                         page=page,
                         visuals=visuals,
                     )
@@ -2381,17 +2361,17 @@ def build_single_page_symbol_rows(
                     )
                 assignment_pages = [page] * len(assignments)
             else:
-                ACTIVE_FAILURE_DETAIL = "solve-exact-multi-page-row"
+                ACTIVE_FAILURE_DETAIL = "solve-bounded-multi-page-row"
                 try:
                     (
                         symbols,
                         padding_count,
                         assignments,
                         assignment_pages,
-                    ) = solve_exact_length_row_multi_page_visual_symbols(
+                    ) = solve_bounded_length_row_multi_page_visual_symbols(
                         trees=trees,
                         initial_context=initial_context,
-                        target_bits=target_bits,
+                        maximum_bits=target_bits,
                         pages=row_pages,
                         visuals=visuals,
                     )

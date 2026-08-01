@@ -78,7 +78,7 @@ except ImportError:  # pragma: no cover - direct script execution
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-translation-test-build"
 LOCAL_ARTIFACT_KIND = "local-v5-1-first-context-translation-test-build"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_translation_test_build.json"
 )
@@ -101,6 +101,7 @@ COUNT_KEYS = {
     "record_length_changed_count",
     "decoded_roundtrip_entry_count",
     "decoded_failure_entry_count",
+    "record_suffix_preserved_entry_count",
     "font_glyph_assignment_count",
     "font_glyph_verified_count",
     "encoded_length_exact_count",
@@ -202,6 +203,7 @@ def build_translation_writes(
         start = row.get("payload_start")
         end = row.get("payload_end")
         encoded_hex = row.get("encoded_payload_hex")
+        encoded_bits = row.get("encoded_payload_bits")
         fits = row.get("fits_in_place")
         if (
             not isinstance(alias_keys, list)
@@ -212,20 +214,37 @@ def build_translation_writes(
             or not isinstance(end, int)
             or isinstance(end, bool)
             or not isinstance(encoded_hex, str)
+            or not isinstance(encoded_bits, int)
+            or isinstance(encoded_bits, bool)
             or fits is not True
             or not 0 <= length_offset < start < end <= len(target)
             or start != length_offset + 1
         ):
             raise ValueError("first context record write row is invalid")
         encoded = bytes.fromhex(encoded_hex)
-        if len(encoded) != end - start:
-            raise ValueError("first context record write is not exact length")
+        if (
+            not 1 <= encoded_bits <= (end - start) * 8
+            or len(encoded) != (encoded_bits + 7) // 8
+        ):
+            raise ValueError("first context record write bit length is invalid")
         payload_range = (start, end)
         if payload_range in seen_payload_ranges:
             raise ValueError("first context record write is duplicated")
         seen_payload_ranges.add(payload_range)
-        before = target[start:end]
-        if before == encoded:
+        write_end = start + len(encoded)
+        before = target[start:write_end]
+        after = bytearray(before)
+        for bit_index in range(encoded_bits):
+            value = (
+                encoded[bit_index >> 3] >> (7 - (bit_index & 7))
+            ) & 1
+            byte_index = bit_index >> 3
+            mask = 1 << (7 - (bit_index & 7))
+            if value:
+                after[byte_index] |= mask
+            else:
+                after[byte_index] &= ~mask
+        if before == bytes(after):
             raise ValueError("first context record write changes no bytes")
         writes.append(
             ExpectedWrite(
@@ -233,7 +252,7 @@ def build_translation_writes(
                 purpose="first-context-static-translation-build",
                 offset=start,
                 before=before,
-                after=encoded,
+                after=bytes(after),
                 allowed_start=start,
                 allowed_end_exclusive=end,
             )
@@ -270,6 +289,7 @@ def verify_translation_build(
     length_fields_verified = 0
     length_fields_changed = 0
     encoded_lengths_exact = 0
+    suffixes_preserved = 0
     for reinsertion, encoding in zip(reinsertion_rows, encoding_rows):
         length_offset = int(reinsertion["length_offset"])
         payload_start = int(reinsertion["payload_start"])
@@ -298,10 +318,11 @@ def verify_translation_build(
             baseline[length_offset] == original_length
             and test[length_offset] == original_length
             and expected_bytes == int(reinsertion["encoded_payload_bytes"])
-            and expected_bytes == original_length
+            and expected_bytes == (expected_bits + 7) // 8
+            and expected_bits <= original_length * 8
         )
         length_fields_changed += int(
-            expected_bytes != original_length
+            test[length_offset] != baseline[length_offset]
         )
         try:
             decoded, decoded_bits = decode_symbols(
@@ -312,7 +333,7 @@ def verify_translation_build(
                 initial_symbol=initial_context,
                 end_symbol=CANDIDATE_END_SYMBOL,
                 max_symbols=len(expected_symbols),
-                max_bytes=expected_bytes,
+                max_bytes=original_length,
             )
         except PatchError:
             failures += 1
@@ -321,6 +342,21 @@ def verify_translation_build(
             roundtrips += 1
         else:
             failures += 1
+        suffixes_preserved += int(
+            all(
+                (
+                    (baseline[payload_start + (bit_index >> 3)]
+                     >> (7 - (bit_index & 7)))
+                    & 1
+                )
+                == (
+                    (test[payload_start + (bit_index >> 3)]
+                     >> (7 - (bit_index & 7)))
+                    & 1
+                )
+                for bit_index in range(expected_bits, original_length * 8)
+            )
+        )
     verified_glyphs = 0
     for assignment in font_assignments:
         page = assignment.get("page")
@@ -343,6 +379,7 @@ def verify_translation_build(
         "record_length_changed_count": length_fields_changed,
         "decoded_roundtrip_entry_count": roundtrips,
         "decoded_failure_entry_count": failures,
+        "record_suffix_preserved_entry_count": suffixes_preserved,
         "font_glyph_assignment_count": len(font_assignments),
         "font_glyph_verified_count": verified_glyphs,
         "encoded_length_exact_count": encoded_lengths_exact,
@@ -369,6 +406,8 @@ def build_first_context_translation_test_build(
         and verification["decoded_roundtrip_entry_count"]
         == verification["context_entry_count"]
         and verification["decoded_failure_entry_count"] == 0
+        and verification["record_suffix_preserved_entry_count"]
+        == verification["context_entry_count"]
         and verification["font_glyph_assignment_count"] > 0
         and verification["font_glyph_verified_count"]
         == verification["font_glyph_assignment_count"]
@@ -455,6 +494,8 @@ def validate_first_context_translation_test_build(
         and verification["decoded_roundtrip_entry_count"]
         == verification["context_entry_count"]
         and verification["decoded_failure_entry_count"] == 0
+        and verification["record_suffix_preserved_entry_count"]
+        == verification["context_entry_count"]
         and verification["font_glyph_assignment_count"] > 0
         and verification["font_glyph_verified_count"]
         == verification["font_glyph_assignment_count"]

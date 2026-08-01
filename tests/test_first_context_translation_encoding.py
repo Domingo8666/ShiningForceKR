@@ -66,7 +66,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(MAX_EXACT_SINGLE_PAGE_STATES, 5_000)
         self.assertEqual(MAX_BOUNDED_SINGLE_PAGE_STATES, 5_000)
 
-    def test_builds_a_proven_row_with_the_joint_exact_solver(self) -> None:
+    def test_builds_a_proven_row_with_the_joint_bounded_solver(self) -> None:
         target = [{"review_index": 1, "target_text": "가"}]
         constraints = [{
             "initial_context": 0xC9,
@@ -81,9 +81,9 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             ),
             patch(
                 "tools.v5_1_first_context_translation_encoding."
-                "solve_exact_length_row_visual_symbols",
+                "solve_bounded_length_row_visual_symbols",
                 return_value=([0x5F, 0x11, 0x02, 0x03, 0xC9], 0, [0x03]),
-            ) as exact_solver,
+            ) as bounded_solver,
         ):
             _, rows, assignments = build_single_page_symbol_rows(
                 trees={},
@@ -93,7 +93,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 pages=(240,),
             )
 
-        exact_solver.assert_called_once()
+        bounded_solver.assert_called_once()
         self.assertEqual(rows[0]["symbols"], [0x5F, 0x11, 0x02, 0x03, 0xC9])
         self.assertEqual(assignments[0], [
             {"visual": "text:가", "page": 240, "symbol": 0x03}
@@ -109,7 +109,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         with (
             patch(
                 "tools.v5_1_first_context_translation_encoding."
-                "solve_exact_length_row_visual_symbols",
+                "solve_bounded_length_row_visual_symbols",
                 side_effect=ValueError("exact route unavailable"),
             ),
             patch(
@@ -148,15 +148,15 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             for _ in range(5)
         ]
 
-        def solve(*, trees, initial_context, target_bits, page, visuals):
-            del trees, initial_context, target_bits
+        def solve(*, trees, initial_context, maximum_bits, page, visuals):
+            del trees, initial_context, maximum_bits
             if page == 239:
                 raise ValueError("unusable route")
             return [0x02], 0, [0x02] * len(visuals)
 
         with patch(
             "tools.v5_1_first_context_translation_encoding."
-            "solve_exact_length_row_visual_symbols",
+            "solve_bounded_length_row_visual_symbols",
             side_effect=solve,
         ):
             pages = select_row_font_pages(
@@ -169,15 +169,15 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(pages, (240, 241, 242, 243, 89))
 
     def test_replaces_an_unusable_preferred_page_for_the_first_row(self) -> None:
-        def solve(*, trees, initial_context, target_bits, page, visuals):
-            del trees, initial_context, target_bits, visuals
+        def solve(*, trees, initial_context, maximum_bits, page, visuals):
+            del trees, initial_context, maximum_bits, visuals
             if page == 240:
                 raise ValueError("preferred page is not exact")
             return [0x02], 0, [0x02]
 
         with patch(
             "tools.v5_1_first_context_translation_encoding."
-            "solve_exact_length_row_visual_symbols",
+            "solve_bounded_length_row_visual_symbols",
             side_effect=solve,
         ):
             pages = select_row_font_pages(
@@ -196,12 +196,12 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         with (
             patch(
                 "tools.v5_1_first_context_translation_encoding."
-                "solve_exact_length_row_visual_symbols",
+                "solve_bounded_length_row_visual_symbols",
                 side_effect=ValueError("single page is not exact"),
             ),
             patch(
                 "tools.v5_1_first_context_translation_encoding."
-                "solve_exact_length_row_multi_page_visual_symbols",
+                "solve_bounded_length_row_multi_page_visual_symbols",
                 return_value=(
                     [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x11, 0x02, 0x04, 0xC9],
                     1,
@@ -225,8 +225,8 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         multi_solver.assert_called_once()
 
     def test_expands_an_exact_row_to_four_font_pages(self) -> None:
-        def solve_multi(*, trees, initial_context, target_bits, pages, visuals):
-            del trees, initial_context, target_bits
+        def solve_multi(*, trees, initial_context, maximum_bits, pages, visuals):
+            del trees, initial_context, maximum_bits
             if len(pages) < 4:
                 raise ValueError("two pages are not exact")
             return (
@@ -239,12 +239,12 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         with (
             patch(
                 "tools.v5_1_first_context_translation_encoding."
-                "solve_exact_length_row_visual_symbols",
+                "solve_bounded_length_row_visual_symbols",
                 side_effect=ValueError("single page is not exact"),
             ),
             patch(
                 "tools.v5_1_first_context_translation_encoding."
-                "solve_exact_length_row_multi_page_visual_symbols",
+                "solve_bounded_length_row_multi_page_visual_symbols",
                 side_effect=solve_multi,
             ),
         ):
@@ -265,16 +265,6 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         with (
             patch(
                 "tools.v5_1_first_context_translation_encoding."
-                "solve_exact_length_row_visual_symbols",
-                side_effect=ValueError("single page is not exact"),
-            ),
-            patch(
-                "tools.v5_1_first_context_translation_encoding."
-                "solve_exact_length_row_multi_page_visual_symbols",
-                side_effect=ValueError("page group is not exact"),
-            ),
-            patch(
-                "tools.v5_1_first_context_translation_encoding."
                 "diagnose_bounded_candidate_bit_count",
                 return_value=137,
             ) as diagnostic,
@@ -282,6 +272,11 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 "tools.v5_1_first_context_translation_encoding."
                 "solve_bounded_length_row_visual_symbols",
                 side_effect=ValueError("record capacity unavailable"),
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_bounded_length_row_multi_page_visual_symbols",
+                side_effect=ValueError("page group is unavailable"),
             ),
             patch(
                 "tools.v5_1_first_context_translation_encoding."
@@ -307,16 +302,6 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
 
     def test_selects_a_record_bounded_page_after_exact_failure(self) -> None:
         with (
-            patch(
-                "tools.v5_1_first_context_translation_encoding."
-                "solve_exact_length_row_visual_symbols",
-                side_effect=ValueError("single page is not exact"),
-            ),
-            patch(
-                "tools.v5_1_first_context_translation_encoding."
-                "solve_exact_length_row_multi_page_visual_symbols",
-                side_effect=ValueError("page group is not exact"),
-            ),
             patch(
                 "tools.v5_1_first_context_translation_encoding."
                 "solve_bounded_length_row_visual_symbols",
@@ -373,7 +358,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
     def test_records_exact_multi_page_assignments(self) -> None:
         with patch(
             "tools.v5_1_first_context_translation_encoding."
-            "solve_exact_length_row_multi_page_visual_symbols",
+            "solve_bounded_length_row_multi_page_visual_symbols",
             return_value=(
                 [0x5F, 0x11, 0x02, 0x03, 0x5F, 0x11, 0x02, 0x04, 0xC9],
                 1,
@@ -421,7 +406,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             ),
             patch(
                 "tools.v5_1_first_context_translation_encoding."
-                "exact_length_row_symbols",
+                "bounded_length_row_symbols",
                 return_value=([0x5F, 0x11, 0x02, 0x03, 0xC9], 0),
             ),
         ):

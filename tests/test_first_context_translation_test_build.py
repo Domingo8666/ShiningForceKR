@@ -63,6 +63,7 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
                     "payload_start": payload_start,
                     "payload_end": payload_end,
                     "encoded_payload_hex": "AABBCC",
+                    "encoded_payload_bits": 24,
                     "fits_in_place": True,
                 }
             ],
@@ -95,6 +96,7 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
                 "payload_start": payload_start,
                 "payload_end": payload_end,
                 "encoded_payload_hex": "AABBCCDD",
+                "encoded_payload_bits": 32,
                 "fits_in_place": True,
             }],
             group_selector=7,
@@ -110,6 +112,35 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
         self.assertLess(record_write.allowed_end_exclusive, next_length_offset + 1)
         self.assertEqual(record_write.after, b"\xAA\xBB\xCC\xDD")
 
+    def test_preserves_unused_bits_after_a_short_terminated_prefix(self) -> None:
+        target, records = self._target_with_group()
+        length_offset, payload_start, payload_end = records[0]
+        writes, _, record_count = build_translation_writes(
+            target=target,
+            font_overlay=b"PATCHEOF",
+            reinsertion_rows=[{
+                "review_index": 1,
+                "target_selector": 7,
+                "target_ordinal": 0,
+                "alias_keys": [(7, 0)],
+                "length_offset": length_offset,
+                "payload_start": payload_start,
+                "payload_end": payload_end,
+                "encoded_payload_hex": "E0",
+                "encoded_payload_bits": 3,
+                "fits_in_place": True,
+            }],
+            group_selector=7,
+            group_physical_start=40,
+            declared_group_entry_count=4,
+        )
+        self.assertEqual(record_count, 1)
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0].offset, payload_start)
+        self.assertEqual(writes[0].after, b"\xE0")
+        self.assertEqual(writes[0].allowed_end_exclusive, payload_end)
+        self.assertEqual(target[payload_start + 1], 0x21)
+
     def test_builds_safe_static_verification_receipt(self) -> None:
         verification = {
             "context_entry_count": 4,
@@ -121,6 +152,7 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
             "record_length_changed_count": 0,
             "decoded_roundtrip_entry_count": 4,
             "decoded_failure_entry_count": 0,
+            "record_suffix_preserved_entry_count": 4,
             "font_glyph_assignment_count": 55,
             "font_glyph_verified_count": 55,
             "encoded_length_exact_count": 4,
