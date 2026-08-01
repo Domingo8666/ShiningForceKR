@@ -25,6 +25,10 @@ try:
         KO_VECTOR_ENTRIES,
         KO_VECTOR_OFFSET,
     )
+    from .v5_1_confirmed_group_extract import (
+        PUBLISH_RELATIVE_PATH as GROUP_EXTRACT_PATH,
+        validate_confirmed_group_extract,
+    )
     from .v5_1_first_context_record_reinsertion import (
         LOCAL_REPORT_PATH as LOCAL_REINSERTION_PATH,
         PUBLISH_RELATIVE_PATH as REINSERTION_PATH,
@@ -53,6 +57,10 @@ except ImportError:  # pragma: no cover - direct script execution
         KO_TREE_BANK_BASE,
         KO_VECTOR_ENTRIES,
         KO_VECTOR_OFFSET,
+    )
+    from v5_1_confirmed_group_extract import (
+        PUBLISH_RELATIVE_PATH as GROUP_EXTRACT_PATH,
+        validate_confirmed_group_extract,
     )
     from v5_1_first_context_record_reinsertion import (
         LOCAL_REPORT_PATH as LOCAL_REINSERTION_PATH,
@@ -143,6 +151,8 @@ def build_translation_writes(
     target: bytes,
     font_overlay: bytes,
     reinsertion_rows: list[dict[str, object]],
+    group_selector: int,
+    declared_group_entry_count: int,
 ) -> tuple[list[ExpectedWrite], int, int]:
     parsed = parse_ips(font_overlay)
     if parsed.final_size is not None:
@@ -168,15 +178,33 @@ def build_translation_writes(
             )
         )
     font_write_count = len(writes)
-    record_write_count = 0
-    for row in reinsertion_rows:
+    if (
+        not isinstance(group_selector, int)
+        or isinstance(group_selector, bool)
+        or not isinstance(declared_group_entry_count, int)
+        or isinstance(declared_group_entry_count, bool)
+        or not 1 <= declared_group_entry_count <= 0xFF
+    ):
+        raise ValueError("first context group identity is invalid")
+    packed_rows = []
+    ordered_rows = sorted(
+        reinsertion_rows,
+        key=lambda item: int(item["length_offset"]),
+    )
+    for row in ordered_rows:
+        target_selector = row.get("target_selector")
+        target_ordinal = row.get("target_ordinal")
         length_offset = row.get("length_offset")
         start = row.get("payload_start")
         end = row.get("payload_end")
         encoded_hex = row.get("encoded_payload_hex")
         fits = row.get("fits_in_place")
         if (
-            not isinstance(length_offset, int)
+            not isinstance(target_selector, int)
+            or isinstance(target_selector, bool)
+            or not isinstance(target_ordinal, int)
+            or isinstance(target_ordinal, bool)
+            or not isinstance(length_offset, int)
             or isinstance(length_offset, bool)
             or not isinstance(start, int)
             or isinstance(start, bool)
@@ -191,25 +219,51 @@ def build_translation_writes(
         encoded = bytes.fromhex(encoded_hex)
         if not 1 <= len(encoded) <= min(0xFF, end - start):
             raise ValueError("first context record write exceeds its payload")
-        before = target[length_offset:end]
-        after = bytes((len(encoded),)) + encoded + before[1 + len(encoded):]
-        if before == after:
-            raise ValueError("first context record write changes no bytes")
-        writes.append(
-            ExpectedWrite(
-                writer=(
-                    f"first-context-record-{int(row['review_index']):02d}"
-                ),
-                purpose="first-context-static-translation-build",
-                offset=length_offset,
-                before=before,
-                after=after,
-                allowed_start=length_offset,
-                allowed_end_exclusive=end,
-            )
+        packed_rows.append(
+            (row, target_selector, target_ordinal, length_offset, end, encoded)
         )
-        record_write_count += 1
-    return writes, font_write_count, record_write_count
+    if not packed_rows:
+        raise ValueError("first context record rows are missing")
+    ordinals = [item[2] for item in packed_rows]
+    expected_ordinals = list(
+        range(
+            declared_group_entry_count - len(packed_rows),
+            declared_group_entry_count,
+        )
+    )
+    if (
+        any(item[1] != group_selector for item in packed_rows)
+        or ordinals != expected_ordinals
+        or any(
+            left[4] != right[3]
+            for left, right in zip(packed_rows, packed_rows[1:])
+        )
+    ):
+        raise ValueError("first context records are not a contiguous group tail")
+    span_start = packed_rows[0][3]
+    span_end = packed_rows[-1][4]
+    before = target[span_start:span_end]
+    packed = b"".join(
+        bytes((len(encoded),)) + encoded
+        for _, _, _, _, _, encoded in packed_rows
+    )
+    if len(packed) > len(before):
+        raise ValueError("first context packed group tail exceeds its span")
+    after = packed + before[len(packed):]
+    if before == after:
+        raise ValueError("first context packed group tail changes no bytes")
+    writes.append(
+        ExpectedWrite(
+            writer="first-context-packed-record-tail",
+            purpose="first-context-static-translation-build",
+            offset=span_start,
+            before=before,
+            after=after,
+            allowed_start=span_start,
+            allowed_end_exclusive=span_end,
+        )
+    )
+    return writes, font_write_count, len(packed_rows)
 
 
 def verify_translation_build(
@@ -235,9 +289,19 @@ def verify_translation_build(
     length_fields_verified = 0
     length_fields_changed = 0
     encoded_lengths_exact = 0
+    packed_offsets = {}
+    cursor = min(int(row["length_offset"]) for row in reinsertion_rows)
+    for row in sorted(
+        reinsertion_rows,
+        key=lambda item: int(item["length_offset"]),
+    ):
+        encoded_bytes = int(row["encoded_payload_bytes"])
+        packed_offsets[int(row["review_index"])] = (cursor, cursor + 1)
+        cursor += 1 + encoded_bytes
     for reinsertion, encoding in zip(reinsertion_rows, encoding_rows):
-        length_offset = int(reinsertion["length_offset"])
-        payload_start = int(reinsertion["payload_start"])
+        review_index = int(reinsertion["review_index"])
+        length_offset, payload_start = packed_offsets[review_index]
+        original_length_offset = int(reinsertion["length_offset"])
         original_length = int(reinsertion["original_length_bytes"])
         expected_symbols = encoding.get("symbols")
         expected_bits = encoding.get("encoded_bits")
@@ -260,13 +324,13 @@ def verify_translation_build(
             raise ValueError("first context build expected symbols are missing")
         encoded_lengths_exact += int(expected_bits == target_bits)
         length_fields_verified += int(
-            baseline[length_offset] == original_length
+            baseline[original_length_offset] == original_length
             and test[length_offset] == expected_bytes
             and expected_bytes == int(reinsertion["encoded_payload_bytes"])
             and 1 <= expected_bytes <= original_length
         )
         length_fields_changed += int(
-            test[length_offset] != baseline[length_offset]
+            expected_bytes != original_length
         )
         try:
             decoded, decoded_bits = decode_symbols(
@@ -457,6 +521,7 @@ def main() -> int:
     args = parser.parse_args()
     paths = {
         "target": root / TARGET_PATH,
+        "group_extract": root / GROUP_EXTRACT_PATH,
         "reinsertion": root / REINSERTION_PATH,
         "local_reinsertion": root / LOCAL_REINSERTION_PATH,
         "local_encoding": root / LOCAL_ENCODING_PATH,
@@ -468,12 +533,15 @@ def main() -> int:
             return 0
         raise SystemExit("first context translation build input is missing")
     baseline = paths["target"].read_bytes()
+    group_extract = _load_json_object(paths["group_extract"])
+    validate_confirmed_group_extract(group_extract)
     reinsertion = _load_json_object(paths["reinsertion"])
     local_reinsertion = _load_json_object(paths["local_reinsertion"])
     local_encoding = _load_json_object(paths["local_encoding"])
     validate_first_context_record_reinsertion(reinsertion)
     if (
-        reinsertion["status"]
+        group_extract["target_sha256"] != sha256_bytes(baseline)
+        or reinsertion["status"]
         != "first-context-record-reinsertion-plan-ready"
         or reinsertion["target_sha256"] != sha256_bytes(baseline)
         or local_reinsertion.get("target_sha256")
@@ -499,6 +567,10 @@ def main() -> int:
         target=baseline,
         font_overlay=paths["font_overlay"].read_bytes(),
         reinsertion_rows=reinsertion_rows,
+        group_selector=int(group_extract["group"]["selector"]),
+        declared_group_entry_count=int(
+            group_extract["group"]["declared_entry_count"]
+        ),
     )
     test, audit = apply_expected_writes(baseline, writes)
     overlay = expected_writes_to_ips(writes)

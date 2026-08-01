@@ -211,6 +211,8 @@ def build_reinsertion_rows(
         rows.append(
             {
                 "review_index": expected_index,
+                "target_selector": target_selector,
+                "target_ordinal": target_ordinal,
                 "length_offset": length_offset,
                 "payload_start": payload_start,
                 "payload_end": payload_end,

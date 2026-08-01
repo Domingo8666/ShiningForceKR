@@ -39,6 +39,8 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
             reinsertion_rows=[
                 {
                     "review_index": 1,
+                    "target_selector": 7,
+                    "target_ordinal": 3,
                     "length_offset": 49,
                     "payload_start": 50,
                     "payload_end": 56,
@@ -46,6 +48,8 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
                     "fits_in_place": True,
                 }
             ],
+            group_selector=7,
+            declared_group_entry_count=4,
         )
         self.assertEqual(font_count, 1)
         self.assertEqual(record_count, 1)
@@ -56,6 +60,27 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
         self.assertEqual(record_write.offset, 49)
         self.assertEqual(record_write.after[:4], b"\x03\xAA\xBB\xCC")
         self.assertEqual(record_write.after[4:], target[53:56])
+
+    def test_rejects_records_that_are_not_the_group_tail(self) -> None:
+        target = bytes(range(100))
+        font_overlay = b"PATCHEOF"
+        with self.assertRaisesRegex(ValueError, "contiguous group tail"):
+            build_translation_writes(
+                target=target,
+                font_overlay=font_overlay,
+                reinsertion_rows=[{
+                    "review_index": 1,
+                    "target_selector": 7,
+                    "target_ordinal": 2,
+                    "length_offset": 49,
+                    "payload_start": 50,
+                    "payload_end": 56,
+                    "encoded_payload_hex": "AABBCC",
+                    "fits_in_place": True,
+                }],
+                group_selector=7,
+                declared_group_entry_count=4,
+            )
 
     def test_builds_safe_static_verification_receipt(self) -> None:
         verification = {
