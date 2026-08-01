@@ -2298,7 +2298,15 @@ def solve_fixed_count_row_visual_symbols(
     page: int,
     visuals: list[str],
 ) -> tuple[list[int], int, list[int]]:
-    """Choose glyph slots for a finite set of fixed-count control schedules."""
+    """Choose glyph slots with a bounded fixed-count beam search.
+
+    A fixed-count caller needs the final terminator at an exact decoded-symbol
+    index, but the extra renderer-inert page selections may be placed between
+    visible glyphs.  Enumerating every placement and then repeating a full DFS
+    for each one made the device stage exceed its 120-second guard.  Carry the
+    number of inserted page tokens in the search state instead and retain only
+    the cheapest deterministic frontier after every visible glyph.
+    """
 
     if (
         not 0 <= initial_context <= 0xFF
@@ -2319,10 +2327,6 @@ def solve_fixed_count_row_visual_symbols(
     )
     glyph_symbol_set = set(glyph_symbols)
     row_page_token = tuple(page_select_symbols(page))
-    all_page_tokens = tuple(
-        tuple(page_select_symbols(candidate_page))
-        for candidate_page in range(FONT_PAGE_COUNT)
-    )
 
     def transition(
         previous: int,
@@ -2337,125 +2341,97 @@ def solve_fixed_count_row_visual_symbols(
             previous = symbol
         return bits, previous
 
-    def same_page_schedules(
-        remaining: int,
-        minimum_boundary: int = 0,
-        prefix: tuple[int, ...] = (),
-    ) -> list[tuple[int, ...]]:
-        if remaining == 0:
-            return [prefix]
-        schedules = []
-        for boundary in range(minimum_boundary, len(visuals) + 1):
-            schedules.extend(
-                same_page_schedules(
-                    remaining - 1,
-                    boundary,
-                    prefix + (boundary,),
-                )
-            )
-        return schedules
+    selected = transition(initial_context, row_page_token)
+    if selected is None or selected[0] >= maximum_bits:
+        raise ValueError("first context fixed-count page is not selectable")
 
-    # A schedule gives extra row-page selections before glyph depth N; depth
-    # ``len(visuals)`` means immediately before the final terminator.
-    schedules: list[
-        tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]
-    ] = []
-    for boundaries in same_page_schedules(extra_page_tokens):
-        schedules.append(((), boundaries, ()))
-    if extra_page_tokens == 1:
-        # Before the mandatory row selection and after the final glyph, any
-        # temporary page is renderer-inert.  Try these small edge sets too.
-        for token in all_page_tokens:
-            schedules.append((token, (), ()))
-            schedules.append(((), (), token))
-
-    for prefix_token, boundaries, suffix_token in schedules:
-        prefix_sequence = prefix_token + row_page_token
-        selected = transition(initial_context, prefix_sequence)
-        if selected is None:
-            continue
-        start_bits, start_previous = selected
-        if start_bits >= maximum_bits:
-            continue
-        boundary_counts = {
-            boundary: boundaries.count(boundary) for boundary in set(boundaries)
-        }
-        expanded_states = 0
-        best_bits: dict[tuple[int, int, int], int] = {}
-
-        def search(
-            previous: int,
-            used_mask: int,
-            depth: int,
-            bits: int,
-        ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
-            nonlocal expanded_states
-            expanded_states += 1
-            if expanded_states > MAX_BOUNDED_SINGLE_PAGE_STATES:
-                raise ValueError(
-                    "first context fixed-count schedule state limit exceeded"
-                )
-            state = (previous, used_mask, depth)
-            if bits >= best_bits.get(state, maximum_bits + 1):
-                return None
-            best_bits[state] = bits
-            controls = row_page_token * boundary_counts.get(depth, 0)
-            controlled = transition(previous, controls)
-            if controlled is None:
-                return None
-            control_bits, controlled_previous = controlled
-            next_bits = bits + control_bits
-            if next_bits >= maximum_bits:
-                return None
-            if depth == len(visuals):
-                tail = suffix_token + (CANDIDATE_END_SYMBOL,)
-                ended = transition(controlled_previous, tail)
-                if ended is None or next_bits + ended[0] > maximum_bits:
-                    return None
-                return controls + tail, ()
-
-            candidates = sorted(
+    candidate_order: dict[int, tuple[int, ...]] = {}
+    for previous in range(0x100):
+        candidate_order[previous] = tuple(
+            sorted(
                 (
                     symbol
                     for symbol in glyph_symbols
-                    if not used_mask
-                    & (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL))
-                    and symbol in lengths.get(controlled_previous, {})
+                    if symbol in lengths.get(previous, {})
                 ),
                 key=lambda symbol: (
                     CANDIDATE_END_SYMBOL not in lengths.get(symbol, {}),
                     -len(set(lengths.get(symbol, {})) & glyph_symbol_set),
+                    lengths[previous][symbol],
                     symbol,
                 ),
             )
-            for symbol in candidates:
-                glyph_bits = lengths[controlled_previous][symbol]
-                if next_bits + glyph_bits >= maximum_bits:
-                    continue
-                suffix = search(
-                    symbol,
-                    used_mask | 1 << (symbol - FONT_GLYPH_FIRST_SYMBOL),
-                    depth + 1,
-                    next_bits + glyph_bits,
-                )
-                if suffix is not None:
-                    suffix_symbols, suffix_assignments = suffix
-                    return (
-                        controls + (symbol,) + suffix_symbols,
-                        (symbol,) + suffix_assignments,
-                    )
-            return None
+        )
 
-        try:
-            result = search(start_previous, 0, 0, start_bits)
-        except ValueError:
+    # (bits, previous, used-mask, inserted-controls, route, assignments)
+    frontier: list[
+        tuple[int, int, int, int, tuple[int, ...], tuple[int, ...]]
+    ] = [(selected[0], selected[1], 0, 0, row_page_token, ())]
+    beam_width = MAX_BOUNDED_SINGLE_PAGE_STATES
+    for _depth in range(len(visuals)):
+        next_by_state: dict[
+            tuple[int, int, int],
+            tuple[int, int, int, int, tuple[int, ...], tuple[int, ...]],
+        ] = {}
+        for bits, previous, used_mask, inserted, route, assignments in frontier:
+            maximum_insert = extra_page_tokens - inserted
+            for control_count in range(maximum_insert + 1):
+                controls = row_page_token * control_count
+                controlled = transition(previous, controls)
+                if controlled is None:
+                    continue
+                control_bits, controlled_previous = controlled
+                controlled_bits = bits + control_bits
+                if controlled_bits >= maximum_bits:
+                    continue
+                for symbol in candidate_order[controlled_previous]:
+                    mask = 1 << (symbol - FONT_GLYPH_FIRST_SYMBOL)
+                    if used_mask & mask:
+                        continue
+                    next_bits = (
+                        controlled_bits
+                        + lengths[controlled_previous][symbol]
+                    )
+                    if next_bits >= maximum_bits:
+                        continue
+                    next_inserted = inserted + control_count
+                    state = (symbol, used_mask | mask, next_inserted)
+                    candidate = (
+                        next_bits,
+                        symbol,
+                        used_mask | mask,
+                        next_inserted,
+                        route + controls + (symbol,),
+                        assignments + (symbol,),
+                    )
+                    incumbent = next_by_state.get(state)
+                    if incumbent is None or candidate < incumbent:
+                        next_by_state[state] = candidate
+        if not next_by_state:
+            break
+        frontier = sorted(
+            next_by_state.values(),
+            key=lambda item: (
+                item[0],
+                CANDIDATE_END_SYMBOL not in lengths.get(item[1], {}),
+                -len(set(lengths.get(item[1], {})) & glyph_symbol_set),
+                item[4],
+            ),
+        )[:beam_width]
+
+    completed = []
+    for bits, previous, _used_mask, inserted, route, assignments in frontier:
+        remaining = extra_page_tokens - inserted
+        tail = row_page_token * remaining + (CANDIDATE_END_SYMBOL,)
+        ended = transition(previous, tail)
+        if ended is None or bits + ended[0] > maximum_bits:
             continue
-        if result is None:
-            continue
-        route_symbols, assignments = result
-        symbols = prefix_sequence + route_symbols
+        symbols = route + tail
         if len(symbols) == target_symbol_count:
-            return list(symbols), extra_page_tokens, list(assignments)
+            completed.append((bits + ended[0], symbols, assignments))
+    if completed:
+        _, symbols, assignments = min(completed)
+        return list(symbols), extra_page_tokens, list(assignments)
     raise ValueError("first context row has no scheduled fixed-count route")
 
 
