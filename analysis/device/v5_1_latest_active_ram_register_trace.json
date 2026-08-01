@@ -1,0 +1,25 @@
+{
+  "artifact_kind": "sanitized-s25u-active-ram-register-trace",
+  "schema_version": 1,
+  "status": "active-ram-register-definition-unresolved",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_active_ram_writer_sha256": "9e4c35767a895f57da3f53c92865f1412280e585845375e74288c61a7e9dd4c6",
+  "captured_utc": "2026-08-01T19:52:28.724971Z",
+  "analysis": {
+    "trace_line_count": 1,
+    "immediate_definition_candidate_count": 0,
+    "arithmetic_definition_candidate_count": 0,
+    "memory_definition_candidate_count": 0,
+    "source_definition_candidate_count": 0,
+    "unique_definition_pc_count": 0,
+    "register_definition_candidate_count": 0,
+    "parsed_trace_line_count": 1
+  },
+  "writer_instance_confirmed": true,
+  "register_definition_confirmed": false,
+  "definition_source_class": "unresolved",
+  "baseline_script_bytes_unchanged": true,
+  "local_payload_policy": "register-names-addresses-opcodes-pcs-values-and-traces-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "extend-active-register-definition-trace"
+}
