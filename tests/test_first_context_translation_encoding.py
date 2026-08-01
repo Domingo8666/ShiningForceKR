@@ -146,6 +146,25 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(audit[0]["runtime_character_count"], 10)
         self.assertEqual(audit[0]["required_page_token_count"], 3)
 
+    def test_compacts_a_later_row_when_font_control_has_no_room(self) -> None:
+        runtime, audit = build_runtime_layout_rows(
+            target_rows=[
+                {"review_index": 1, "target_text": "가"},
+                {"review_index": 2, "target_text": "마구스, 차례다!"},
+            ],
+            runtime_constraints=[
+                {"original_symbol_count": 5},
+                {"original_symbol_count": 10},
+            ],
+            compact_review_indexes=(),
+        )
+        self.assertEqual(runtime[0]["target_text"], "가")
+        self.assertEqual(runtime[1]["target_text"], "마구스차례다")
+        self.assertEqual(audit[0]["review_index"], 2)
+        self.assertEqual(audit[0]["layout_action"], "remove-ascii-layout-characters")
+        self.assertEqual(audit[0]["required_page_token_count"], 1)
+        self.assertTrue(audit[0]["hangul_sequence_preserved"])
+
     def test_builds_a_proven_row_with_the_joint_bounded_solver(self) -> None:
         target = [{"review_index": 1, "target_text": "가"}]
         constraints = [{

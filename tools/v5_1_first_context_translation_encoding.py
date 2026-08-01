@@ -776,13 +776,12 @@ def build_runtime_layout_rows(
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     """Build renderer-only rows without changing the approved translation.
 
-    The first technical-test row has a fixed 19-symbol runtime contract.  Its
-    reviewed 12-character display leaves room for only two three-symbol page
-    controls, and exhaustive single- and two-page routing proved that shape
-    unreachable.  Removing ASCII layout spacing and a trailing exclamation
-    preserves every Hangul syllable while opening a third renderer-inert page
-    control.  The approved rows remain untouched and the deletion-only layout
-    transform is returned as a local audit record.
+    Some runtime records leave fewer than three symbols for the mandatory font
+    page control.  Explicitly selected rows may also need a different control
+    count after a route has been proved unreachable.  Remove only ASCII layout
+    spacing/punctuation, preserve every Hangul syllable, and choose the smallest
+    compatible deletion.  The approved rows remain untouched and every runtime-
+    only transform is returned as a local audit record.
     """
 
     global ACTIVE_FAILURE_ROW_INDEX, ACTIVE_FAILURE_DETAIL
@@ -809,7 +808,9 @@ def build_runtime_layout_rows(
         ):
             raise ValueError("first context runtime layout fields are invalid")
         runtime_row = dict(target_row)
-        if expected_index in compact_indexes:
+        control_symbols = target_symbol_count - len(target_text) - 1
+        shape_requires_compaction = control_symbols < 3 or control_symbols % 3
+        if expected_index in compact_indexes or shape_requires_compaction:
             approved_hangul = "".join(
                 character
                 for character in target_text
@@ -833,6 +834,16 @@ def build_runtime_layout_rows(
                         ),
                     )
                 )
+            variants.append(
+                (
+                    "remove-ascii-layout-characters",
+                    "".join(
+                        character
+                        for character in target_text
+                        if character not in " \t\r\n,!.?;:"
+                    ),
+                )
+            )
             diagnostic_text = min(
                 (candidate_text for _, candidate_text in variants),
                 key=len,
@@ -844,6 +855,9 @@ def build_runtime_layout_rows(
                 target_symbol_count - len(diagnostic_text) - 1
             )
             eligible_variants = []
+            preferred_page_token_count = (
+                3 if expected_index in compact_indexes else 1
+            )
             for layout_action, candidate_text in dict.fromkeys(variants):
                 candidate_hangul = "".join(
                     character
@@ -859,7 +873,7 @@ def build_runtime_layout_rows(
                 page_token_count = control_symbols // 3
                 eligible_variants.append(
                     (
-                        abs(page_token_count - 3),
+                        abs(page_token_count - preferred_page_token_count),
                         len(target_text) - len(candidate_text),
                         layout_action,
                         candidate_text,
