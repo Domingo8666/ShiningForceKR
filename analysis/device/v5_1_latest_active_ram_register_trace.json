@@ -1,25 +1,25 @@
 {
   "artifact_kind": "sanitized-s25u-active-ram-register-trace",
   "schema_version": 2,
-  "status": "active-ram-register-definition-unresolved",
+  "status": "active-ram-register-definition-confirmed",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "source_active_ram_writer_sha256": "9e4c35767a895f57da3f53c92865f1412280e585845375e74288c61a7e9dd4c6",
-  "captured_utc": "2026-08-01T19:55:17.616341Z",
+  "source_active_ram_writer_sha256": "59dde2b4e34c04e9ee66f2045e3cf6dc8013e9e8b203952cbe1efc4dabf39e82",
+  "captured_utc": "2026-08-01T20:11:27.407900Z",
   "analysis": {
-    "source_definition_candidate_count": 0,
-    "memory_definition_candidate_count": 0,
-    "trace_line_count": 8,
-    "immediate_definition_candidate_count": 0,
-    "register_definition_candidate_count": 0,
-    "unique_definition_pc_count": 0,
-    "parsed_trace_line_count": 8,
-    "arithmetic_definition_candidate_count": 0
+    "register_definition_candidate_count": 114,
+    "source_definition_candidate_count": 1250,
+    "unique_definition_pc_count": 114,
+    "arithmetic_definition_candidate_count": 566,
+    "immediate_definition_candidate_count": 149,
+    "trace_line_count": 39198,
+    "parsed_trace_line_count": 39135,
+    "memory_definition_candidate_count": 421
   },
   "writer_instance_confirmed": true,
-  "register_definition_confirmed": false,
-  "definition_source_class": "unresolved",
+  "register_definition_confirmed": true,
+  "definition_source_class": "rom-window",
   "baseline_script_bytes_unchanged": true,
   "local_payload_policy": "register-names-addresses-opcodes-pcs-values-and-traces-local-only",
   "translation_build_eligible": false,
-  "next_checkpoint": "extend-active-register-definition-trace"
+  "next_checkpoint": "map-active-register-rom-source"
 }
