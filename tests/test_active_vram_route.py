@@ -38,7 +38,7 @@ class ActiveVramRouteTests(unittest.TestCase):
         selected = _select_vram_area(
             {
                 "areas": [
-                    {"id": 1, "name": "RAM", "size": 0x2000},
+                    {"id": 1, "name": "RAM", "size": 0x2004},
                     {"id": 2, "name": "VRAM", "size": 0x4000},
                 ]
             }
@@ -47,7 +47,7 @@ class ActiveVramRouteTests(unittest.TestCase):
         ram = _select_ram_area(
             {
                 "areas": [
-                    {"id": 1, "name": "RAM", "size": 0x2000},
+                    {"id": 1, "name": "RAM", "size": 0x2004},
                     {"id": 2, "name": "VRAM", "size": 0x4000},
                 ]
             }

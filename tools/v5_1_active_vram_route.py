@@ -157,11 +157,11 @@ def _select_ram_area(payload: dict[str, object]) -> dict[str, object]:
             and not isinstance(item.get("id"), bool)
             and isinstance(item.get("size"), int)
             and not isinstance(item.get("size"), bool)
-            and int(item["size"]) == RAM_REQUIRED_SIZE
+            and int(item["size"]) >= RAM_REQUIRED_SIZE
         )
     ]
     if len(selected) != 1:
-        raise ValueError("exactly one 8 KiB RAM memory area is required")
+        raise ValueError("exactly one RAM area with an 8 KiB payload is required")
     return selected[0]
 
 
@@ -638,6 +638,7 @@ def main() -> int:
         area_size = int(area["size"])
         ram_area_id = int(ram_area["id"])
         ram_area_size = int(ram_area["size"])
+        ram_read_size = RAM_REQUIRED_SIZE
         before = _read_memory_area(
             client,
             area_id=area_id,
@@ -646,7 +647,7 @@ def main() -> int:
         ram_before = _read_memory_area(
             client,
             area_id=ram_area_id,
-            size=ram_area_size,
+            size=ram_read_size,
         )
         trace_lines, trace_local = _trace_bounded_frames(
             client,
@@ -660,7 +661,7 @@ def main() -> int:
         ram_after = _read_memory_area(
             client,
             area_id=ram_area_id,
-            size=ram_area_size,
+            size=ram_read_size,
         )
     finally:
         client.close()
@@ -701,6 +702,7 @@ def main() -> int:
             "id": ram_area_id,
             "name": str(ram_area["name"]),
             "size": ram_area_size,
+            "payload_read_size": ram_read_size,
         },
         "selected_state": selected_state,
         "ready_state": ready_state,
