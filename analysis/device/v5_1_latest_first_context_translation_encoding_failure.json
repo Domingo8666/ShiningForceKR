@@ -1,0 +1,18 @@
+{
+  "artifact_kind": "sanitized-v5-1-first-context-translation-encoding-failure",
+  "schema_version": 2,
+  "status": "first-context-translation-encoding-failed",
+  "category": "row-route",
+  "failure_step": "select-row-font-pages",
+  "failure_kind": "RowRouteError",
+  "failure_row_index": 0,
+  "failure_detail": "none",
+  "required_visible_symbol_count": 12,
+  "maximum_routable_visible_symbol_count": 0,
+  "target_encoded_bit_count": 128,
+  "bounded_candidate_bit_count": 74,
+  "bounded_candidate_relation": "shorter",
+  "captured_utc": "2026-08-01T08:05:00.916760Z",
+  "source_and_target_text_local_only": true,
+  "next_checkpoint": "repair-first-context-row-route"
+}
