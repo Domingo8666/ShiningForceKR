@@ -17,7 +17,7 @@ try:
     from .patch_io import PatchError, parse_ips, sha256_bytes, sha256_file
     from .sfgfc_huffman import (
         CANDIDATE_END_SYMBOL,
-        decode_symbols,
+        decode_symbol_count,
         load_trees_at,
     )
     from .v5_1_engine import (
@@ -50,7 +50,7 @@ except ImportError:  # pragma: no cover - direct script execution
     from patch_io import PatchError, parse_ips, sha256_bytes, sha256_file
     from sfgfc_huffman import (
         CANDIDATE_END_SYMBOL,
-        decode_symbols,
+        decode_symbol_count,
         load_trees_at,
     )
     from v5_1_engine import (
@@ -299,6 +299,10 @@ def verify_translation_build(
         expected_bytes = encoding.get("encoded_bytes")
         target_bits = encoding.get("target_encoded_bits")
         initial_context = encoding.get("initial_context")
+        runtime_symbol_count = encoding.get(
+            "runtime_symbol_count",
+            len(expected_symbols) if isinstance(expected_symbols, list) else None,
+        )
         if not isinstance(expected_symbols, list) or not isinstance(
             expected_bits,
             int,
@@ -311,6 +315,12 @@ def verify_translation_build(
         ) or not isinstance(
             initial_context,
             int,
+        ) or not isinstance(
+            runtime_symbol_count,
+            int,
+        ) or isinstance(
+            runtime_symbol_count,
+            bool,
         ):
             raise ValueError("first context build expected symbols are missing")
         encoded_lengths_exact += int(expected_bits == target_bits)
@@ -325,20 +335,24 @@ def verify_translation_build(
             test[length_offset] != baseline[length_offset]
         )
         try:
-            decoded, decoded_bits = decode_symbols(
+            decoded, decoded_bits = decode_symbol_count(
                 test,
                 known,
                 trees,
                 payload_start,
+                runtime_symbol_count,
                 initial_symbol=initial_context,
-                end_symbol=CANDIDATE_END_SYMBOL,
-                max_symbols=len(expected_symbols),
                 max_bytes=original_length,
             )
         except PatchError:
             failures += 1
             continue
-        if decoded == expected_symbols and decoded_bits == expected_bits:
+        if (
+            decoded == expected_symbols
+            and decoded_bits == expected_bits
+            and len(expected_symbols) == runtime_symbol_count
+            and expected_symbols[-1] == CANDIDATE_END_SYMBOL
+        ):
             roundtrips += 1
         else:
             failures += 1

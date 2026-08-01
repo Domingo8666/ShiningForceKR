@@ -28,7 +28,9 @@ try:
     from .sfgfc_huffman import (
         CANDIDATE_END_SYMBOL,
         _symbol_codes,
+        decode_symbol_count,
         decode_symbols,
+        encode_symbol_count,
         encode_symbols,
         load_trees_at,
     )
@@ -87,7 +89,9 @@ except ImportError:  # pragma: no cover - direct script execution
     from sfgfc_huffman import (
         CANDIDATE_END_SYMBOL,
         _symbol_codes,
+        decode_symbol_count,
         decode_symbols,
+        encode_symbol_count,
         encode_symbols,
         load_trees_at,
     )
@@ -141,9 +145,11 @@ except ImportError:  # pragma: no cover - direct script execution
 ARTIFACT_KIND = "sanitized-v5-1-first-context-translation-encoding"
 LOCAL_ARTIFACT_KIND = "local-v5-1-first-context-translation-encoding"
 SCHEMA_VERSION = 1
-# Preferred starting pages only.  Runtime visual review invalidated the old
-# assumption that these page routes were proven; selection now tests a bounded
-# representative page set and accepts only an exact original-bit-length route.
+# Preferred starting pages only.  Runtime visual review invalidated both exact
+# byte-length padding and compact-prefix writes: the caller keeps decoding a
+# fixed number of output symbols.  Selection therefore tests bounded routes;
+# the selected route is later padded with renderer-inert controls to the
+# original decoded symbol count and verified with the fixed-count codec.
 PROVEN_ROW_FONT_PAGES = (240, 241, 242, 243)
 ROW_FONT_PAGES = PROVEN_ROW_FONT_PAGES + (239,)
 MAX_EXACT_FONT_PAGE_CANDIDATES = 8
@@ -173,6 +179,9 @@ COUNT_KEYS = {
     "planned_page_select_count",
     "planned_terminator_count",
     "planned_total_symbol_count",
+    "fixed_count_padding_symbol_count",
+    "exact_runtime_symbol_count_entry_count",
+    "fixed_count_roundtrip_entry_count",
     "huffman_roundtrip_entry_count",
     "huffman_failure_entry_count",
     "encoded_bit_count",
@@ -978,6 +987,125 @@ def bounded_length_row_symbols(
             paths[candidate] = paths[(bits, previous)] + token
             queue.append(candidate)
     raise ValueError("first context row exceeds its in-place Huffman capacity")
+
+
+def pad_row_to_runtime_symbol_count(
+    *,
+    trees: dict[int, object],
+    initial_context: int,
+    maximum_bits: int,
+    target_symbol_count: int,
+    symbols: list[int],
+) -> tuple[list[int], int, int]:
+    """Pad one visible row to the caller's exact decoded output count.
+
+    Runtime screenshots proved that the dialogue consumer does not stop after
+    the first ``0xC9``.  A shorter replacement therefore lets preserved suffix
+    bits decode as visible garbage.  Keep the reviewed visible route, remove
+    its final terminator, then search only renderer-inert page selections and
+    terminators until the final terminator lands at the original symbol count.
+    The returned stream is later encoded and decoded with the fixed-count
+    codec, so no preserved suffix bit is consumed by the caller.
+    """
+
+    if (
+        not 0 <= initial_context <= 0xFF
+        or not 1 <= maximum_bits <= 0x7FFF
+        or not 1 <= target_symbol_count <= 0x1000
+        or not symbols
+        or symbols[-1] != CANDIDATE_END_SYMBOL
+        or CANDIDATE_END_SYMBOL in symbols[:-1]
+    ):
+        raise ValueError("first context fixed-count padding inputs are invalid")
+    if len(symbols) > target_symbol_count:
+        raise ValueError("first context visible route exceeds runtime symbol count")
+    if len(symbols) == target_symbol_count:
+        return list(symbols), 0, 0
+
+    lengths = _code_lengths(trees)
+
+    def transition(
+        previous: int,
+        sequence: tuple[int, ...],
+    ) -> tuple[int, int] | None:
+        bit_count = 0
+        for symbol in sequence:
+            code_length = lengths.get(previous, {}).get(symbol)
+            if code_length is None:
+                return None
+            bit_count += code_length
+            previous = symbol
+        return bit_count, previous
+
+    visible_prefix = tuple(symbols[:-1])
+    visible_route = transition(initial_context, visible_prefix)
+    if visible_route is None:
+        raise ValueError("first context visible route is not Huffman encodable")
+    visible_bits, visible_context = visible_route
+    remaining_symbols = target_symbol_count - len(visible_prefix)
+    if remaining_symbols < 1:
+        raise ValueError("first context runtime count has no final terminator slot")
+
+    page_tokens = tuple(
+        dict.fromkeys(
+            tuple(page_select_symbols(page)) for page in range(FONT_PAGE_COUNT)
+        )
+    )
+    # Heap order chooses the lowest-bit fixed-count route first.  Paths are
+    # private/local only and never appear in the sanitized receipt.
+    heap: list[tuple[int, tuple[int, ...], int, int, int]] = [
+        (visible_bits, (), 0, visible_context, 0)
+    ]
+    best: dict[tuple[int, int], int] = {(0, visible_context): visible_bits}
+    while heap:
+        bits, path, used, previous, page_token_count = heappop(heap)
+        if bits != best.get((used, previous)):
+            continue
+        if used == remaining_symbols - 1:
+            final = transition(previous, (CANDIDATE_END_SYMBOL,))
+            if final is not None and bits + final[0] <= maximum_bits:
+                padded = list(
+                    visible_prefix + path + (CANDIDATE_END_SYMBOL,)
+                )
+                return (
+                    padded,
+                    len(padded) - len(symbols),
+                    page_token_count,
+                )
+            continue
+
+        candidates = ((CANDIDATE_END_SYMBOL,), *page_tokens)
+        unique: dict[tuple[int, int, int], tuple[int, ...]] = {}
+        for token in candidates:
+            next_used = used + len(token)
+            if next_used >= remaining_symbols:
+                continue
+            encoded = transition(previous, token)
+            if encoded is None:
+                continue
+            unique.setdefault((len(token), encoded[0], encoded[1]), token)
+        for (token_length, added_bits, next_previous), token in sorted(
+            unique.items()
+        ):
+            next_bits = bits + added_bits
+            if next_bits > maximum_bits:
+                continue
+            next_used = used + token_length
+            state = (next_used, next_previous)
+            if next_bits >= best.get(state, maximum_bits + 1):
+                continue
+            best[state] = next_bits
+            heappush(
+                heap,
+                (
+                    next_bits,
+                    path + token,
+                    next_used,
+                    next_previous,
+                    page_token_count + int(token_length == 3),
+                ),
+            )
+    raise ValueError("first context row has no fixed-count invisible padding route")
 
 
 def solve_bounded_length_row_visual_symbols(
@@ -2182,15 +2310,31 @@ def select_row_font_pages(
                         visuals=visuals,
                     )
                 else:
-                    solve_bounded_length_row_visual_symbols(
-                        trees=trees,
-                        initial_context=int(constraint["initial_context"]),
-                        maximum_bits=(
-                            int(constraint["original_record_length_bytes"]) * 8
-                        ),
-                        page=page,
-                        visuals=visuals,
+                    candidate_symbols, _, _ = (
+                        solve_bounded_length_row_visual_symbols(
+                            trees=trees,
+                            initial_context=int(constraint["initial_context"]),
+                            maximum_bits=(
+                                int(constraint["original_record_length_bytes"])
+                                * 8
+                            ),
+                            page=page,
+                            visuals=visuals,
+                        )
                     )
+                    if "original_symbol_count" in constraint:
+                        pad_row_to_runtime_symbol_count(
+                            trees=trees,
+                            initial_context=int(constraint["initial_context"]),
+                            maximum_bits=(
+                                int(constraint["original_record_length_bytes"])
+                                * 8
+                            ),
+                            target_symbol_count=int(
+                                constraint["original_symbol_count"]
+                            ),
+                            symbols=candidate_symbols,
+                        )
             except ValueError:
                 if constraint is not None:
                     candidate_groups = [
@@ -2201,20 +2345,43 @@ def select_row_font_pages(
                         candidate_groups.append(expanded_pool)
                     for page_group in candidate_groups:
                         try:
-                            solve_bounded_length_row_multi_page_visual_symbols(
-                                trees=trees,
-                                initial_context=int(
-                                    constraint["initial_context"]
-                                ),
-                                maximum_bits=(
-                                    int(
-                                        constraint["original_record_length_bytes"]
-                                    )
-                                    * 8
-                                ),
-                                pages=page_group,
-                                visuals=visuals,
+                            candidate_symbols, _, _, _ = (
+                                solve_bounded_length_row_multi_page_visual_symbols(
+                                    trees=trees,
+                                    initial_context=int(
+                                        constraint["initial_context"]
+                                    ),
+                                    maximum_bits=(
+                                        int(
+                                            constraint[
+                                                "original_record_length_bytes"
+                                            ]
+                                        )
+                                        * 8
+                                    ),
+                                    pages=page_group,
+                                    visuals=visuals,
+                                )
                             )
+                            if "original_symbol_count" in constraint:
+                                pad_row_to_runtime_symbol_count(
+                                    trees=trees,
+                                    initial_context=int(
+                                        constraint["initial_context"]
+                                    ),
+                                    maximum_bits=(
+                                        int(
+                                            constraint[
+                                                "original_record_length_bytes"
+                                            ]
+                                        )
+                                        * 8
+                                    ),
+                                    target_symbol_count=int(
+                                        constraint["original_symbol_count"]
+                                    ),
+                                    symbols=candidate_symbols,
+                                )
                         except ValueError:
                             continue
                         pages.append(page_group)
@@ -2394,6 +2561,26 @@ def build_single_page_symbol_rows(
                         target_bits=target_bits,
                         candidate_bits=candidate_bits,
                     )
+            runtime_symbol_count = int(
+                constraint.get("original_symbol_count", len(symbols))
+            )
+            fixed_count_padding_symbol_count = 0
+            if "original_symbol_count" in constraint:
+                (
+                    symbols,
+                    fixed_count_padding_symbol_count,
+                    fixed_count_padding_page_select_count,
+                ) = pad_row_to_runtime_symbol_count(
+                    trees=trees,
+                    initial_context=initial_context,
+                    maximum_bits=route_capacity_bits,
+                    target_symbol_count=runtime_symbol_count,
+                    symbols=symbols,
+                )
+                padding_count += fixed_count_padding_page_select_count
+        if constraint is None:
+            runtime_symbol_count = len(symbols)
+            fixed_count_padding_symbol_count = 0
         ACTIVE_FAILURE_DETAIL = "validate-row-assignments"
         if (
             len(assignments) != len(visuals)
@@ -2413,6 +2600,10 @@ def build_single_page_symbol_rows(
                 "storage_capacity_bits": storage_capacity_bits,
                 "route_capacity_bits": route_capacity_bits,
                 "visible_symbol_count": len(visuals),
+                "runtime_symbol_count": runtime_symbol_count,
+                "fixed_count_padding_symbol_count": (
+                    fixed_count_padding_symbol_count
+                ),
                 "preserved_non_text_glyph_count": sum(
                     visual.startswith("preserved:") for visual in visuals
                 ),
@@ -2440,6 +2631,13 @@ def build_single_page_symbol_rows(
         "preserved_non_text_glyph_occurrence_count": preserved_count,
         "planned_terminator_count": len(rows),
         "planned_total_symbol_count": sum(len(row["symbols"]) for row in rows),
+        "fixed_count_padding_symbol_count": sum(
+            int(row["fixed_count_padding_symbol_count"]) for row in rows
+        ),
+        "exact_runtime_symbol_count_entry_count": sum(
+            len(row["symbols"]) == int(row["runtime_symbol_count"])
+            for row in rows
+        ),
         "page_select_padding_count": sum(
             int(row["page_select_padding_count"]) for row in rows
         ),
@@ -2542,6 +2740,10 @@ def build_first_context_translation_encoding(
         and encoding["huffman_roundtrip_entry_count"]
         == encoding["context_entry_count"]
         and encoding["huffman_failure_entry_count"] == 0
+        and encoding["fixed_count_roundtrip_entry_count"]
+        == encoding["context_entry_count"]
+        and encoding["exact_runtime_symbol_count_entry_count"]
+        == encoding["context_entry_count"]
         and encoding["preserved_non_text_glyph_occurrence_count"] > 0
         and encoding["custom_font_page_count"]
         >= encoding["context_entry_count"]
@@ -2635,6 +2837,10 @@ def validate_first_context_translation_encoding(
         and counts["huffman_roundtrip_entry_count"]
         == counts["context_entry_count"]
         and counts["huffman_failure_entry_count"] == 0
+        and counts["fixed_count_roundtrip_entry_count"]
+        == counts["context_entry_count"]
+        and counts["exact_runtime_symbol_count_entry_count"]
+        == counts["context_entry_count"]
         and counts["preserved_non_text_glyph_occurrence_count"] > 0
         and counts["custom_font_page_count"] >= counts["context_entry_count"]
         and counts["font_page_changed_byte_count"] > 0
@@ -2910,6 +3116,8 @@ def _main() -> int:
     initial_page_failures = 0
     later_failures = 0
     exact_length_entries = 0
+    exact_runtime_symbol_count_entries = 0
+    fixed_count_roundtrips = 0
     in_place_storage_fits = 0
     runtime_initial_contexts: set[int] = set()
     for row in symbol_rows:
@@ -2919,31 +3127,34 @@ def _main() -> int:
         target_bits = int(row["target_encoded_bits"])
         storage_capacity_bits = int(row["storage_capacity_bits"])
         route_capacity_bits = int(row["route_capacity_bits"])
+        runtime_symbol_count = int(row["runtime_symbol_count"])
         runtime_initial_contexts.add(initial_context)
         try:
-            encoded, bits = encode_symbols(
+            encoded, bits = encode_symbol_count(
                 trees,
                 symbols,
                 initial_symbol=initial_context,
-                end_symbol=CANDIDATE_END_SYMBOL,
                 max_bits=route_capacity_bits,
             )
-            decoded, decoded_bits = decode_symbols(
+            decoded, decoded_bits = decode_symbol_count(
                 encoded,
                 bytes((1,)) * len(encoded),
                 trees,
                 0,
+                runtime_symbol_count,
                 initial_symbol=initial_context,
-                end_symbol=CANDIDATE_END_SYMBOL,
-                max_symbols=len(symbols),
                 max_bytes=len(encoded),
             )
             if (
                 decoded != symbols
                 or decoded_bits != bits
                 or bits > route_capacity_bits
+                or len(symbols) != runtime_symbol_count
+                or symbols[-1] != CANDIDATE_END_SYMBOL
             ):
-                raise PatchError("first context Huffman roundtrip disagrees")
+                raise PatchError(
+                    "first context fixed-count Huffman roundtrip disagrees"
+                )
         except PatchError as error:
             failures += 1
             row["encoding_error"] = str(error)
@@ -2957,6 +3168,10 @@ def _main() -> int:
         row["encoded_bits"] = bits
         row["encoded_bytes"] = len(encoded)
         roundtrips += 1
+        fixed_count_roundtrips += 1
+        exact_runtime_symbol_count_entries += int(
+            len(symbols) == runtime_symbol_count
+        )
         exact_length_entries += int(bits == target_bits)
         in_place_storage_fits += int(
             len(encoded) <= storage_capacity_bits // 8
@@ -2974,6 +3189,10 @@ def _main() -> int:
         "custom_font_glyph_count": len(all_assignments),
         **symbol_counts,
         "huffman_roundtrip_entry_count": roundtrips,
+        "fixed_count_roundtrip_entry_count": fixed_count_roundtrips,
+        "exact_runtime_symbol_count_entry_count": (
+            exact_runtime_symbol_count_entries
+        ),
         "huffman_failure_entry_count": failures,
         "encoded_bit_count": encoded_bits,
         "encoded_byte_count": encoded_bytes,

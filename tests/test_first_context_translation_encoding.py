@@ -25,6 +25,7 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     diagnose_bounded_candidate_bit_count,
     exact_multi_page_state_limit,
     exact_length_row_symbols,
+    pad_row_to_runtime_symbol_count,
     select_row_font_pages,
     solve_bounded_length_row_visual_symbols,
     solve_bounded_length_row_multi_page_visual_symbols,
@@ -696,6 +697,27 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(padding_count, 0)
         self.assertEqual(symbols, [0x5F, 0x11, 0x02, 0x03, 0xC9])
 
+    def test_pads_a_visible_row_to_the_runtime_symbol_count(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x5F),
+            0x11: tree(0x11, 0x02, 0x11),
+            0x02: tree(0x02, 0x03, 0x02),
+            0x03: tree(0x03, 0xC9, 0x03),
+        }
+        symbols, padding_symbols, padding_pages = (
+            pad_row_to_runtime_symbol_count(
+                trees=trees,
+                initial_context=0xC9,
+                maximum_bits=8,
+                target_symbol_count=6,
+                symbols=[0x5F, 0x11, 0x02, 0x03, 0xC9],
+            )
+        )
+        self.assertEqual(symbols, [0x5F, 0x11, 0x02, 0x03, 0xC9, 0xC9])
+        self.assertEqual(padding_symbols, 1)
+        self.assertEqual(padding_pages, 0)
+
     def test_builds_two_page_symbols_and_preserves_insertions(self) -> None:
         targets = [
             {"review_index": 1, "target_text": "가!"},
@@ -795,6 +817,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             ],
         )
         self.assertEqual(constraints[0]["original_encoded_bits"], 6)
+        self.assertEqual(constraints[0]["original_symbol_count"], 6)
 
     def test_builds_safe_ready_receipt_without_local_payload(self) -> None:
         counts = {
@@ -808,6 +831,9 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             "planned_page_select_count": 10,
             "planned_terminator_count": 5,
             "planned_total_symbol_count": 102,
+            "fixed_count_padding_symbol_count": 12,
+            "exact_runtime_symbol_count_entry_count": 5,
+            "fixed_count_roundtrip_entry_count": 5,
             "huffman_roundtrip_entry_count": 5,
             "huffman_failure_entry_count": 0,
             "encoded_bit_count": 300,
