@@ -17,7 +17,6 @@ try:
         _default_command,
         _parse_mapper,
         _runtime_failure_receipt,
-        _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
     from .v5_1_active_ram_producer import (
@@ -45,7 +44,6 @@ except ImportError:  # pragma: no cover - direct script execution
         _default_command,
         _parse_mapper,
         _runtime_failure_receipt,
-        _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
     from v5_1_active_ram_producer import _capture_producer_state, _load_json_object
@@ -172,6 +170,23 @@ def physical_source_region(offset: int) -> str:
     if 0x88000 <= offset < 0x17C000:
         return "korean-font-data"
     return "expanded-runtime-other"
+
+
+def instruction_breakpoint_matches(
+    state: dict[str, object],
+    *,
+    expected_bank: int,
+    expected_pc: int,
+    instruction_size: int,
+) -> bool:
+    """Accept Gearsystem's pre- or post-instruction breakpoint PC semantics."""
+
+    pc = int(state["pc_after"])
+    pc_after = (expected_pc + instruction_size) & 0xFFFF
+    return int(state["executing_bank"]) == expected_bank and pc in {
+        expected_pc,
+        pc_after,
+    }
 
 
 def next_checkpoint_for_region(region: str, *, confirmed: bool) -> str:
@@ -345,6 +360,9 @@ def main() -> int:
         raise ValueError("active register ROM source read is ambiguous")
     logical_source = expected_reads[0]
     rom = rom_path.read_bytes()
+    expected_value = int(trace_local.get("expected_value", -1))
+    if not 0 <= expected_value <= 0xFF:
+        raise ValueError("active register ROM source expected value is invalid")
     client = McpStdioClient(_default_command())
     execute_armed = fast_forward = False
     selected_state = None
@@ -376,17 +394,37 @@ def main() -> int:
                 continue
             hit_count += 1
             state, _ = _capture_producer_state(client)
-            registers = state["registers"]
-            assert isinstance(registers, dict)
-            expected_pc_after = (expected_pc + len(expected_opcodes)) & 0xFFFF
-            if int(state["executing_bank"]) == expected_bank and int(state["pc_after"]) == expected_pc_after:
+            mapper_candidate = client.call(
+                "read_memory",
+                {
+                    "area": int(ram_area["id"]),
+                    "offset": f"{mapper_offset:04X}",
+                    "size": 4,
+                },
+            )
+            _, slot0, slot1, slot2 = _parse_mapper(mapper_candidate.get("data"))
+            _, candidate_offset = physical_rom_source(
+                logical_source,
+                slot0_bank=slot0,
+                slot1_bank=slot1,
+                slot2_bank=slot2,
+                rom_size=len(rom),
+            )
+            if (
+                instruction_breakpoint_matches(
+                    state,
+                    expected_bank=expected_bank,
+                    expected_pc=expected_pc,
+                    instruction_size=len(expected_opcodes),
+                )
+                and rom[candidate_offset] == expected_value
+            ):
                 selected_state = state
+                mapper_payload = mapper_candidate
                 _set_unlimited_fast_forward(client, False)
                 fast_forward = False
                 _remove_read_breakpoint(client, logical_source)
                 execute_armed = False
-                _step_instruction_and_wait(client)
-                mapper_payload = client.call("read_memory", {"area": int(ram_area["id"]), "offset": f"{mapper_offset:04X}", "size": 4})
                 break
         if selected_state is None or mapper_payload is None:
             raise RuntimeError("active register ROM source execution was not reached")
@@ -403,7 +441,6 @@ def main() -> int:
         client.close()
     _, slot0, slot1, slot2 = _parse_mapper(mapper_payload.get("data"))
     mapped_bank, physical_offset = physical_rom_source(logical_source, slot0_bank=slot0, slot1_bank=slot1, slot2_bank=slot2, rom_size=len(rom))
-    expected_value = int(trace_local.get("expected_value", -1))
     rom_value = rom[physical_offset]
     counts = {"read_break_hit_count": hit_count, "matching_read_hit_count": 1, "logical_read_address_count": 1, "physical_source_count": 1, "rom_value_match_count": int(rom_value == expected_value)}
     captured_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
