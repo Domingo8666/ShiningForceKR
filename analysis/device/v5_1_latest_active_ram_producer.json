@@ -1,0 +1,36 @@
+{
+  "artifact_kind": "sanitized-s25u-active-ram-producer",
+  "schema_version": 1,
+  "status": "active-ram-producer-partial",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_active_vram_route_sha256": "92cdbf33068f3a0fad66fb869dc21924a32d1abbe5970afd1ecd332bd7b57064",
+  "captured_utc": "2026-08-01T19:27:10.919404Z",
+  "runtime_entry": {
+    "physical_start": 133395,
+    "entry_ordinal": 147,
+    "mapped_bank": 8,
+    "logical_start": 18707,
+    "selector_de": 2,
+    "record_length_bytes": 16
+  },
+  "analysis": {
+    "nonzero_target_address_count": 111,
+    "parsed_target_write_event_count": 1,
+    "observed_target_write_count": 1,
+    "target_address_count": 192,
+    "target_transfer_count": 192,
+    "dominant_writer_address_count": 1,
+    "producer_covered_address_count": 1,
+    "final_value_match_count": 192,
+    "armed_write_range_count": 1,
+    "write_watch_hit_count": 1,
+    "producer_covered_nonzero_address_count": 1,
+    "unique_writer_count": 1
+  },
+  "target_values_verified": true,
+  "producer_route_confirmed": false,
+  "baseline_script_bytes_unchanged": true,
+  "local_payload_policy": "ram-addresses-values-opcodes-writer-pcs-and-traces-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "extend-active-ram-producer-watch"
+}
