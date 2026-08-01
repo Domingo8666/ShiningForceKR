@@ -1065,7 +1065,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                     "observation": {
                         "selector": 7,
                         "ordinal": 2,
-                        "initial_context": 0xC9,
+                        "initial_context": 0x11,
                     },
                 }
             ],
@@ -1142,6 +1142,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         )
         self.assertEqual(anchored_constraints[0]["original_encoded_bits"], 6)
         self.assertEqual(anchored_constraints[0]["original_symbol_count"], 6)
+        self.assertEqual(anchored_constraints[0]["initial_context"], 0xC9)
         self.assertEqual(anchored_constraints[1]["original_encoded_bits"], 6)
         self.assertEqual(anchored_constraints[1]["original_symbol_count"], 6)
 

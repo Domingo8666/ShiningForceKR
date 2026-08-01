@@ -945,7 +945,7 @@ def build_runtime_codec_constraints(
             raise ValueError("first context runtime observation is missing")
         target_selector = observation.get("selector")
         target_ordinal = observation.get("ordinal")
-        initial_context = observation.get("initial_context")
+        observed_context = observation.get("initial_context")
         if (
             not isinstance(target_selector, int)
             or isinstance(target_selector, bool)
@@ -953,11 +953,16 @@ def build_runtime_codec_constraints(
             or not isinstance(target_ordinal, int)
             or isinstance(target_ordinal, bool)
             or not 0 <= target_ordinal <= 0xFF
-            or not isinstance(initial_context, int)
-            or isinstance(initial_context, bool)
-            or not 0 <= initial_context <= 0xFF
+            or not isinstance(observed_context, int)
+            or isinstance(observed_context, bool)
+            or not 0 <= observed_context <= 0xFF
         ):
             raise ValueError("first context runtime coordinates are invalid")
+        # The sequence probe stops at the first vector read it can observe
+        # after decoder entry, which can already be a later symbol context.
+        # The visible-entry proof independently establishes a 19-symbol exact
+        # no-change roundtrip from the canonical end-symbol entry context.
+        initial_context = CANDIDATE_END_SYMBOL
         matches = pair_index.get((target_selector, target_ordinal), [])
         if len(matches) != 1:
             raise ValueError("first context runtime coordinate mapping is not unique")
