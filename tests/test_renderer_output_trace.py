@@ -9,6 +9,7 @@ if str(ROOT) not in sys.path:
 
 from tools.v5_1_renderer_output_trace import (  # noqa: E402
     _classify_vdp_output,
+    _innermost_return_address,
     _outer_return_address,
     _read_trace_window,
     analyze_trace_lines,
@@ -268,6 +269,20 @@ class RendererOutputTraceTests(unittest.TestCase):
                 current_pc=0x340C,
             ),
             0x1234,
+        )
+
+    def test_selects_innermost_call_return(self) -> None:
+        self.assertEqual(
+            _innermost_return_address(
+                {
+                    "stack": [
+                        {"return": "$402A"},
+                        {"return": "$1234"},
+                    ]
+                },
+                current_pc=0x340C,
+            ),
+            0x402A,
         )
 
     def test_reads_trace_in_api_sized_pages(self) -> None:

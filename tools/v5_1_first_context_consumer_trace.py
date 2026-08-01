@@ -557,6 +557,7 @@ def _capture_contexts(
         trace_lines, trace_window = _trace_to_outer_return(
             client,
             ready_state=anchor_state,
+            outermost=False,
         )
         contexts = extract_vector_contexts_from_trace(
             trace_lines,

@@ -671,6 +671,23 @@ def _outer_return_address(
     return address
 
 
+def _innermost_return_address(
+    call_stack: dict[str, object],
+    *,
+    current_pc: int,
+) -> int:
+    stack = call_stack.get("stack")
+    if not isinstance(stack, list) or not stack:
+        raise RuntimeError("renderer output call stack is empty")
+    innermost = stack[0]
+    if not isinstance(innermost, dict):
+        raise RuntimeError("renderer output innermost call frame is invalid")
+    address = _parse_hex_word(innermost.get("return"), "return")
+    if address == current_pc:
+        raise RuntimeError("renderer output return breakpoint equals current PC")
+    return address
+
+
 def _read_trace_window(
     client: McpStdioClient,
     *,
@@ -718,11 +735,19 @@ def _trace_to_outer_return(
     client: McpStdioClient,
     *,
     ready_state: dict[str, object],
+    outermost: bool = True,
 ) -> tuple[list[str], dict[str, object]]:
     call_stack = client.call("get_call_stack")
-    return_address = _outer_return_address(
-        call_stack,
-        current_pc=int(ready_state["pc_after"]),
+    return_address = (
+        _outer_return_address(
+            call_stack,
+            current_pc=int(ready_state["pc_after"]),
+        )
+        if outermost
+        else _innermost_return_address(
+            call_stack,
+            current_pc=int(ready_state["pc_after"]),
+        )
     )
     return_armed = False
     fast_forward = False
