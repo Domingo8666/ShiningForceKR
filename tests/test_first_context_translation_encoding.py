@@ -1147,8 +1147,13 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 }
             ],
         )
-        self.assertEqual(constraints[0]["original_encoded_bits"], 6)
-        self.assertEqual(constraints[0]["original_symbol_count"], 6)
+        self.assertEqual(constraints[0]["initial_context"], 0x11)
+        self.assertEqual(
+            constraints[0]["context_resolution_basis"],
+            "captured-runtime-vector-context",
+        )
+        self.assertEqual(constraints[0]["original_encoded_bits"], 4)
+        self.assertEqual(constraints[0]["original_symbol_count"], 4)
 
         anchored_constraints = build_runtime_codec_constraints(
             target=b"\x01\x00\x01\x00",
@@ -1324,7 +1329,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             "visible-anchor-consecutive-fallback",
         )
 
-    def test_uses_captured_context_only_after_canonical_context_fails(self) -> None:
+    def test_prefers_the_directly_captured_runtime_context(self) -> None:
         trees = {
             0xC9: tree(0xC9, 0xC9, 0xAA),
             0x11: tree(0x11, 0x03, 0xC9),
@@ -1372,7 +1377,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(constraints[1]["initial_context"], 0x11)
         self.assertEqual(
             constraints[1]["context_resolution_basis"],
-            "captured-vector-context-fallback",
+            "captured-runtime-vector-context",
         )
 
     def test_builds_safe_ready_receipt_without_local_payload(self) -> None:

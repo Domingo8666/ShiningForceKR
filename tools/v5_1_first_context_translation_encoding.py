@@ -974,16 +974,16 @@ def build_runtime_codec_constraints(
             or not 0 <= observed_context <= 0xFF
         ):
             raise ValueError("first context runtime coordinates are invalid")
-        # The anchor has a direct 19-symbol proof from the canonical entry
-        # context.  Later records prefer the same independent-string context,
-        # but may use their captured vector context only when neither mapped
-        # nor anchor-chain storage roundtrips canonically.
+        # This value is the first Huffman-vector read observed immediately
+        # after entering the decoder, so it is the runtime entry context.  A
+        # canonical end-symbol start is only a compatibility fallback for an
+        # old capture that cannot round-trip the mapped record.
         context_candidates = [
-            ("proven-independent-entry-context", CANDIDATE_END_SYMBOL)
+            ("captured-runtime-vector-context", observed_context)
         ]
-        if row_index > 0 and observed_context != CANDIDATE_END_SYMBOL:
+        if observed_context != CANDIDATE_END_SYMBOL:
             context_candidates.append(
-                ("captured-vector-context-fallback", observed_context)
+                ("canonical-end-context-fallback", CANDIDATE_END_SYMBOL)
             )
         matches = pair_index.get((target_selector, target_ordinal), [])
         if len(matches) != 1:
@@ -1150,9 +1150,8 @@ def resolve_runtime_records_from_visible_anchor(
             {
                 "length_offset": length_offset,
                 "record_length_bytes": record_length,
-                # The exact visible-record roundtrip starts every independent
-                # compressed string from the end-symbol Huffman context.  A
-                # sampled post-decode register value is not an entry context.
+                # Kept as a structural default only. The codec constraint uses
+                # the directly captured first vector read for each row.
                 "initial_context": CANDIDATE_END_SYMBOL,
             }
         )
