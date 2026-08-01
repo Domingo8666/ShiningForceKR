@@ -2388,6 +2388,17 @@ def solve_fixed_count_row_visual_symbols(
             )
         )
 
+    safe_suffix_by_previous: dict[int, tuple[int, tuple[int, ...]]] = {}
+    for previous in range(0x100):
+        candidates = []
+        for token in all_page_tokens:
+            tail = token + (CANDIDATE_END_SYMBOL,)
+            encoded = transition(previous, tail)
+            if encoded is not None:
+                candidates.append((encoded[0], tail))
+        if candidates:
+            safe_suffix_by_previous[previous] = min(candidates)
+
     # (bits, previous, used-mask, inserted-controls, route, assignments)
     frontier: list[
         tuple[int, int, int, int, tuple[int, ...], tuple[int, ...]]
@@ -2396,7 +2407,7 @@ def solve_fixed_count_row_visual_symbols(
     # create tens of millions of Python tuples across eight candidate pages.
     # Runtime analysis found only a handful of glyphs with a page-select exit,
     # so the frontier rank below explicitly preserves those scarce states.
-    beam_width = min(MAX_BOUNDED_SINGLE_PAGE_STATES, 64)
+    beam_width = min(MAX_BOUNDED_SINGLE_PAGE_STATES, 128)
     for _depth in range(len(visuals)):
         next_by_state: dict[
             tuple[int, int, int],
@@ -2444,6 +2455,7 @@ def solve_fixed_count_row_visual_symbols(
                 (
                     extra_page_tokens > item[3]
                     and transition(item[1], row_page_token) is None
+                    and item[1] not in safe_suffix_by_previous
                 ),
                 item[0],
                 CANDIDATE_END_SYMBOL not in lengths.get(item[1], {}),
@@ -2460,9 +2472,8 @@ def solve_fixed_count_row_visual_symbols(
         elif remaining == 1:
             # A temporary page immediately before the terminator is also
             # invisible because no following glyph observes that page.
-            tails = tuple(
-                token + (CANDIDATE_END_SYMBOL,) for token in all_page_tokens
-            )
+            suffix = safe_suffix_by_previous.get(previous)
+            tails = () if suffix is None else (suffix[1],)
         else:
             tails = (
                 row_page_token * remaining + (CANDIDATE_END_SYMBOL,),
