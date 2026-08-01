@@ -11,6 +11,8 @@ if str(ROOT) not in sys.path:
 from tools.v5_1_active_vram_route import (  # noqa: E402
     _contiguous_ranges,
     _parse_memory_bytes,
+    _ram_offset,
+    _select_ram_area,
     _select_vram_area,
     analyze_active_vram_route,
     build_active_vram_route,
@@ -42,6 +44,17 @@ class ActiveVramRouteTests(unittest.TestCase):
             }
         )
         self.assertEqual(selected["id"], 2)
+        ram = _select_ram_area(
+            {
+                "areas": [
+                    {"id": 1, "name": "RAM", "size": 0x2000},
+                    {"id": 2, "name": "VRAM", "size": 0x4000},
+                ]
+            }
+        )
+        self.assertEqual(ram["id"], 1)
+        self.assertEqual(_ram_offset(0xC100, 0x2000), 0x100)
+        self.assertEqual(_ram_offset(0xE100, 0x2000), 0x100)
 
     def test_replays_vram_write_address_and_auto_increment(self) -> None:
         destinations, counts = replay_vdp_destinations(
@@ -83,6 +96,8 @@ class ActiveVramRouteTests(unittest.TestCase):
         analysis, local = analyze_active_vram_route(
             before=before,
             after=after,
+            ram_before=bytes(0x2000),
+            ram_after=bytes(0x2000),
             outputs=outputs,
             rom=b"prefix" + after[:32] + b"suffix",
         )
@@ -109,6 +124,9 @@ class ActiveVramRouteTests(unittest.TestCase):
             "written_changed_byte_count": 2,
             "direct_rom_match_tile_count": 1,
             "unique_direct_rom_source_count": 1,
+            "ram_backed_vdp_data_write_count": 0,
+            "stable_ram_source_write_count": 0,
+            "ram_source_matches_resident_vram_count": 0,
         }
         value = build_active_vram_route(
             target_sha256="1" * 64,
@@ -136,6 +154,9 @@ class ActiveVramRouteTests(unittest.TestCase):
             "written_changed_byte_count": 0,
             "direct_rom_match_tile_count": 0,
             "unique_direct_rom_source_count": 0,
+            "ram_backed_vdp_data_write_count": 0,
+            "stable_ram_source_write_count": 0,
+            "ram_source_matches_resident_vram_count": 0,
         }
         value = build_active_vram_route(
             target_sha256="1" * 64,
@@ -148,6 +169,46 @@ class ActiveVramRouteTests(unittest.TestCase):
         unsafe["vram_bytes"] = [1, 2, 3]
         with self.assertRaisesRegex(ValueError, "fields do not match"):
             validate_active_vram_route(unsafe)
+
+    def test_confirms_idempotent_ram_to_vram_transfer(self) -> None:
+        vram = bytearray(0x4000)
+        vram[0:2] = b"\x11\x22"
+        ram = bytearray(0x2000)
+        ram[0x100:0x102] = b"\x11\x22"
+        analysis, _ = analyze_active_vram_route(
+            before=bytes(vram),
+            after=bytes(vram),
+            ram_before=bytes(ram),
+            ram_after=bytes(ram),
+            outputs=[
+                {"trace_index": 0, "port": 0xBF, "value": 0},
+                {"trace_index": 1, "port": 0xBF, "value": 0x40},
+                {
+                    "trace_index": 2,
+                    "port": 0xBE,
+                    "source_address": 0xC100,
+                },
+                {
+                    "trace_index": 3,
+                    "port": 0xBE,
+                    "source_address": 0xC101,
+                },
+            ],
+            rom=bytes(0x8000),
+        )
+        value = build_active_vram_route(
+            target_sha256="1" * 64,
+            source_renderer_trace_sha256="2" * 64,
+            runtime_entry=_runtime_entry(),
+            analysis=analysis,
+            captured_utc="2026-08-01T00:00:00Z",
+        )
+        self.assertTrue(value["active_vram_route_confirmed"])
+        self.assertTrue(value["ram_source_route_confirmed"])
+        self.assertEqual(
+            value["next_checkpoint"],
+            "trace-active-ram-buffer-producer",
+        )
 
     def test_builds_contiguous_ranges(self) -> None:
         self.assertEqual(

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture the exact VRAM bytes changed by the first dialogue consumer.
+"""Capture the exact VRAM destinations used by the first dialogue consumer.
 
 This is a baseline-only diagnostic.  It does not rewrite script bytes or copy
 candidate font pages.  The goal is to replace speculative ROM-page tests with
@@ -44,12 +44,13 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-active-vram-route"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_active_vram_route.json"
 )
 LOCAL_REPORT_PATH = Path("reports/local/v5_1_active_vram_route.json")
 VRAM_MINIMUM_SIZE = 0x4000
+RAM_REQUIRED_SIZE = 0x2000
 MEMORY_READ_CHUNK = 0x400
 TILE_BYTES = 32
 COUNT_KEYS = {
@@ -65,6 +66,9 @@ COUNT_KEYS = {
     "written_changed_byte_count",
     "direct_rom_match_tile_count",
     "unique_direct_rom_source_count",
+    "ram_backed_vdp_data_write_count",
+    "stable_ram_source_write_count",
+    "ram_source_matches_resident_vram_count",
 }
 TOP_LEVEL_KEYS = {
     "artifact_kind",
@@ -76,6 +80,7 @@ TOP_LEVEL_KEYS = {
     "runtime_entry",
     "analysis",
     "active_vram_route_confirmed",
+    "ram_source_route_confirmed",
     "baseline_script_bytes_unchanged",
     "local_payload_policy",
     "translation_build_eligible",
@@ -136,6 +141,34 @@ def _select_vram_area(payload: dict[str, object]) -> dict[str, object]:
     if len(selected) != 1:
         raise ValueError("exactly one readable VRAM memory area is required")
     return selected[0]
+
+
+def _select_ram_area(payload: dict[str, object]) -> dict[str, object]:
+    raw_areas = payload.get("areas")
+    if not isinstance(raw_areas, list):
+        raise ValueError("memory-area list is missing")
+    selected = [
+        item
+        for item in raw_areas
+        if (
+            isinstance(item, dict)
+            and item.get("name") == "RAM"
+            and isinstance(item.get("id"), int)
+            and not isinstance(item.get("id"), bool)
+            and isinstance(item.get("size"), int)
+            and not isinstance(item.get("size"), bool)
+            and int(item["size"]) == RAM_REQUIRED_SIZE
+        )
+    ]
+    if len(selected) != 1:
+        raise ValueError("exactly one 8 KiB RAM memory area is required")
+    return selected[0]
+
+
+def _ram_offset(logical_address: int, ram_size: int) -> int | None:
+    if ram_size != RAM_REQUIRED_SIZE or not 0xC000 <= logical_address <= 0xFFFF:
+        return None
+    return logical_address & (ram_size - 1)
 
 
 def _read_memory_area(
@@ -228,6 +261,9 @@ def replay_vdp_destinations(
         }
         if isinstance(value, int) and not isinstance(value, bool):
             record["value"] = value & 0xFF
+        source_address = item.get("source_address")
+        if isinstance(source_address, int) and not isinstance(source_address, bool):
+            record["source_address"] = source_address & 0xFFFF
         destinations.append(record)
         write_address = (write_address + auto_increment) & 0x3FFF
     return destinations, {
@@ -256,11 +292,18 @@ def analyze_active_vram_route(
     *,
     before: bytes,
     after: bytes,
+    ram_before: bytes,
+    ram_after: bytes,
     outputs: list[dict[str, int]],
     rom: bytes,
 ) -> tuple[dict[str, int], dict[str, object]]:
     if len(before) != len(after) or len(before) < VRAM_MINIMUM_SIZE:
         raise ValueError("VRAM snapshots are incompatible")
+    if (
+        len(ram_before) != RAM_REQUIRED_SIZE
+        or len(ram_after) != RAM_REQUIRED_SIZE
+    ):
+        raise ValueError("RAM snapshots are incompatible")
     changed_offsets = [
         index for index, pair in enumerate(zip(before, after)) if pair[0] != pair[1]
     ]
@@ -277,6 +320,38 @@ def analyze_active_vram_route(
             direct_matches[tile] = matches
             direct_sources.update(matches)
     written_changed = sum(offset in destination_set for offset in changed_offsets)
+    source_transfers = []
+    stable_source_count = 0
+    source_match_count = 0
+    for item in destinations:
+        source_address = item.get("source_address")
+        if not isinstance(source_address, int) or isinstance(source_address, bool):
+            continue
+        source_offset = _ram_offset(source_address, len(ram_before))
+        if source_offset is None:
+            continue
+        destination = int(item["address"])
+        before_source = ram_before[source_offset]
+        after_source = ram_after[source_offset]
+        resident_vram = after[destination]
+        stable = before_source == after_source
+        matches_resident = after_source == resident_vram
+        stable_source_count += int(stable)
+        source_match_count += int(matches_resident)
+        source_transfers.append(
+            {
+                "trace_index": int(item["trace_index"]),
+                "source_address": source_address,
+                "source_offset": source_offset,
+                "destination": destination,
+                "source_before": before_source,
+                "source_after": after_source,
+                "vram_before": before[destination],
+                "vram_after": resident_vram,
+                "source_stable": stable,
+                "source_matches_resident_vram": matches_resident,
+            }
+        )
     safe = {
         "vram_area_size": len(before),
         "trace_entry_count": max(
@@ -290,6 +365,9 @@ def analyze_active_vram_route(
         "written_changed_byte_count": written_changed,
         "direct_rom_match_tile_count": len(direct_matches),
         "unique_direct_rom_source_count": len(direct_sources),
+        "ram_backed_vdp_data_write_count": len(source_transfers),
+        "stable_ram_source_write_count": stable_source_count,
+        "ram_source_matches_resident_vram_count": source_match_count,
     }
     local = {
         "changed_ranges": _contiguous_ranges(changed_offsets),
@@ -299,6 +377,7 @@ def analyze_active_vram_route(
         ],
         "changed_tiles": changed_tiles,
         "vram_destinations": destinations,
+        "ram_source_transfers": source_transfers,
         "direct_rom_matches": {
             f"0x{tile:03X}": matches for tile, matches in direct_matches.items()
         },
@@ -314,11 +393,16 @@ def build_active_vram_route(
     analysis: dict[str, int],
     captured_utc: str,
 ) -> dict[str, object]:
-    changed = int(analysis["changed_byte_count"])
-    written_changed = int(analysis["written_changed_byte_count"])
     resolved = int(analysis["resolved_vram_data_write_count"])
-    confirmed = changed > 0 and resolved > 0 and written_changed == changed
-    partial = changed > 0 and written_changed > 0
+    unresolved = int(analysis["unresolved_vram_data_write_count"])
+    destinations = int(analysis["unique_vram_destination_count"])
+    confirmed = resolved > 0 and unresolved == 0 and destinations > 0
+    partial = not confirmed and resolved > 0
+    ram_backed = int(analysis["ram_backed_vdp_data_write_count"])
+    ram_matches = int(analysis["ram_source_matches_resident_vram_count"])
+    ram_source_confirmed = (
+        confirmed and ram_backed == resolved and ram_matches == ram_backed
+    )
     status = (
         "active-vram-route-confirmed"
         if confirmed
@@ -328,9 +412,11 @@ def build_active_vram_route(
     )
     direct_matches = int(analysis["direct_rom_match_tile_count"])
     next_checkpoint = (
-        "map-active-vram-tiles-to-rom"
+        "trace-active-ram-buffer-producer"
+        if ram_source_confirmed
+        else "map-active-vram-tiles-to-rom"
         if confirmed and direct_matches > 0
-        else "trace-active-vram-producer"
+        else "resolve-active-vram-write-source"
         if confirmed
         else "extend-active-vram-write-window"
         if partial
@@ -346,9 +432,10 @@ def build_active_vram_route(
         "runtime_entry": {key: runtime_entry[key] for key in RUNTIME_ENTRY_KEYS},
         "analysis": {key: int(analysis[key]) for key in COUNT_KEYS},
         "active_vram_route_confirmed": confirmed,
+        "ram_source_route_confirmed": ram_source_confirmed,
         "baseline_script_bytes_unchanged": True,
         "local_payload_policy": (
-            "vram-addresses-bytes-output-values-and-rom-offsets-local-only"
+            "ram-vram-addresses-bytes-output-values-and-rom-offsets-local-only"
         ),
         "translation_build_eligible": False,
         "next_checkpoint": next_checkpoint,
@@ -404,17 +491,29 @@ def validate_active_vram_route(value: dict[str, object]) -> None:
         or counts["unique_vram_destination_count"]
         > counts["resolved_vram_data_write_count"]
         or counts["direct_rom_match_tile_count"] > counts["changed_tile_count"]
+        or counts["ram_backed_vdp_data_write_count"]
+        > counts["resolved_vram_data_write_count"]
+        or counts["stable_ram_source_write_count"]
+        > counts["ram_backed_vdp_data_write_count"]
+        or counts["ram_source_matches_resident_vram_count"]
+        > counts["ram_backed_vdp_data_write_count"]
     ):
         raise ValueError("active VRAM route counts are inconsistent")
     confirmed = (
-        counts["changed_byte_count"] > 0
-        and counts["resolved_vram_data_write_count"] > 0
-        and counts["written_changed_byte_count"] == counts["changed_byte_count"]
+        counts["resolved_vram_data_write_count"] > 0
+        and counts["unresolved_vram_data_write_count"] == 0
+        and counts["unique_vram_destination_count"] > 0
     )
     partial = (
         not confirmed
-        and counts["changed_byte_count"] > 0
-        and counts["written_changed_byte_count"] > 0
+        and counts["resolved_vram_data_write_count"] > 0
+    )
+    ram_source_confirmed = (
+        confirmed
+        and counts["ram_backed_vdp_data_write_count"]
+        == counts["resolved_vram_data_write_count"]
+        and counts["ram_source_matches_resident_vram_count"]
+        == counts["ram_backed_vdp_data_write_count"]
     )
     expected_status = (
         "active-vram-route-confirmed"
@@ -424,9 +523,11 @@ def validate_active_vram_route(value: dict[str, object]) -> None:
         else "active-vram-route-not-observed"
     )
     expected_next = (
-        "map-active-vram-tiles-to-rom"
+        "trace-active-ram-buffer-producer"
+        if ram_source_confirmed
+        else "map-active-vram-tiles-to-rom"
         if confirmed and counts["direct_rom_match_tile_count"] > 0
-        else "trace-active-vram-producer"
+        else "resolve-active-vram-write-source"
         if confirmed
         else "extend-active-vram-write-window"
         if partial
@@ -435,13 +536,14 @@ def validate_active_vram_route(value: dict[str, object]) -> None:
     if (
         value["status"] != expected_status
         or value["active_vram_route_confirmed"] is not confirmed
+        or value["ram_source_route_confirmed"] is not ram_source_confirmed
         or value["next_checkpoint"] != expected_next
         or value["baseline_script_bytes_unchanged"] is not True
         or value["translation_build_eligible"] is not False
     ):
         raise ValueError("active VRAM route result is inconsistent")
     if value["local_payload_policy"] != (
-        "vram-addresses-bytes-output-values-and-rom-offsets-local-only"
+        "ram-vram-addresses-bytes-output-values-and-rom-offsets-local-only"
     ):
         raise ValueError("active VRAM route local policy is invalid")
 
@@ -529,13 +631,22 @@ def main() -> int:
             mapped_bank=int(runtime["mapped_bank"]),
             progress=progress,
         )
-        area = _select_vram_area(client.call("list_memory_areas"))
+        memory_areas = client.call("list_memory_areas")
+        area = _select_vram_area(memory_areas)
+        ram_area = _select_ram_area(memory_areas)
         area_id = int(area["id"])
         area_size = int(area["size"])
+        ram_area_id = int(ram_area["id"])
+        ram_area_size = int(ram_area["size"])
         before = _read_memory_area(
             client,
             area_id=area_id,
             size=area_size,
+        )
+        ram_before = _read_memory_area(
+            client,
+            area_id=ram_area_id,
+            size=ram_area_size,
         )
         trace_lines, trace_local = _trace_bounded_frames(
             client,
@@ -545,6 +656,11 @@ def main() -> int:
             client,
             area_id=area_id,
             size=area_size,
+        )
+        ram_after = _read_memory_area(
+            client,
+            area_id=ram_area_id,
+            size=ram_area_size,
         )
     finally:
         client.close()
@@ -556,6 +672,8 @@ def main() -> int:
     safe_counts, local_analysis = analyze_active_vram_route(
         before=before,
         after=after,
+        ram_before=ram_before,
+        ram_after=ram_after,
         outputs=outputs,
         rom=rom_path.read_bytes(),
     )
@@ -570,7 +688,7 @@ def main() -> int:
     )
     local = {
         "artifact_kind": "local-s25u-active-vram-route",
-        "schema_version": 1,
+        "schema_version": 2,
         "target_sha256": target_sha256,
         "captured_utc": captured_utc,
         "runtime_entry": runtime,
@@ -579,12 +697,17 @@ def main() -> int:
             "name": str(area["name"]),
             "size": area_size,
         },
+        "ram_area": {
+            "id": ram_area_id,
+            "name": str(ram_area["name"]),
+            "size": ram_area_size,
+        },
         "selected_state": selected_state,
         "ready_state": ready_state,
         "trace_capture": trace_local,
         "analysis": local_analysis,
         "publication_policy": (
-            "never-publish-vram-addresses-bytes-output-values-or-rom-offsets"
+            "never-publish-ram-vram-addresses-bytes-output-values-or-rom-offsets"
         ),
     }
     publish_path.parent.mkdir(parents=True, exist_ok=True)

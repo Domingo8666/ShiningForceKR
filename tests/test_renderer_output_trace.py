@@ -140,7 +140,10 @@ class RendererOutputTraceTests(unittest.TestCase):
                 },
             }
         )
-        self.assertEqual(event, {"port": 0xBE})
+        self.assertEqual(
+            event,
+            {"port": 0xBE, "source_address": 0xC100},
+        )
 
     def test_analyzes_trace_without_publishing_values(self) -> None:
         summary, local = analyze_trace_lines(

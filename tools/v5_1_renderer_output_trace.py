@@ -341,6 +341,7 @@ def _classify_vdp_output(
         for key, value in registers.items()
         if isinstance(value, int) and not isinstance(value, bool)
     }
+    source_address: int | None = None
     if len(opcodes) >= 2 and opcodes[0] == 0xD3:
         port = opcodes[1]
         value = typed_registers.get("a", 0) & 0xFF
@@ -358,9 +359,11 @@ def _classify_vdp_output(
     ):
         # OUTI/OUTD/OTIR/OTDR send one byte from (HL) to port C per
         # traced instruction.  The trace does not include the memory byte,
-        # so only the port is classified; raw values remain local-only.
+        # so retain the source address for a later RAM/VRAM comparison;
+        # raw addresses and values remain local-only.
         port = typed_registers.get("bc", 0) & 0xFF
         value = None
+        source_address = typed_registers.get("hl", 0) & 0xFFFF
     else:
         return None
     if port not in {0xBE, 0xBF}:
@@ -368,6 +371,8 @@ def _classify_vdp_output(
     result = {"port": port}
     if value is not None:
         result["value"] = value
+    if source_address is not None:
+        result["source_address"] = source_address
     return result
 
 
