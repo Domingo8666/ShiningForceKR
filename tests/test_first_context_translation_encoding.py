@@ -1096,7 +1096,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                     "observation": {
                         "selector": 7,
                         "ordinal": 2,
-                        "initial_context": 0x11,
+                        "initial_context": 0xC9,
                     },
                 },
                 {
@@ -1106,7 +1106,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                     "observation": {
                         "selector": 7,
                         "ordinal": 3,
-                        "initial_context": 0x11,
+                        "initial_context": 0xC9,
                     },
                 },
             ],
@@ -1197,6 +1197,65 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(
             constraints[0]["record_resolution_basis"],
             "captured-runtime-coordinate",
+        )
+
+    def test_falls_back_to_the_visible_anchor_record_chain(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xC9),
+            0x5F: tree(0x5F, 0x11, 0x5F),
+            0x11: tree(0x11, 0x02, 0x11),
+            0x02: tree(0x02, 0x03, 0x04),
+            0x03: tree(0x03, 0x04, 0xC9),
+            0x04: tree(0x04, 0xC9, 0x03),
+        }
+        constraints = build_runtime_codec_constraints(
+            target=b"\x01\x00\x01\x00\x00",
+            trees=trees,
+            context_rows=[
+                {
+                    "mapping_status": "unique",
+                    "observation": {
+                        "selector": 7,
+                        "ordinal": 2,
+                        "initial_context": 0xC9,
+                    },
+                },
+                {
+                    "mapping_status": "unique",
+                    "observation": {
+                        "selector": 7,
+                        "ordinal": 3,
+                        "initial_context": 0xC9,
+                    },
+                },
+            ],
+            projection_pairs=[
+                {
+                    "target_selector": 7,
+                    "target_ordinal": 2,
+                    "target_record": {
+                        "length_offset": 0,
+                        "record_length_bytes": 1,
+                    },
+                },
+                {
+                    "target_selector": 7,
+                    "target_ordinal": 3,
+                    "target_record": {
+                        "length_offset": 4,
+                        "record_length_bytes": 0,
+                    },
+                },
+            ],
+            runtime_records=[
+                {"length_offset": 0, "record_length_bytes": 1},
+                {"length_offset": 2, "record_length_bytes": 1},
+            ],
+        )
+        self.assertEqual(constraints[1]["length_offset"], 2)
+        self.assertEqual(
+            constraints[1]["record_resolution_basis"],
+            "visible-anchor-consecutive-fallback",
         )
 
     def test_builds_safe_ready_receipt_without_local_payload(self) -> None:

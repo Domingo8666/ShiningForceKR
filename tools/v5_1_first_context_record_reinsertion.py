@@ -119,12 +119,6 @@ def build_reinsertion_rows(
         and len(context_rows) >= 4
     ):
         raise ValueError("first context reinsertion row count disagrees")
-    pair_index: dict[tuple[object, object], list[dict[str, object]]] = {}
-    for pair in projection_pairs:
-        if not isinstance(pair, dict):
-            raise ValueError("first context reinsertion projection is invalid")
-        key = (pair.get("target_selector"), pair.get("target_ordinal"))
-        pair_index.setdefault(key, []).append(pair)
     rows = []
     for expected_index, (context_row, encoding_row) in enumerate(
         zip(context_rows, encoding_rows),
@@ -149,19 +143,48 @@ def build_reinsertion_rows(
             or isinstance(target_ordinal, bool)
         ):
             raise ValueError("first context reinsertion coordinates are invalid")
-        matches = pair_index.get((target_selector, target_ordinal), [])
-        if len(matches) != 1:
-            raise ValueError(
-                "first context reinsertion coordinate mapping is not unique"
-            )
-        pair = matches[0]
-        target_record = pair.get("target_record")
-        if not isinstance(target_record, dict):
-            raise ValueError("first context reinsertion target record is missing")
-        mapped_length_offset = target_record.get("length_offset")
-        mapped_original_length = target_record.get("record_length_bytes")
         length_offset = encoding_row.get("length_offset")
         original_length = encoding_row.get("original_record_length_bytes")
+        if (
+            not isinstance(length_offset, int)
+            or isinstance(length_offset, bool)
+            or not isinstance(original_length, int)
+            or isinstance(original_length, bool)
+        ):
+            raise ValueError("first context reinsertion record fields are invalid")
+        matching_records: dict[
+            tuple[tuple[int, int], ...], dict[str, object]
+        ] = {}
+        for pair in projection_pairs:
+            if not isinstance(pair, dict):
+                raise ValueError("first context reinsertion projection is invalid")
+            candidate = pair.get("target_record")
+            if (
+                not isinstance(candidate, dict)
+                or candidate.get("length_offset") != length_offset
+                or candidate.get("record_length_bytes") != original_length
+            ):
+                continue
+            candidate_aliases = candidate.get("aliases")
+            if not isinstance(candidate_aliases, list):
+                continue
+            alias_identity = tuple(
+                sorted(
+                    (int(alias.get("selector")), int(alias.get("ordinal")))
+                    for alias in candidate_aliases
+                    if isinstance(alias, dict)
+                    and isinstance(alias.get("selector"), int)
+                    and not isinstance(alias.get("selector"), bool)
+                    and isinstance(alias.get("ordinal"), int)
+                    and not isinstance(alias.get("ordinal"), bool)
+                )
+            )
+            matching_records.setdefault(alias_identity, candidate)
+        if len(matching_records) != 1:
+            raise ValueError(
+                "first context reinsertion exact record metadata is not unique"
+            )
+        target_record = next(iter(matching_records.values()))
         aliases = target_record.get("aliases")
         encoded_hex = encoding_row.get("encoded_hex")
         encoded_bits = encoding_row.get("encoded_bits")
@@ -184,8 +207,6 @@ def build_reinsertion_rows(
             or isinstance(encoded_bytes, bool)
             or not isinstance(original_encoded_bits, int)
             or isinstance(original_encoded_bits, bool)
-            or length_offset != mapped_length_offset
-            or original_length != mapped_original_length
         ):
             raise ValueError("first context reinsertion record fields are invalid")
         alias_keys = []
