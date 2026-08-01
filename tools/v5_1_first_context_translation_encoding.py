@@ -2850,7 +2850,7 @@ def solve_fixed_count_row_multi_page_visual_symbols(
             ) -> tuple[tuple[int, ...], tuple[int, ...], int] | None:
                 nonlocal expanded
                 expanded += 1
-                if expanded > 100_000:
+                if expanded > 10_000:
                     return None
                 state = (previous, used_mask, remaining)
                 if bits >= best_seen.get(state, bit_limit + 1):
@@ -2911,7 +2911,11 @@ def solve_fixed_count_row_multi_page_visual_symbols(
                 encoded = transition(previous, second_token)
                 if encoded is not None:
                     transition_to_second[previous] = (encoded[0], second_token)
-            for split in range(1, len(visuals)):
+            split_order = sorted(
+                range(1, len(visuals)),
+                key=lambda split: (abs(len(visuals) - 2 * split), split),
+            )
+            for split in split_order:
                 suffix = segment_path(
                     start_previous=second_token[-1],
                     glyph_count=len(visuals) - split,
@@ -3098,15 +3102,20 @@ def select_row_font_pages(
                     (
                         preferred,
                         *ROW_FONT_PAGES,
-                        89,
                         *range(FONT_PAGE_COUNT - 1, -1, -1),
+                        89,
                     )
                 )
             )
         if constraint is not None:
-            candidate_pages = candidate_pages[
-                :MAX_EXACT_FONT_PAGE_CANDIDATES
-            ]
+            if "original_symbol_count" in constraint:
+                candidate_pages = tuple(
+                    page for page in candidate_pages if page not in used_pages
+                )[:2]
+            else:
+                candidate_pages = candidate_pages[
+                    :MAX_EXACT_FONT_PAGE_CANDIDATES
+                ]
         failed_pages: list[int] = []
         for page in candidate_pages:
             if page in used_pages:
