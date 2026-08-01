@@ -4,7 +4,7 @@
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
   "exit_code": 1,
-  "attempt_utc": "2026-08-01T18:40:05Z",
+  "attempt_utc": "2026-08-01T18:47:54Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -22,7 +22,7 @@
     "schema_version": 1,
     "failure_stage": "active-ram-producer-route-watch",
     "failure_kind": "runtime-error",
-    "mcp_method": "get_call_stack"
+    "mcp_method": "get_trace_log"
   },
   "next_checkpoint": "repair-runtime-command"
 }
