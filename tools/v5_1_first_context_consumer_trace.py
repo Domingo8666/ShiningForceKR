@@ -121,9 +121,10 @@ LOCAL_REPORT_PATH = Path(
     "reports/local/v5_1_first_context_consumer_trace.json"
 )
 MAX_VECTOR_READ_HITS = 128
+MAX_NONVECTOR_HITS_PER_CONTEXT = 64
 FIRST_VECTOR_TIMEOUT_SECONDS = 4.0
 NEXT_VECTOR_TIMEOUT_SECONDS = 0.75
-VECTOR_LOGICAL_RANGES = ((0x4100, 0x42FF), (0x8100, 0x82FF))
+VECTOR_LOGICAL_BASES = (0x4100, 0x8100)
 TRACE_COUNT_KEYS = {
     "planned_decode_count",
     "expected_context_count",
@@ -605,16 +606,16 @@ def extract_vector_contexts_from_trace(
 
 
 def _capture_contexts(
-    *, rom_path: Path, rom_size: int
+    *,
+    rom_path: Path,
+    rom_size: int,
+    planned_contexts: list[int],
 ) -> tuple[list[int], dict[str, object]]:
     client = McpStdioClient(_default_command())
     entry_address = f"{DECODER_ENTRY_LOGICAL:04X}"
-    vector_ranges = [
-        (f"{start:04X}", f"{end:04X}")
-        for start, end in VECTOR_LOGICAL_RANGES
-    ]
     entry_armed = False
     vector_armed = False
+    armed_vector_ranges: list[tuple[str, str]] = []
     local: dict[str, object] = {"anchor_hits": [], "vector_events": []}
 
     def arm_entry() -> None:
@@ -645,27 +646,33 @@ def _capture_contexts(
             )
             entry_armed = False
 
-    def arm_vectors() -> None:
-        nonlocal vector_armed
-        for start, end in vector_ranges:
+    def arm_vectors(context: int) -> None:
+        nonlocal vector_armed, armed_vector_ranges
+        armed_vector_ranges = []
+        for base in VECTOR_LOGICAL_BASES:
+            start = base + context * 2
+            end = start + 1
+            start_hex = f"{start:04X}"
+            end_hex = f"{end:04X}"
             client.call(
                 "set_breakpoint_range",
                 {
-                    "start_address": start,
-                    "end_address": end,
+                    "start_address": start_hex,
+                    "end_address": end_hex,
                     "memory_area": "rom_ram",
                     "execute": False,
                     "read": True,
                     "write": False,
                 },
             )
+            armed_vector_ranges.append((start_hex, end_hex))
         vector_armed = True
 
     def disarm_vectors() -> None:
-        nonlocal vector_armed
+        nonlocal vector_armed, armed_vector_ranges
         if not vector_armed:
             return
-        for start, end in vector_ranges:
+        for start, end in armed_vector_ranges:
             try:
                 client.call(
                     "remove_breakpoint",
@@ -678,6 +685,7 @@ def _capture_contexts(
             except RuntimeError:
                 pass
         vector_armed = False
+        armed_vector_ranges = []
 
     contexts: list[int] = []
     try:
@@ -740,50 +748,62 @@ def _capture_contexts(
             },
         )
         diagnostic_lines: list[str] = []
-        for hit_index in range(MAX_VECTOR_READ_HITS):
-            arm_vectors()
-            status = _continue_until_breakpoint(
-                client,
-                FIRST_VECTOR_TIMEOUT_SECONDS
-                if hit_index == 0
-                else NEXT_VECTOR_TIMEOUT_SECONDS,
-            )
-            if status.get("at_breakpoint") is not True:
-                break
-            state, evidence = _capture_state(client)
-            trace = evidence.get("trace")
-            if isinstance(trace, dict):
-                lines = trace.get("lines")
-                if isinstance(lines, list):
-                    diagnostic_lines.extend(
-                        line for line in lines if isinstance(line, str)
-                    )
-            sample = _last_rom_read(state, evidence, rom_size)
-            event: dict[str, object] = {
-                "state": state,
-                "evidence": evidence,
-                "sample": sample,
-            }
-            if sample is not None:
-                physical = sample.get("physical_file_offset")
-                if (
-                    sample.get("classification")
+        for planned_index, planned_context in enumerate(planned_contexts):
+            expected_physical = HUFFMAN_VECTOR_START + planned_context * 2
+            accepted = False
+            for false_hit_index in range(MAX_NONVECTOR_HITS_PER_CONTEXT):
+                arm_vectors(planned_context)
+                status = _continue_until_breakpoint(
+                    client,
+                    FIRST_VECTOR_TIMEOUT_SECONDS
+                    if planned_index == 0 and false_hit_index == 0
+                    else NEXT_VECTOR_TIMEOUT_SECONDS,
+                )
+                if status.get("at_breakpoint") is not True:
+                    disarm_vectors()
+                    break
+                state, evidence = _capture_state(client)
+                trace = evidence.get("trace")
+                if isinstance(trace, dict):
+                    lines = trace.get("lines")
+                    if isinstance(lines, list):
+                        remaining = 200_000 - len(diagnostic_lines)
+                        if remaining > 0:
+                            diagnostic_lines.extend(
+                                line
+                                for line in lines[:remaining]
+                                if isinstance(line, str)
+                            )
+                sample = _last_rom_read(state, evidence, rom_size)
+                physical = (
+                    sample.get("physical_file_offset")
+                    if sample is not None
+                    else None
+                )
+                accepted = (
+                    sample is not None
+                    and sample.get("classification")
                     == "korean-huffman-vector"
-                    and isinstance(physical, int)
-                    and not isinstance(physical, bool)
-                    and HUFFMAN_VECTOR_START
-                    <= physical
-                    < HUFFMAN_VECTOR_START + 0x200
-                    and (physical - HUFFMAN_VECTOR_START) % 2 == 0
-                ):
-                    context = (physical - HUFFMAN_VECTOR_START) // 2
-                    contexts.append(context)
-                    event["context"] = context
-            local["vector_events"].append(event)
-            disarm_vectors()
-            # Read breakpoints are reported after the memory instruction has
-            # completed.  Re-arming and continuing resumes at the following
-            # instruction; stepping here would skip a possible next lookup.
+                    and physical in {expected_physical, expected_physical + 1}
+                )
+                event: dict[str, object] = {
+                    "planned_index": planned_index,
+                    "false_hit_index": false_hit_index,
+                    "state": state,
+                    "evidence": evidence,
+                    "sample": sample,
+                    "accepted": accepted,
+                }
+                local["vector_events"].append(event)
+                disarm_vectors()
+                if accepted:
+                    contexts.append(planned_context)
+                    break
+                # Read breakpoints are reported after the memory instruction
+                # has completed. Re-arming resumes at the next instruction;
+                # stepping here would skip a possible next lookup.
+            if not accepted:
+                break
 
         _, trace_diagnostics = analyze_vector_contexts_from_trace(
             diagnostic_lines,
@@ -880,7 +900,13 @@ def _main() -> int:
         raise ValueError("first context consumer trace identity disagrees")
 
     observed_contexts, local_capture = _capture_contexts(
-        rom_path=paths["rom"], rom_size=paths["rom"].stat().st_size
+        rom_path=paths["rom"],
+        rom_size=paths["rom"].stat().st_size,
+        planned_contexts=[
+            initial_context,
+            *expected_symbols[:-1],
+            CANDIDATE_END_SYMBOL,
+        ],
     )
     counts, prefix_complete, first_post, direct = summarize_consumer_contexts(
         observed_contexts=observed_contexts,
