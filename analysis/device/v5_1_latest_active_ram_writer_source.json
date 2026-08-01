@@ -1,0 +1,23 @@
+{
+  "artifact_kind": "sanitized-s25u-active-ram-writer-source",
+  "schema_version": 1,
+  "status": "active-ram-writer-source-unresolved",
+  "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "source_active_ram_producer_sha256": "61d7c830633d5ef31c84a5b51309b29a5e7dbc83cb21fe51c2f84329ed3ae04e",
+  "captured_utc": "2026-08-01T19:32:56.911304Z",
+  "analysis": {
+    "rom_window_source_event_count": 0,
+    "classified_event_count": 0,
+    "unresolved_source_event_count": 1,
+    "candidate_event_count": 1,
+    "register_source_event_count": 0,
+    "system_ram_source_event_count": 0,
+    "memory_source_event_count": 0
+  },
+  "writer_sentinel_confirmed": true,
+  "writer_source_class": "unresolved",
+  "baseline_script_bytes_unchanged": true,
+  "local_payload_policy": "writer-opcodes-registers-pcs-and-source-addresses-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "extend-active-ram-writer-source-decoder"
+}
