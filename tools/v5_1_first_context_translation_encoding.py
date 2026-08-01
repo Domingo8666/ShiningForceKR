@@ -709,6 +709,89 @@ def build_row_visuals(
     return output
 
 
+def build_runtime_layout_rows(
+    *,
+    target_rows: list[dict[str, object]],
+    runtime_constraints: list[dict[str, int]],
+    compact_review_indexes: tuple[int, ...] = (1,),
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Build renderer-only rows without changing the approved translation.
+
+    The first technical-test row has a fixed 19-symbol runtime contract.  Its
+    reviewed 12-character display leaves room for only two three-symbol page
+    controls, and exhaustive single- and two-page routing proved that shape
+    unreachable.  Removing ASCII layout spacing and a trailing exclamation
+    preserves every Hangul syllable while opening a third renderer-inert page
+    control.  The approved rows remain untouched and the deletion-only layout
+    transform is returned as a local audit record.
+    """
+
+    if len(target_rows) != len(runtime_constraints):
+        raise ValueError("first context runtime layout row count does not match")
+    compact_indexes = set(compact_review_indexes)
+    output: list[dict[str, object]] = []
+    audit: list[dict[str, object]] = []
+    for expected_index, (target_row, constraint) in enumerate(
+        zip(target_rows, runtime_constraints),
+        start=1,
+    ):
+        if not isinstance(target_row, dict):
+            raise ValueError("first context runtime layout row is invalid")
+        target_text = target_row.get("target_text")
+        target_symbol_count = constraint.get("original_symbol_count")
+        if (
+            target_row.get("review_index") != expected_index
+            or not isinstance(target_text, str)
+            or not isinstance(target_symbol_count, int)
+        ):
+            raise ValueError("first context runtime layout fields are invalid")
+        runtime_row = dict(target_row)
+        if expected_index in compact_indexes:
+            compact_text = target_text.replace(" ", "")
+            removed_trailing_exclamation = int(compact_text.endswith("!"))
+            if removed_trailing_exclamation:
+                compact_text = compact_text[:-1]
+            approved_hangul = "".join(
+                character
+                for character in target_text
+                if _is_hangul_syllable(character)
+            )
+            compact_hangul = "".join(
+                character
+                for character in compact_text
+                if _is_hangul_syllable(character)
+            )
+            control_symbols = target_symbol_count - len(compact_text) - 1
+            if (
+                not compact_text
+                or approved_hangul != compact_hangul
+                or control_symbols != 9
+            ):
+                raise ValueError(
+                    "first context runtime layout compaction is not safe"
+                )
+            runtime_row["target_text"] = compact_text
+            audit.append(
+                {
+                    "review_index": expected_index,
+                    "layout_action": (
+                        "remove-ascii-spaces-and-trailing-exclamation"
+                    ),
+                    "approved_character_count": len(target_text),
+                    "runtime_character_count": len(compact_text),
+                    "removed_ascii_space_count": target_text.count(" "),
+                    "removed_trailing_exclamation_count": (
+                        removed_trailing_exclamation
+                    ),
+                    "hangul_sequence_preserved": True,
+                    "runtime_symbol_count": target_symbol_count,
+                    "required_page_token_count": control_symbols // 3,
+                }
+            )
+        output.append(runtime_row)
+    return output, audit
+
+
 def _bits_equal(left: bytes, right: bytes, bit_count: int) -> bool:
     return all(
         ((left[index >> 3] >> (7 - (index & 7))) & 1)
@@ -3862,6 +3945,7 @@ def _main() -> int:
     assert isinstance(preservation_records, list)
     assert isinstance(hangul_assignments, list)
 
+    approved_target_rows = target_rows
     ACTIVE_FAILURE_CATEGORY = "font-input"
     patch = paths["patch"].read_bytes()
     bdf = paths["bdf"].read_bytes()
@@ -3871,23 +3955,12 @@ def _main() -> int:
     analyze_patch(patch)
     sparse = extract_bps_target_literals(patch)
     reference_glyphs = parse_bdf_glyphs(bdf)
-    _, character_assignments = build_character_assignments(
-        target_rows=target_rows,
-        hangul_assignments=hangul_assignments,
-        reference_glyphs=reference_glyphs,
-    )
-    character_tiles = {
-        f"text:{assignment['character']}": tile_bytes_from_ink_mask(
-            tuple(assignment["ink_mask"])
-        )
-        for assignment in character_assignments
-    }
     ACTIVE_FAILURE_CATEGORY = "input"
     preserved_by_row = locate_preserved_occurrences(
         context_rows=context_rows,
         projection_pairs=projection_pairs,
         preservation_records=preservation_records,
-        target_rows=target_rows,
+        target_rows=approved_target_rows,
     )
     # The reviewed source glyphs are evidence about the original script, not
     # target-language punctuation to append.  Runtime review showed them as
@@ -3908,6 +3981,21 @@ def _main() -> int:
         context_rows=context_rows,
         projection_pairs=projection_pairs,
     )
+    target_rows, layout_compactions = build_runtime_layout_rows(
+        target_rows=approved_target_rows,
+        runtime_constraints=runtime_constraints,
+    )
+    _, character_assignments = build_character_assignments(
+        target_rows=target_rows,
+        hangul_assignments=hangul_assignments,
+        reference_glyphs=reference_glyphs,
+    )
+    character_tiles = {
+        f"text:{assignment['character']}": tile_bytes_from_ink_mask(
+            tuple(assignment["ink_mask"])
+        )
+        for assignment in character_assignments
+    }
     ACTIVE_FAILURE_CATEGORY = "row-route"
     ACTIVE_FAILURE_STEP = "select-row-font-pages"
     selected_row_font_pages = select_row_font_pages(
@@ -4134,6 +4222,7 @@ def _main() -> int:
         "captured_utc": captured_utc,
         "encoding": counts,
         "character_assignments": all_assignments,
+        "layout_compactions": layout_compactions,
         "preserved_by_row": preserved_by_row,
         "rendered_preserved_non_text_glyph_occurrence_count": 0,
         "rows": symbol_rows,

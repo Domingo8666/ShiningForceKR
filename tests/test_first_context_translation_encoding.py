@@ -18,6 +18,7 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     build_character_assignments,
     build_first_context_translation_encoding,
     build_first_context_translation_encoding_failure,
+    build_runtime_layout_rows,
     build_runtime_codec_constraints,
     build_row_visuals,
     build_single_page_symbol_rows,
@@ -68,6 +69,32 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(MAX_EXACT_FONT_PAGE_CANDIDATES, 8)
         self.assertEqual(MAX_EXACT_SINGLE_PAGE_STATES, 5_000)
         self.assertEqual(MAX_BOUNDED_SINGLE_PAGE_STATES, 5_000)
+
+    def test_compacts_only_ascii_layout_and_preserves_hangul_sequence(self) -> None:
+        approved = [{
+            "review_index": 1,
+            "target_text": "가나 다라, 마바사아!",
+        }]
+        runtime, audit = build_runtime_layout_rows(
+            target_rows=approved,
+            runtime_constraints=[{"original_symbol_count": 19}],
+        )
+        self.assertEqual(runtime[0]["target_text"], "가나다라,마바사아")
+        self.assertEqual(approved[0]["target_text"], "가나 다라, 마바사아!")
+        self.assertEqual(audit[0]["approved_character_count"], 12)
+        self.assertEqual(audit[0]["runtime_character_count"], 9)
+        self.assertEqual(audit[0]["required_page_token_count"], 3)
+        self.assertTrue(audit[0]["hangul_sequence_preserved"])
+
+    def test_rejects_layout_compaction_without_exact_fixed_count_shape(self) -> None:
+        with self.assertRaisesRegex(ValueError, "compaction is not safe"):
+            build_runtime_layout_rows(
+                target_rows=[{
+                    "review_index": 1,
+                    "target_text": "가나 다라, 마바사아?",
+                }],
+                runtime_constraints=[{"original_symbol_count": 19}],
+            )
 
     def test_builds_a_proven_row_with_the_joint_bounded_solver(self) -> None:
         target = [{"review_index": 1, "target_text": "가"}]
