@@ -3,8 +3,8 @@
   "schema_version": 3,
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
-  "exit_code": 8,
-  "attempt_utc": "2026-08-01T18:22:07Z",
+  "exit_code": 1,
+  "attempt_utc": "2026-08-01T18:40:05Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -20,9 +20,9 @@
   "runtime_observation_present": true,
   "runtime_failure": {
     "schema_version": 1,
-    "failure_stage": "first-context-active-vram-route",
+    "failure_stage": "active-ram-producer-route-watch",
     "failure_kind": "runtime-error",
-    "mcp_method": null
+    "mcp_method": "get_call_stack"
   },
   "next_checkpoint": "repair-runtime-command"
 }
