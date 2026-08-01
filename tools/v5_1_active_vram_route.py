@@ -44,7 +44,7 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-s25u-active-vram-route"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_active_vram_route.json"
 )
@@ -69,6 +69,9 @@ COUNT_KEYS = {
     "ram_backed_vdp_data_write_count",
     "stable_ram_source_write_count",
     "ram_source_matches_resident_vram_count",
+    "ram_reported_address_match_count",
+    "ram_previous_step_match_count",
+    "ram_next_step_match_count",
 }
 TOP_LEVEL_KEYS = {
     "artifact_kind",
@@ -81,6 +84,7 @@ TOP_LEVEL_KEYS = {
     "analysis",
     "active_vram_route_confirmed",
     "ram_source_route_confirmed",
+    "ram_source_address_semantics",
     "baseline_script_bytes_unchanged",
     "local_payload_policy",
     "translation_build_eligible",
@@ -264,6 +268,9 @@ def replay_vdp_destinations(
         source_address = item.get("source_address")
         if isinstance(source_address, int) and not isinstance(source_address, bool):
             record["source_address"] = source_address & 0xFFFF
+            source_step = item.get("source_step")
+            if source_step in {-1, 1}:
+                record["source_step"] = int(source_step)
         destinations.append(record)
         write_address = (write_address + auto_increment) & 0x3FFF
     return destinations, {
@@ -321,37 +328,67 @@ def analyze_active_vram_route(
             direct_sources.update(matches)
     written_changed = sum(offset in destination_set for offset in changed_offsets)
     source_transfers = []
-    stable_source_count = 0
-    source_match_count = 0
+    candidate_match_counts = {-1: 0, 0: 0, 1: 0}
+    candidate_stable_counts = {-1: 0, 0: 0, 1: 0}
     for item in destinations:
         source_address = item.get("source_address")
-        if not isinstance(source_address, int) or isinstance(source_address, bool):
-            continue
-        source_offset = _ram_offset(source_address, len(ram_before))
-        if source_offset is None:
+        source_step = item.get("source_step")
+        if (
+            not isinstance(source_address, int)
+            or isinstance(source_address, bool)
+            or source_step not in {-1, 1}
+        ):
             continue
         destination = int(item["address"])
-        before_source = ram_before[source_offset]
-        after_source = ram_after[source_offset]
         resident_vram = after[destination]
-        stable = before_source == after_source
-        matches_resident = after_source == resident_vram
-        stable_source_count += int(stable)
-        source_match_count += int(matches_resident)
-        source_transfers.append(
-            {
-                "trace_index": int(item["trace_index"]),
-                "source_address": source_address,
+        candidates = {}
+        for adjustment in (-1, 0, 1):
+            logical = (source_address + adjustment * int(source_step)) & 0xFFFF
+            source_offset = _ram_offset(logical, len(ram_before))
+            if source_offset is None:
+                continue
+            before_source = ram_before[source_offset]
+            after_source = ram_after[source_offset]
+            stable = before_source == after_source
+            matches_resident = after_source == resident_vram
+            candidate_stable_counts[adjustment] += int(stable)
+            candidate_match_counts[adjustment] += int(matches_resident)
+            candidates[str(adjustment)] = {
+                "logical_address": logical,
                 "source_offset": source_offset,
-                "destination": destination,
                 "source_before": before_source,
                 "source_after": after_source,
-                "vram_before": before[destination],
-                "vram_after": resident_vram,
                 "source_stable": stable,
                 "source_matches_resident_vram": matches_resident,
             }
+        source_transfers.append(
+            {
+                "trace_index": int(item["trace_index"]),
+                "reported_source_address": source_address,
+                "source_step": int(source_step),
+                "destination": destination,
+                "vram_before": before[destination],
+                "vram_after": resident_vram,
+                "candidate_adjustments": candidates,
+            }
         )
+    best_count = max(candidate_match_counts.values(), default=0)
+    best_adjustments = [
+        adjustment
+        for adjustment, count in candidate_match_counts.items()
+        if count == best_count
+    ]
+    selected_adjustment = (
+        best_adjustments[0]
+        if len(best_adjustments) == 1 and source_transfers
+        else None
+    )
+    stable_source_count = (
+        candidate_stable_counts[selected_adjustment]
+        if selected_adjustment is not None
+        else 0
+    )
+    source_match_count = best_count if selected_adjustment is not None else 0
     safe = {
         "vram_area_size": len(before),
         "trace_entry_count": max(
@@ -368,6 +405,9 @@ def analyze_active_vram_route(
         "ram_backed_vdp_data_write_count": len(source_transfers),
         "stable_ram_source_write_count": stable_source_count,
         "ram_source_matches_resident_vram_count": source_match_count,
+        "ram_reported_address_match_count": candidate_match_counts[0],
+        "ram_previous_step_match_count": candidate_match_counts[-1],
+        "ram_next_step_match_count": candidate_match_counts[1],
     }
     local = {
         "changed_ranges": _contiguous_ranges(changed_offsets),
@@ -378,11 +418,26 @@ def analyze_active_vram_route(
         "changed_tiles": changed_tiles,
         "vram_destinations": destinations,
         "ram_source_transfers": source_transfers,
+        "selected_source_step_adjustment": selected_adjustment,
         "direct_rom_matches": {
             f"0x{tile:03X}": matches for tile, matches in direct_matches.items()
         },
     }
     return safe, local
+
+
+def _ram_source_semantics(analysis: dict[str, int]) -> str:
+    backed = int(analysis["ram_backed_vdp_data_write_count"])
+    candidates = {
+        "previous-transfer-step": int(analysis["ram_previous_step_match_count"]),
+        "reported-address": int(analysis["ram_reported_address_match_count"]),
+        "next-transfer-step": int(analysis["ram_next_step_match_count"]),
+    }
+    best = max(candidates.values(), default=0)
+    winners = [name for name, count in candidates.items() if count == best]
+    if backed > 0 and best == backed and len(winners) == 1:
+        return winners[0]
+    return "unresolved"
 
 
 def build_active_vram_route(
@@ -400,8 +455,12 @@ def build_active_vram_route(
     partial = not confirmed and resolved > 0
     ram_backed = int(analysis["ram_backed_vdp_data_write_count"])
     ram_matches = int(analysis["ram_source_matches_resident_vram_count"])
+    ram_source_semantics = _ram_source_semantics(analysis)
     ram_source_confirmed = (
-        confirmed and ram_backed == resolved and ram_matches == ram_backed
+        confirmed
+        and ram_backed == resolved
+        and ram_matches == ram_backed
+        and ram_source_semantics != "unresolved"
     )
     status = (
         "active-vram-route-confirmed"
@@ -433,6 +492,7 @@ def build_active_vram_route(
         "analysis": {key: int(analysis[key]) for key in COUNT_KEYS},
         "active_vram_route_confirmed": confirmed,
         "ram_source_route_confirmed": ram_source_confirmed,
+        "ram_source_address_semantics": ram_source_semantics,
         "baseline_script_bytes_unchanged": True,
         "local_payload_policy": (
             "ram-vram-addresses-bytes-output-values-and-rom-offsets-local-only"
@@ -497,6 +557,12 @@ def validate_active_vram_route(value: dict[str, object]) -> None:
         > counts["ram_backed_vdp_data_write_count"]
         or counts["ram_source_matches_resident_vram_count"]
         > counts["ram_backed_vdp_data_write_count"]
+        or counts["ram_reported_address_match_count"]
+        > counts["ram_backed_vdp_data_write_count"]
+        or counts["ram_previous_step_match_count"]
+        > counts["ram_backed_vdp_data_write_count"]
+        or counts["ram_next_step_match_count"]
+        > counts["ram_backed_vdp_data_write_count"]
     ):
         raise ValueError("active VRAM route counts are inconsistent")
     confirmed = (
@@ -514,6 +580,7 @@ def validate_active_vram_route(value: dict[str, object]) -> None:
         == counts["resolved_vram_data_write_count"]
         and counts["ram_source_matches_resident_vram_count"]
         == counts["ram_backed_vdp_data_write_count"]
+        and _ram_source_semantics(counts) != "unresolved"
     )
     expected_status = (
         "active-vram-route-confirmed"
@@ -537,6 +604,8 @@ def validate_active_vram_route(value: dict[str, object]) -> None:
         value["status"] != expected_status
         or value["active_vram_route_confirmed"] is not confirmed
         or value["ram_source_route_confirmed"] is not ram_source_confirmed
+        or value["ram_source_address_semantics"]
+        != _ram_source_semantics(counts)
         or value["next_checkpoint"] != expected_next
         or value["baseline_script_bytes_unchanged"] is not True
         or value["translation_build_eligible"] is not False

@@ -364,6 +364,7 @@ def _classify_vdp_output(
         port = typed_registers.get("bc", 0) & 0xFF
         value = None
         source_address = typed_registers.get("hl", 0) & 0xFFFF
+        source_step = 1 if opcodes[1] in {0xA3, 0xB3} else -1
     else:
         return None
     if port not in {0xBE, 0xBF}:
@@ -373,6 +374,7 @@ def _classify_vdp_output(
         result["value"] = value
     if source_address is not None:
         result["source_address"] = source_address
+        result["source_step"] = source_step
     return result
 
 
