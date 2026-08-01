@@ -3,22 +3,22 @@
   "schema_version": 1,
   "status": "target-group-static-calls-not-found",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "source_group_extract_sha256": "d1ad13e5ca61e53081fbed04a4231f5a42b030917bb79b8ba7411efd027e2bdd",
-  "captured_utc": "2026-08-01T09:38:47.102709Z",
+  "source_group_extract_sha256": "70327a4d0fb685ef8ce645e435c28b35a74d2976b0f3c35b3557ff2ee0d62b10",
+  "captured_utc": "2026-08-01T09:53:10.304734Z",
   "lookup": {
-    "valid_pointer_count": 8,
+    "duplicate_pointer_count": 0,
     "unique_pointer_count": 8,
     "slot_count": 12,
-    "duplicate_pointer_count": 0
+    "valid_pointer_count": 8
   },
   "static_usage": {
     "calls_with_selector_candidate_count": 0,
-    "unique_selector_candidate_count": 0,
     "calls_with_both_candidates_count": 0,
+    "unique_selector_candidate_count": 0,
     "lookup_selectors_without_call_evidence_count": 8,
     "calls_with_ordinal_candidate_count": 0,
-    "lookup_selectors_with_call_evidence_count": 0,
-    "decoder_call_signature_count": 0
+    "decoder_call_signature_count": 0,
+    "lookup_selectors_with_call_evidence_count": 0
   },
   "local_payload_policy": "pointers-call-offsets-immediates-nearby-bytes-and-selectors-local-only",
   "translation_build_eligible": false,
