@@ -222,6 +222,17 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertTrue(literal_stages)
         self.assertLessEqual(literal_stages, RUNTIME_FAILURE_STAGES)
 
+    def test_runtime_stage_classifies_group_tail_build_failures(self) -> None:
+        for message, stage in (
+            ("confirmed group alias is ambiguous", "first-context-build-group-alias"),
+            ("not a contiguous group tail", "first-context-build-group-tail"),
+            ("packed group tail exceeds", "first-context-build-group-overflow"),
+            ("group identity is invalid", "first-context-build-group-identity"),
+        ):
+            self.assertIn(message, RUNTIME_STAGE)
+            self.assertIn(stage, RUNTIME_STAGE)
+            self.assertIn(stage, RUNTIME_FAILURE_STAGES)
+
     def test_runtime_stage_prepares_the_verified_local_font_catalog(self) -> None:
         self.assertIn("visible_font_catalog_ready()", RUNTIME_STAGE)
         self.assertIn("tools/fetch_galmuri7_bdf.py --force", RUNTIME_STAGE)

@@ -1008,6 +1008,18 @@ else
         *"expected-write"*)
           first_context_translation_build_failure_stage=first-context-build-write
           ;;
+        *"confirmed group alias is ambiguous"*)
+          first_context_translation_build_failure_stage=first-context-build-group-alias
+          ;;
+        *"not a contiguous group tail"*)
+          first_context_translation_build_failure_stage=first-context-build-group-tail
+          ;;
+        *"packed group tail exceeds"*)
+          first_context_translation_build_failure_stage=first-context-build-group-overflow
+          ;;
+        *"group identity is invalid"*)
+          first_context_translation_build_failure_stage=first-context-build-group-identity
+          ;;
         *"verification row"*|\
         *"expected symbols"*|\
         *"font assignment"*)
