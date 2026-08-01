@@ -175,6 +175,17 @@ else
       diagnostic_trigger=probe
       record_stage_failure active-rom-lookup-index-producer
     fi
+  elif [ "$critical_path_focus" = "active-rom-cursor-reset" ]; then
+    echo "SFKR critical path: resolving the ROM cursor reset and stride."
+    write_next_step \
+      "BC 순차 커서의 초기화 명령과 증가 간격을 기존 실행 기록에서 판정하고 있습니다."
+    python tools/v5_1_active_rom_cursor_reset.py --if-ready
+    active_rom_cursor_reset_status=$?
+    if [ "$active_rom_cursor_reset_status" -ne 0 ]; then
+      stage_status="$active_rom_cursor_reset_status"
+      diagnostic_trigger=probe
+      record_stage_failure active-rom-cursor-reset
+    fi
   else
   if decoder_selection_ready || group_selection_ready; then
     echo "SFKR runtime stage: using the confirmed decoder stream."

@@ -195,6 +195,7 @@ RUNTIME_FAILURE_STAGES = {
     "active-rom-source-role",
     "active-rom-read-block",
     "active-rom-lookup-index-producer",
+    "active-rom-cursor-reset",
     "active-register-rom-source-initialize",
     "active-register-rom-source-load-media",
     "active-register-rom-source-watch",
