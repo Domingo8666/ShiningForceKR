@@ -1,0 +1,28 @@
+{
+  "artifact_kind": "sanitized-v5-1-first-context-consumer-trace",
+  "schema_version": 1,
+  "status": "consumer-context-trace-inconclusive",
+  "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "test_target_sha256": "1c5535dfee97b7a8032c1124c6a1f4b4074875f4b2c13267be96bbb31f094e16",
+  "first_context_translation_test_build_sha256": "67dc1b868553642a08166b1f7393cc6f9e8556aa31f250ef48b04667ed3b6f34",
+  "first_context_translation_runtime_capture_sha256": "a08383e8fc208c00831c7376d0249b08edffa7284f0ba14c6c339f36eea97a81",
+  "first_context_translation_visual_review_sha256": "9fc52ed484470f095222a0f87f3bfc09901d6ec2c00146c7d9451f418475c93b",
+  "local_trace_sha256": "a8a48c651469bec68bd418f8c20bfa4149417956d921f29acf28db01e7c5024d",
+  "captured_utc": "2026-08-01T07:47:51.655901Z",
+  "anchor_reached": true,
+  "trace": {
+    "planned_decode_count": 16,
+    "expected_context_count": 16,
+    "observed_context_count": 4,
+    "expected_context_prefix_match_count": 3,
+    "post_terminator_context_count": 0,
+    "initial_context_match_count": 1
+  },
+  "expected_context_prefix_complete": false,
+  "first_post_terminator_context_is_terminator": false,
+  "direct_terminator_overread_confirmed": false,
+  "cold_boot": true,
+  "source_and_target_text_local_only": true,
+  "translation_build_eligible": false,
+  "next_checkpoint": "repair-consumer-trace-alignment"
+}
