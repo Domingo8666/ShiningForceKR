@@ -166,7 +166,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         )
 
     def test_first_row_direct_renderer_omits_inline_page_token(self) -> None:
-        direct_symbols = [*range(0x02, 0x0B), 0xC9]
+        direct_symbols = [*range(0x02, 0x0A), 0xC9]
         with patch(
             "tools.v5_1_first_context_translation_encoding."
             "solve_direct_renderer_proof_symbols",
@@ -186,13 +186,13 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 direct_renderer_pages=(21, 22),
             )
         self.assertEqual(rows[0]["symbols"], direct_symbols)
-        self.assertEqual(rows[0]["runtime_symbol_count"], 10)
+        self.assertEqual(rows[0]["runtime_symbol_count"], 9)
         self.assertEqual(rows[0]["page_select_count"], 0)
         self.assertEqual(rows[0]["terminator_count"], 1)
         self.assertTrue(rows[0]["direct_renderer_proof"])
         self.assertEqual(counts["planned_page_select_count"], 0)
         self.assertEqual(counts["planned_terminator_count"], 1)
-        self.assertEqual(len(assignments[0]), 18)
+        self.assertEqual(len(assignments[0]), 16)
         self.assertEqual(assignments[0][0]["visual"], "text:가")
         self.assertTrue(assignments[0][0]["direct_renderer_page"])
         self.assertEqual(

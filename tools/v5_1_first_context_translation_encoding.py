@@ -172,7 +172,11 @@ DIRECT_RENDERER_PROOF_PAGE = 21
 # as a page-select command on this path; it advances the fixed render slot.
 # The page still has room for this tile (symbol 0x5F is tile index 93 of 96).
 DIRECT_RENDERER_GLYPH_LAST_SYMBOL = 0x5F
-DIRECT_RENDERER_EXTRA_SYMBOL_COUNT = 1
+# Preserve the record's original decoded count.  The traced extra lookup occurs
+# after the nominal terminator and must continue to come from the untouched
+# suffix bits; inserting an extra symbol moves the terminator and perturbs the
+# dialogue ordinal sequence.
+DIRECT_RENDERER_EXTRA_SYMBOL_COUNT = 0
 DIRECT_RENDERER_SEARCH_NODE_LIMIT = 50_000
 LOCAL_VISIBLE_UNICODE_MAPPING_PATH = Path(
     "reports/local/v5_1_visible_unicode_mapping.json"
