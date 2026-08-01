@@ -3400,6 +3400,21 @@ def select_row_font_pages(
                     )
                 else:
                     if "original_symbol_count" in constraint:
+                        fixed_control_symbols = (
+                            int(constraint["original_symbol_count"])
+                            - len(visuals)
+                            - 1
+                        )
+                        fixed_page_token_count = (
+                            fixed_control_symbols // 3
+                            if fixed_control_symbols >= 0
+                            and fixed_control_symbols % 3 == 0
+                            else -1
+                        )
+                        if fixed_page_token_count == 3:
+                            raise ValueError(
+                                "compact row prefers direct three-page route"
+                            )
                         solve_fixed_count_row_visual_symbols(
                             trees=trees,
                             initial_context=int(constraint["initial_context"]),
