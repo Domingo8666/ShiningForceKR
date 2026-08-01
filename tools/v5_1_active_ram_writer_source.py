@@ -44,6 +44,7 @@ COUNT_KEYS = {
     "system_ram_source_event_count",
     "rom_window_source_event_count",
     "register_source_event_count",
+    "immediate_source_event_count",
     "io_source_event_count",
     "unresolved_source_event_count",
 }
@@ -117,6 +118,57 @@ def _writer_source(writer: dict[str, object]) -> dict[str, object]:
         bytes.fromhex("ED BA"),
     }:
         return {"kind": "io"}
+    if first == 0x36 and len(opcodes) >= 2:
+        return {"kind": "immediate", "value": opcodes[1]}
+    if (
+        first in {0xDD, 0xFD}
+        and len(opcodes) >= 4
+        and opcodes[1] == 0x36
+    ):
+        return {"kind": "immediate", "value": opcodes[3]}
+    register_name: str | None = None
+    if first in {0x02, 0x12, 0x32}:
+        register_name = "a"
+    elif first == 0x08:
+        register_name = "sp"
+    elif first == 0x22:
+        register_name = "hl"
+    elif first in {0x70, 0x71, 0x72, 0x73, 0x74, 0x75, 0x77}:
+        register_name = {
+            0x70: "b",
+            0x71: "c",
+            0x72: "d",
+            0x73: "e",
+            0x74: "h",
+            0x75: "l",
+            0x77: "a",
+        }[first]
+    elif first in {0xDD, 0xFD} and len(opcodes) >= 3:
+        register_name = {
+            0x70: "b",
+            0x71: "c",
+            0x72: "d",
+            0x73: "e",
+            0x74: "h",
+            0x75: "l",
+            0x77: "a",
+        }.get(opcodes[1])
+    elif first == 0xED and len(opcodes) >= 2:
+        register_name = {
+            0x43: "bc",
+            0x53: "de",
+            0x63: "hl",
+            0x73: "sp",
+        }.get(opcodes[1])
+    elif first in {0xC5, 0xD5, 0xE5, 0xF5}:
+        register_name = {
+            0xC5: "bc",
+            0xD5: "de",
+            0xE5: "hl",
+            0xF5: "af",
+        }[first]
+    if register_name is not None:
+        return {"kind": "register", "register": register_name}
     if writer.get("operand_kind") in {
         "register-indirect-byte",
         "absolute-store",
@@ -125,7 +177,7 @@ def _writer_source(writer: dict[str, object]) -> dict[str, object]:
         "extended-store",
         "stack-store",
     }:
-        return {"kind": "register"}
+        return {"kind": "unresolved"}
     return {"kind": "unresolved"}
 
 
@@ -154,6 +206,7 @@ def analyze_writer_sources(
         "system-ram": 0,
         "rom-window": 0,
         "register": 0,
+        "immediate": 0,
         "io": 0,
         "unresolved": 0,
     }
@@ -182,11 +235,14 @@ def analyze_writer_sources(
     )
     counts = {
         "candidate_event_count": len(candidates),
-        "classified_event_count": classified + class_counts["io"],
+        "classified_event_count": (
+            classified + class_counts["immediate"] + class_counts["io"]
+        ),
         "memory_source_event_count": class_counts["memory"],
         "system_ram_source_event_count": class_counts["system-ram"],
         "rom_window_source_event_count": class_counts["rom-window"],
         "register_source_event_count": class_counts["register"],
+        "immediate_source_event_count": class_counts["immediate"],
         "io_source_event_count": class_counts["io"],
         "unresolved_source_event_count": class_counts["unresolved"],
     }
@@ -201,6 +257,7 @@ def _source_class(analysis: dict[str, int]) -> str:
             ("system-ram", "system_ram_source_event_count"),
             ("rom-window", "rom_window_source_event_count"),
             ("register", "register_source_event_count"),
+            ("immediate", "immediate_source_event_count"),
             ("io-port", "io_source_event_count"),
         )
         if int(analysis[key]) == candidates and candidates > 0
@@ -227,6 +284,7 @@ def build_active_ram_writer_source(
         "system-ram": "trace-active-ram-writer-input",
         "rom-window": "map-active-ram-writer-rom-input",
         "register": "trace-active-ram-writer-register-input",
+        "immediate": "map-active-ram-writer-immediate-input",
         "io-port": "trace-active-ram-writer-io-input",
         "unresolved": "extend-active-ram-writer-source-decoder",
     }[source_class]
@@ -265,6 +323,7 @@ def validate_active_ram_writer_source(value: dict[str, object]) -> None:
             "system-ram",
             "rom-window",
             "register",
+            "immediate",
             "io-port",
             "unresolved",
         }
@@ -288,10 +347,11 @@ def validate_active_ram_writer_source(value: dict[str, object]) -> None:
     system_ram = int(counts["system_ram_source_event_count"])
     rom = int(counts["rom_window_source_event_count"])
     register = int(counts["register_source_event_count"])
+    immediate = int(counts["immediate_source_event_count"])
     io = int(counts["io_source_event_count"])
     unresolved = int(counts["unresolved_source_event_count"])
     if (
-        classified_count != memory + register + io
+        classified_count != memory + register + immediate + io
         or memory != system_ram + rom
         or candidates != classified_count + unresolved
     ):
@@ -308,6 +368,7 @@ def validate_active_ram_writer_source(value: dict[str, object]) -> None:
         "system-ram": "trace-active-ram-writer-input",
         "rom-window": "map-active-ram-writer-rom-input",
         "register": "trace-active-ram-writer-register-input",
+        "immediate": "map-active-ram-writer-immediate-input",
         "io-port": "trace-active-ram-writer-io-input",
         "unresolved": "extend-active-ram-writer-source-decoder",
     }[source_class]

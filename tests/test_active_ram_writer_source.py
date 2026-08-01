@@ -47,7 +47,7 @@ class ActiveRamWriterSourceTests(unittest.TestCase):
                     "registers": {"hl": 0xC120},
                 }
             ),
-            {"kind": "register"},
+            {"kind": "register", "register": "a"},
         )
         self.assertEqual(
             _writer_source(
@@ -68,6 +68,16 @@ class ActiveRamWriterSourceTests(unittest.TestCase):
                 }
             ),
             {"kind": "io"},
+        )
+        self.assertEqual(
+            _writer_source(
+                {
+                    "opcodes_hex": "3634",
+                    "operand_kind": "hl-indirect",
+                    "registers": {"hl": 0xC120},
+                }
+            ),
+            {"kind": "immediate", "value": 0x34},
         )
 
     def test_classifies_a_local_system_ram_source_without_publishing_addresses(self) -> None:
