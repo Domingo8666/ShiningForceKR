@@ -4,7 +4,7 @@
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
   "exit_code": 1,
-  "attempt_utc": "2026-08-01T00:13:47Z",
+  "attempt_utc": "2026-08-01T00:24:16Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -20,7 +20,7 @@
   "runtime_observation_present": true,
   "runtime_failure": {
     "schema_version": 1,
-    "failure_stage": "first-context-build-group-tail",
+    "failure_stage": "first-context-build-group-alias",
     "failure_kind": "runtime-error",
     "mcp_method": null
   },
