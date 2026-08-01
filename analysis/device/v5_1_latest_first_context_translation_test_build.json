@@ -5,9 +5,9 @@
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "test_target_sha256": "1c5535dfee97b7a8032c1124c6a1f4b4074875f4b2c13267be96bbb31f094e16",
   "test_overlay_sha256": "b49eb660c8ac037d2b16d94b40ab598f4f95e7f05b20ab92721e8b77bf71af80",
-  "first_context_record_reinsertion_sha256": "26da081fd3f3ea658041d74b3bd1202b3e01033e6818a26d0e785008d3a741d1",
-  "local_build_sha256": "d5a37768c0dcda2decb5990db18c3de84726dc4e46a6ec5334dd923e557c00a8",
-  "captured_utc": "2026-08-01T01:27:29.107758Z",
+  "first_context_record_reinsertion_sha256": "1290f8e8e065a9ee240f6f2abc3bd5ba4cd29915460465da06f0e37ec08ae951",
+  "local_build_sha256": "ab136558b3a19f4e107be914c46ae32850448c322743a29e02e04e2823908f0e",
+  "captured_utc": "2026-08-01T07:42:02.962069Z",
   "verification": {
     "context_entry_count": 5,
     "record_length_field_verified_count": 5,
