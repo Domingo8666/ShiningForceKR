@@ -951,6 +951,8 @@ def build_runtime_codec_constraints(
             target_record = runtime_records[row_index]
         if not isinstance(target_record, dict):
             raise ValueError("first context runtime target record is missing")
+        if runtime_records is not None:
+            initial_context = target_record.get("initial_context")
         length_offset = target_record.get("length_offset")
         record_length = target_record.get("record_length_bytes")
         if (
@@ -1047,6 +1049,10 @@ def resolve_runtime_records_from_visible_anchor(
             {
                 "length_offset": length_offset,
                 "record_length_bytes": record_length,
+                # The exact visible-record roundtrip starts every independent
+                # compressed string from the end-symbol Huffman context.  A
+                # sampled post-decode register value is not an entry context.
+                "initial_context": CANDIDATE_END_SYMBOL,
             }
         )
         length_offset = payload_end

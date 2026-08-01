@@ -75,9 +75,21 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(
             records,
             [
-                {"length_offset": 1, "record_length_bytes": 3},
-                {"length_offset": 5, "record_length_bytes": 2},
-                {"length_offset": 8, "record_length_bytes": 1},
+                {
+                    "length_offset": 1,
+                    "record_length_bytes": 3,
+                    "initial_context": 0xC9,
+                },
+                {
+                    "length_offset": 5,
+                    "record_length_bytes": 2,
+                    "initial_context": 0xC9,
+                },
+                {
+                    "length_offset": 8,
+                    "record_length_bytes": 1,
+                    "initial_context": 0xC9,
+                },
             ],
         )
 
@@ -1075,7 +1087,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                     "mapping_status": "unique",
                     "source_section_index": 1,
                     "source_line_index": 2,
-                    "observation": {"initial_context": 0xC9},
+                    "observation": {"initial_context": 0x11},
                 }
             ],
             projection_pairs=[
@@ -1089,7 +1101,11 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 }
             ],
             runtime_records=[
-                {"length_offset": 1, "record_length_bytes": 1}
+                {
+                    "length_offset": 1,
+                    "record_length_bytes": 1,
+                    "initial_context": 0xC9,
+                }
             ],
         )
         self.assertEqual(anchored_constraints[0]["original_encoded_bits"], 6)
