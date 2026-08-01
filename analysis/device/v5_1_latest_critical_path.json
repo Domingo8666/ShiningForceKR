@@ -1,15 +1,15 @@
 {
   "artifact_kind": "sanitized-s25u-critical-path",
-  "schema_version": 2,
+  "schema_version": 3,
   "status": "one-unresolved-boundary-selected",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "source_register_trace_sha256": "0f172e70a48edac1ac849469ea5709d94ccc350bb3cc6d365aefe9d4d1d70040",
-  "selected_stage": "active-rom-source-role",
-  "confirmed_boundary": "active-vram-to-physical-rom-source",
-  "blocked_boundary": "physical-rom-source-to-source-role",
-  "selection_reason": "current-rom-source-ready-current-role-missing",
-  "generated_utc": "2026-08-01T21:48:30.391657Z",
+  "selected_stage": "active-rom-read-block",
+  "confirmed_boundary": "active-vram-to-unclassified-rom-read-set",
+  "blocked_boundary": "unclassified-rom-read-set-to-access-pattern",
+  "selection_reason": "current-unclassified-rom-source-ready-current-read-block-missing",
+  "generated_utc": "2026-08-01T22:06:54.798563Z",
   "baseline_script_bytes_unchanged": true,
   "translation_build_eligible": false,
-  "next_checkpoint": "classify-active-rom-source-role"
+  "next_checkpoint": "capture-active-rom-read-block"
 }
