@@ -2367,7 +2367,12 @@ def solve_fixed_count_row_visual_symbols(
     frontier: list[
         tuple[int, int, int, int, tuple[int, ...], tuple[int, ...]]
     ] = [(selected[0], selected[1], 0, 0, row_page_token, ())]
-    beam_width = MAX_BOUNDED_SINGLE_PAGE_STATES
+    # The device runner has a 120-second guard.  A 5,000-state frontier can
+    # create tens of millions of Python tuples across eight candidate pages.
+    # The glyph graph is dense; retaining the best 256 distinct routes per
+    # depth preserves diverse used-slot masks while keeping the whole five-row
+    # solve comfortably bounded on the S25U.
+    beam_width = min(MAX_BOUNDED_SINGLE_PAGE_STATES, 256)
     for _depth in range(len(visuals)):
         next_by_state: dict[
             tuple[int, int, int],
