@@ -1131,11 +1131,26 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(failure["target_encoded_bit_count"], 0)
         self.assertEqual(failure["bounded_candidate_bit_count"], 0)
         self.assertEqual(failure["bounded_candidate_relation"], "none")
+        self.assertEqual(failure["approved_visible_symbol_count"], 0)
+        self.assertEqual(failure["compact_visible_symbol_count"], 0)
+        self.assertEqual(failure["runtime_symbol_count"], 0)
+        self.assertEqual(failure["layout_control_symbol_count"], 0)
         self.assertNotIn("error", failure)
         unsafe = deepcopy(failure)
         unsafe["category"] = "private-detail"
         with self.assertRaisesRegex(ValueError, "inconsistent"):
             validate_first_context_translation_encoding_failure(unsafe)
+
+        legacy = deepcopy(failure)
+        legacy["schema_version"] = 2
+        for field in (
+            "approved_visible_symbol_count",
+            "compact_visible_symbol_count",
+            "runtime_symbol_count",
+            "layout_control_symbol_count",
+        ):
+            legacy.pop(field)
+        validate_first_context_translation_encoding_failure(legacy)
 
         bounded = build_first_context_translation_encoding_failure(
             category="row-route",

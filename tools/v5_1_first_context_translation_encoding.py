@@ -243,10 +243,16 @@ FAILURE_FIELDS_V1 = {
     "source_and_target_text_local_only",
     "next_checkpoint",
 }
-FAILURE_FIELDS = FAILURE_FIELDS_V1 | {
+FAILURE_FIELDS_V2 = FAILURE_FIELDS_V1 | {
     "target_encoded_bit_count",
     "bounded_candidate_bit_count",
     "bounded_candidate_relation",
+}
+FAILURE_FIELDS = FAILURE_FIELDS_V2 | {
+    "approved_visible_symbol_count",
+    "compact_visible_symbol_count",
+    "runtime_symbol_count",
+    "layout_control_symbol_count",
 }
 FAILURE_CATEGORIES = {
     "identity",
@@ -264,6 +270,10 @@ ACTIVE_FAILURE_CATEGORY = "unexpected"
 ACTIVE_FAILURE_STEP = "input"
 ACTIVE_FAILURE_ROW_INDEX = 0
 ACTIVE_FAILURE_DETAIL = "none"
+ACTIVE_LAYOUT_APPROVED_COUNT = 0
+ACTIVE_LAYOUT_COMPACT_COUNT = 0
+ACTIVE_LAYOUT_RUNTIME_COUNT = 0
+ACTIVE_LAYOUT_CONTROL_COUNT = 0
 FAILURE_STEPS = {
     "input",
     "locate-preserved-occurrences",
@@ -351,11 +361,15 @@ def build_first_context_translation_encoding_failure(
     failure_kind: str = "ValueError",
     failure_row_index: int = 0,
     failure_detail: str = "none",
+    approved_visible_symbol_count: int = 0,
+    compact_visible_symbol_count: int = 0,
+    runtime_symbol_count: int = 0,
+    layout_control_symbol_count: int = 0,
 ) -> dict[str, object]:
     value: dict[str, object] = {
         "artifact_kind":
             "sanitized-v5-1-first-context-translation-encoding-failure",
-        "schema_version": 2,
+        "schema_version": 3,
         "status": "first-context-translation-encoding-failed",
         "category": category,
         "failure_step": failure_step,
@@ -376,6 +390,10 @@ def build_first_context_translation_encoding_failure(
             if bounded_candidate_bit_count == target_encoded_bit_count
             else "longer"
         ),
+        "approved_visible_symbol_count": approved_visible_symbol_count,
+        "compact_visible_symbol_count": compact_visible_symbol_count,
+        "runtime_symbol_count": runtime_symbol_count,
+        "layout_control_symbol_count": layout_control_symbol_count,
         "captured_utc": captured_utc,
         "source_and_target_text_local_only": True,
         "next_checkpoint": f"repair-first-context-{category}",
@@ -391,7 +409,8 @@ def validate_first_context_translation_encoding_failure(
     schema_version = value.get("schema_version")
     if not (
         (schema_version == 1 and fields == FAILURE_FIELDS_V1)
-        or (schema_version == 2 and fields == FAILURE_FIELDS)
+        or (schema_version == 2 and fields == FAILURE_FIELDS_V2)
+        or (schema_version == 3 and fields == FAILURE_FIELDS)
     ):
         raise ValueError(
             "first context translation encoding failure fields do not match"
@@ -399,7 +418,7 @@ def validate_first_context_translation_encoding_failure(
     if (
         value["artifact_kind"]
         != "sanitized-v5-1-first-context-translation-encoding-failure"
-        or schema_version not in {1, 2}
+        or schema_version not in {1, 2, 3}
         or value["status"] != "first-context-translation-encoding-failed"
         or value["category"] not in FAILURE_CATEGORIES
         or value["failure_step"] not in FAILURE_STEPS
@@ -424,7 +443,7 @@ def validate_first_context_translation_encoding_failure(
         raise ValueError(
             "first context translation encoding failure is inconsistent"
         )
-    if schema_version == 2:
+    if schema_version in {2, 3}:
         target_bits = value["target_encoded_bit_count"]
         candidate_bits = value["bounded_candidate_bit_count"]
         relation = value["bounded_candidate_relation"]
@@ -448,6 +467,29 @@ def validate_first_context_translation_encoding_failure(
         ):
             raise ValueError(
                 "first context translation encoding failure bit diagnostics "
+                "are inconsistent"
+            )
+    if schema_version == 3:
+        approved_count = value["approved_visible_symbol_count"]
+        compact_count = value["compact_visible_symbol_count"]
+        runtime_count = value["runtime_symbol_count"]
+        control_count = value["layout_control_symbol_count"]
+        if (
+            not all(
+                isinstance(item, int) and not isinstance(item, bool)
+                for item in (
+                    approved_count,
+                    compact_count,
+                    runtime_count,
+                    control_count,
+                )
+            )
+            or not 0 <= compact_count <= approved_count <= 1000
+            or not 0 <= runtime_count <= 1000
+            or not -1000 <= control_count <= 1000
+        ):
+            raise ValueError(
+                "first context translation encoding layout diagnostics "
                 "are inconsistent"
             )
 
@@ -735,6 +777,8 @@ def build_runtime_layout_rows(
     """
 
     global ACTIVE_FAILURE_ROW_INDEX, ACTIVE_FAILURE_DETAIL
+    global ACTIVE_LAYOUT_APPROVED_COUNT, ACTIVE_LAYOUT_COMPACT_COUNT
+    global ACTIVE_LAYOUT_RUNTIME_COUNT, ACTIVE_LAYOUT_CONTROL_COUNT
     if len(target_rows) != len(runtime_constraints):
         ACTIVE_FAILURE_DETAIL = "layout-row-count-mismatch"
         raise ValueError("first context runtime layout row count does not match")
@@ -780,6 +824,16 @@ def build_runtime_layout_rows(
                         ),
                     )
                 )
+            diagnostic_text = min(
+                (candidate_text for _, candidate_text in variants),
+                key=len,
+            )
+            ACTIVE_LAYOUT_APPROVED_COUNT = len(target_text)
+            ACTIVE_LAYOUT_COMPACT_COUNT = len(diagnostic_text)
+            ACTIVE_LAYOUT_RUNTIME_COUNT = target_symbol_count
+            ACTIVE_LAYOUT_CONTROL_COUNT = (
+                target_symbol_count - len(diagnostic_text) - 1
+            )
             eligible_variants = []
             for layout_action, candidate_text in dict.fromkeys(variants):
                 candidate_hangul = "".join(
@@ -817,6 +871,8 @@ def build_runtime_layout_rows(
                 control_symbols,
                 page_token_count,
             ) = min(eligible_variants)
+            ACTIVE_LAYOUT_COMPACT_COUNT = len(compact_text)
+            ACTIVE_LAYOUT_CONTROL_COUNT = control_symbols
             runtime_row["target_text"] = compact_text
             audit.append(
                 {
@@ -4108,6 +4164,8 @@ def validate_first_context_translation_encoding(
 def _main() -> int:
     global ACTIVE_FAILURE_CATEGORY, ACTIVE_FAILURE_STEP
     global ACTIVE_FAILURE_ROW_INDEX, ACTIVE_FAILURE_DETAIL
+    global ACTIVE_LAYOUT_APPROVED_COUNT, ACTIVE_LAYOUT_COMPACT_COUNT
+    global ACTIVE_LAYOUT_RUNTIME_COUNT, ACTIVE_LAYOUT_CONTROL_COUNT
     ACTIVE_FAILURE_CATEGORY = "input"
     ACTIVE_FAILURE_STEP = "input"
     ACTIVE_FAILURE_ROW_INDEX = 0
@@ -4231,6 +4289,10 @@ def _main() -> int:
     )
     ACTIVE_FAILURE_ROW_INDEX = 0
     ACTIVE_FAILURE_DETAIL = "none"
+    ACTIVE_LAYOUT_APPROVED_COUNT = 0
+    ACTIVE_LAYOUT_COMPACT_COUNT = 0
+    ACTIVE_LAYOUT_RUNTIME_COUNT = 0
+    ACTIVE_LAYOUT_CONTROL_COUNT = 0
     ACTIVE_FAILURE_STEP = "build-character-assignments"
     _, character_assignments = build_character_assignments(
         target_rows=target_rows,
@@ -4553,6 +4615,10 @@ def main() -> int:
             failure_kind=type(error).__name__,
             failure_row_index=ACTIVE_FAILURE_ROW_INDEX,
             failure_detail=ACTIVE_FAILURE_DETAIL,
+            approved_visible_symbol_count=ACTIVE_LAYOUT_APPROVED_COUNT,
+            compact_visible_symbol_count=ACTIVE_LAYOUT_COMPACT_COUNT,
+            runtime_symbol_count=ACTIVE_LAYOUT_RUNTIME_COUNT,
+            layout_control_symbol_count=ACTIVE_LAYOUT_CONTROL_COUNT,
         )
         failure_path.parent.mkdir(parents=True, exist_ok=True)
         failure_path.write_text(
