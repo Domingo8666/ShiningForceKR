@@ -122,7 +122,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             trees=trees,
             initial_context=0xC9,
             maximum_bits=32,
-            visible_glyph_count=9,
+            visuals=[f"text:{index}" for index in range(9)],
         )
         self.assertEqual(assignments, list(range(0x02, 0x0B)))
         self.assertEqual(symbols, assignments)
@@ -130,6 +130,21 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             direct_renderer_font_tile_offset(21, 0x05),
             direct_renderer_font_tile_offset(21, 0x02) + 3 * 32,
         )
+
+    def test_direct_renderer_reuses_only_the_same_visual_symbol(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x02, 0xFE),
+            0x02: tree(0x02, 0x03, 0xFE),
+            0x03: tree(0x03, 0x03, 0xFE),
+        }
+        symbols, assignments = solve_direct_renderer_proof_symbols(
+            trees=trees,
+            initial_context=0xC9,
+            maximum_bits=8,
+            visuals=["text:가", "technical-blank", "technical-blank"],
+        )
+        self.assertEqual(symbols, [0x02, 0x03, 0x03])
+        self.assertEqual(assignments, symbols)
 
     def test_first_row_direct_renderer_omits_inline_page_token(self) -> None:
         direct_symbols = list(range(0x02, 0x0C))

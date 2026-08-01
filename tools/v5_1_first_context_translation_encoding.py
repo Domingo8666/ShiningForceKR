@@ -1301,7 +1301,7 @@ def solve_direct_renderer_proof_symbols(
     trees: dict[int, object],
     initial_context: int,
     maximum_bits: int,
-    visible_glyph_count: int,
+    visuals: list[str],
 ) -> tuple[list[int], list[int]]:
     """Build one fixed-count row without the disproven inline page token.
 
@@ -1319,7 +1319,8 @@ def solve_direct_renderer_proof_symbols(
     if (
         not 0 <= initial_context <= 0xFF
         or not 1 <= maximum_bits <= 0x7FFF
-        or not 1 <= visible_glyph_count <= 32
+        or not 1 <= len(visuals) <= 32
+        or any(not isinstance(visual, str) or not visual for visual in visuals)
     ):
         raise ValueError("direct renderer proof inputs are invalid")
     lengths = _code_lengths(trees)
@@ -1327,7 +1328,7 @@ def solve_direct_renderer_proof_symbols(
         range(FONT_GLYPH_FIRST_SYMBOL, DIRECT_RENDERER_GLYPH_LAST_SYMBOL + 1)
     )
     assignments: list[int] = []
-    used: set[int] = set()
+    visual_by_symbol: dict[int, str] = {}
     visited_node_count = 0
 
     def search(previous: int, bits: int) -> bool:
@@ -1335,13 +1336,18 @@ def solve_direct_renderer_proof_symbols(
         visited_node_count += 1
         if visited_node_count > DIRECT_RENDERER_SEARCH_NODE_LIMIT:
             raise ValueError("direct renderer proof route search limit exceeded")
-        remaining = visible_glyph_count - len(assignments)
+        remaining = len(visuals) - len(assignments)
         if remaining == 0:
             return bits <= maximum_bits
 
         candidates = []
+        visual = visuals[len(assignments)]
         for symbol, code_length in lengths.get(previous, {}).items():
-            if symbol not in glyph_symbols or symbol in used:
+            assigned_visual = visual_by_symbol.get(symbol)
+            if (
+                symbol not in glyph_symbols
+                or assigned_visual is not None and assigned_visual != visual
+            ):
                 continue
             total = bits + int(code_length)
             if total > maximum_bits:
@@ -1355,11 +1361,13 @@ def solve_direct_renderer_proof_symbols(
                 )
             )
         for code_length, _, symbol in sorted(candidates):
+            was_unassigned = symbol not in visual_by_symbol
             assignments.append(symbol)
-            used.add(symbol)
+            visual_by_symbol.setdefault(symbol, visual)
             if search(symbol, bits + code_length):
                 return True
-            used.remove(symbol)
+            if was_unassigned:
+                del visual_by_symbol[symbol]
             assignments.pop()
         return False
 
@@ -4109,7 +4117,7 @@ def build_single_page_symbol_rows(
                 trees=trees,
                 initial_context=initial_context,
                 maximum_bits=target_bits,
-                visible_glyph_count=renderer_glyph_count,
+                visuals=renderer_visuals,
             )
             assignment_pages = [direct_renderer_pages[0]] * len(assignments)
             padding_count = 0
