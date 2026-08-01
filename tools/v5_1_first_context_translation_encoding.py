@@ -2298,13 +2298,7 @@ def solve_fixed_count_row_visual_symbols(
     page: int,
     visuals: list[str],
 ) -> tuple[list[int], int, list[int]]:
-    """Jointly choose glyph slots and a fixed number of page controls.
-
-    Unlike the exact-bit solver, this search has one runtime contract: the
-    decoded symbol count.  It explores visible glyph choices and page-token
-    placement in one bounded DFS, so an otherwise valid compact assignment
-    cannot hide a different assignment that has the required bridge edge.
-    """
+    """Choose glyph slots for a finite set of fixed-count control schedules."""
 
     if (
         not 0 <= initial_context <= 0xFF
@@ -2318,13 +2312,15 @@ def solve_fixed_count_row_visual_symbols(
     if control_symbols < 3 or control_symbols % 3:
         raise ValueError("first context fixed count cannot preserve page controls")
     required_page_tokens = control_symbols // 3
+    extra_page_tokens = required_page_tokens - 1
     lengths = _code_lengths(trees)
     glyph_symbols = tuple(
         range(FONT_GLYPH_FIRST_SYMBOL, FONT_GLYPH_LAST_SYMBOL + 1)
     )
     glyph_symbol_set = set(glyph_symbols)
-    page_tokens = tuple(
-        (candidate_page, tuple(page_select_symbols(candidate_page)))
+    row_page_token = tuple(page_select_symbols(page))
+    all_page_tokens = tuple(
+        tuple(page_select_symbols(candidate_page))
         for candidate_page in range(FONT_PAGE_COUNT)
     )
 
@@ -2341,73 +2337,90 @@ def solve_fixed_count_row_visual_symbols(
             previous = symbol
         return bits, previous
 
-    @lru_cache(maxsize=None)
-    def control_routes(previous: int) -> tuple[tuple[int, int, int, tuple[int, ...]], ...]:
-        routes = []
-        for candidate_page, token in page_tokens:
-            encoded = transition(previous, token)
-            if encoded is None:
-                continue
-            routes.append((candidate_page != page, encoded[0], candidate_page, token))
-        return tuple(sorted(routes))
+    def same_page_schedules(
+        remaining: int,
+        minimum_boundary: int = 0,
+        prefix: tuple[int, ...] = (),
+    ) -> list[tuple[int, ...]]:
+        if remaining == 0:
+            return [prefix]
+        schedules = []
+        for boundary in range(minimum_boundary, len(visuals) + 1):
+            schedules.extend(
+                same_page_schedules(
+                    remaining - 1,
+                    boundary,
+                    prefix + (boundary,),
+                )
+            )
+        return schedules
 
-    expanded_states = 0
-    best_bits: dict[tuple[int, int, int, int, int], int] = {}
+    # A schedule gives extra row-page selections before glyph depth N; depth
+    # ``len(visuals)`` means immediately before the final terminator.
+    schedules: list[
+        tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...]]
+    ] = []
+    for boundaries in same_page_schedules(extra_page_tokens):
+        schedules.append(((), boundaries, ()))
+    if extra_page_tokens == 1:
+        # Before the mandatory row selection and after the final glyph, any
+        # temporary page is renderer-inert.  Try these small edge sets too.
+        for token in all_page_tokens:
+            schedules.append((token, (), ()))
+            schedules.append(((), (), token))
 
-    def search(
-        previous: int,
-        current_page: int,
-        used_mask: int,
-        depth: int,
-        page_token_count: int,
-        bits: int,
-    ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
-        nonlocal expanded_states
-        expanded_states += 1
-        if expanded_states > MAX_BOUNDED_SINGLE_PAGE_STATES:
-            raise ValueError("first context fixed-count search state limit exceeded")
-        state = (
-            previous,
-            current_page,
-            used_mask,
-            depth,
-            page_token_count,
-        )
-        if bits >= best_bits.get(state, maximum_bits + 1):
-            return None
-        best_bits[state] = bits
+    for prefix_token, boundaries, suffix_token in schedules:
+        prefix_sequence = prefix_token + row_page_token
+        selected = transition(initial_context, prefix_sequence)
+        if selected is None:
+            continue
+        start_bits, start_previous = selected
+        if start_bits >= maximum_bits:
+            continue
+        boundary_counts = {
+            boundary: boundaries.count(boundary) for boundary in set(boundaries)
+        }
+        expanded_states = 0
+        best_bits: dict[tuple[int, int, int], int] = {}
 
-        if depth == len(visuals):
-            if page_token_count == required_page_tokens:
-                end_bits = lengths.get(previous, {}).get(CANDIDATE_END_SYMBOL)
-                if end_bits is not None and bits + end_bits <= maximum_bits:
-                    return (CANDIDATE_END_SYMBOL,), ()
-            # No more glyphs can observe temporary page selections.
-            if page_token_count < required_page_tokens:
-                for _, route_bits, route_page, token in control_routes(previous):
-                    if bits + route_bits >= maximum_bits:
-                        continue
-                    suffix = search(
-                        token[-1],
-                        route_page,
-                        used_mask,
-                        depth,
-                        page_token_count + 1,
-                        bits + route_bits,
-                    )
-                    if suffix is not None:
-                        suffix_symbols, suffix_assignments = suffix
-                        return token + suffix_symbols, suffix_assignments
-            return None
+        def search(
+            previous: int,
+            used_mask: int,
+            depth: int,
+            bits: int,
+        ) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+            nonlocal expanded_states
+            expanded_states += 1
+            if expanded_states > MAX_BOUNDED_SINGLE_PAGE_STATES:
+                raise ValueError(
+                    "first context fixed-count schedule state limit exceeded"
+                )
+            state = (previous, used_mask, depth)
+            if bits >= best_bits.get(state, maximum_bits + 1):
+                return None
+            best_bits[state] = bits
+            controls = row_page_token * boundary_counts.get(depth, 0)
+            controlled = transition(previous, controls)
+            if controlled is None:
+                return None
+            control_bits, controlled_previous = controlled
+            next_bits = bits + control_bits
+            if next_bits >= maximum_bits:
+                return None
+            if depth == len(visuals):
+                tail = suffix_token + (CANDIDATE_END_SYMBOL,)
+                ended = transition(controlled_previous, tail)
+                if ended is None or next_bits + ended[0] > maximum_bits:
+                    return None
+                return controls + tail, ()
 
-        if current_page == page:
             candidates = sorted(
                 (
                     symbol
                     for symbol in glyph_symbols
                     if not used_mask
                     & (1 << (symbol - FONT_GLYPH_FIRST_SYMBOL))
-                    and symbol in lengths.get(previous, {})
+                    and symbol in lengths.get(controlled_previous, {})
                 ),
                 key=lambda symbol: (
                     CANDIDATE_END_SYMBOL not in lengths.get(symbol, {}),
@@ -2416,48 +2429,34 @@ def solve_fixed_count_row_visual_symbols(
                 ),
             )
             for symbol in candidates:
-                next_bits = bits + lengths[previous][symbol]
-                if next_bits >= maximum_bits:
+                glyph_bits = lengths[controlled_previous][symbol]
+                if next_bits + glyph_bits >= maximum_bits:
                     continue
                 suffix = search(
                     symbol,
-                    current_page,
                     used_mask | 1 << (symbol - FONT_GLYPH_FIRST_SYMBOL),
                     depth + 1,
-                    page_token_count,
-                    next_bits,
+                    next_bits + glyph_bits,
                 )
                 if suffix is not None:
                     suffix_symbols, suffix_assignments = suffix
                     return (
-                        (symbol,) + suffix_symbols,
+                        controls + (symbol,) + suffix_symbols,
                         (symbol,) + suffix_assignments,
                     )
+            return None
 
-        if page_token_count < required_page_tokens:
-            for _, route_bits, route_page, token in control_routes(previous):
-                if bits + route_bits >= maximum_bits:
-                    continue
-                suffix = search(
-                    token[-1],
-                    route_page,
-                    used_mask,
-                    depth,
-                    page_token_count + 1,
-                    bits + route_bits,
-                )
-                if suffix is not None:
-                    suffix_symbols, suffix_assignments = suffix
-                    return token + suffix_symbols, suffix_assignments
-        return None
-
-    result = search(initial_context, -1, 0, 0, 0, 0)
-    if result is None:
-        raise ValueError("first context row has no joint fixed-count route")
-    symbols, assignments = result
-    if len(symbols) != target_symbol_count:
-        raise ValueError("first context fixed-count route length disagrees")
-    return list(symbols), required_page_tokens - 1, list(assignments)
+        try:
+            result = search(start_previous, 0, 0, start_bits)
+        except ValueError:
+            continue
+        if result is None:
+            continue
+        route_symbols, assignments = result
+        symbols = prefix_sequence + route_symbols
+        if len(symbols) == target_symbol_count:
+            return list(symbols), extra_page_tokens, list(assignments)
+    raise ValueError("first context row has no scheduled fixed-count route")
 
 
 def solve_fixed_count_row_multi_page_visual_symbols(
