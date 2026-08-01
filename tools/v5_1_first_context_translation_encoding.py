@@ -307,6 +307,7 @@ FAILURE_KINDS = {
 }
 FAILURE_DETAILS = {
     "none",
+    "runtime-coordinate-and-anchor-chain-invalid",
     "layout-runtime-compaction-shape",
     "layout-hangul-sequence-change",
     "layout-no-compatible-control-count",
@@ -3546,6 +3547,7 @@ def select_row_font_pages(
     preserved_by_row: list[list[dict[str, int]]],
     runtime_constraints: list[dict[str, object]] | None = None,
 ) -> tuple[int | tuple[int, ...], ...]:
+    global ACTIVE_FAILURE_ROW_INDEX, ACTIVE_FAILURE_DETAIL
     visual_rows = build_row_visuals(
         target_rows=target_rows,
         preserved_by_row=preserved_by_row,
@@ -3587,6 +3589,12 @@ def select_row_font_pages(
     for row_index, (visuals, constraint) in enumerate(
         zip(visual_rows, constraints)
     ):
+        ACTIVE_FAILURE_ROW_INDEX = row_index + 1
+        ACTIVE_FAILURE_DETAIL = (
+            "solve-proven-exact-row"
+            if row_index < len(PROVEN_ROW_FONT_PAGES)
+            else "solve-extra-single-page-row"
+        )
         preferred = (
             ROW_FONT_PAGES[row_index]
             if row_index < len(ROW_FONT_PAGES)
@@ -3633,7 +3641,7 @@ def select_row_font_pages(
             if "original_symbol_count" in constraint:
                 candidate_pages = tuple(
                     page for page in candidate_pages if page not in used_pages
-                )[:4]
+                )[:MAX_EXACT_FONT_PAGE_CANDIDATES]
             else:
                 candidate_pages = candidate_pages[
                     :MAX_EXACT_FONT_PAGE_CANDIDATES
