@@ -15,6 +15,7 @@ from collections import deque
 from datetime import datetime, timezone
 from functools import lru_cache
 from heapq import heappop, heappush
+from itertools import combinations
 import json
 from pathlib import Path
 
@@ -3625,6 +3626,10 @@ def select_row_font_pages(
                 if candidate_page == preferred or candidate_page in used_pages:
                     continue
                 token = tuple(page_select_symbols(candidate_page))
+                entry = fixed_transition(
+                    int(constraint["initial_context"]),
+                    token,
+                )
                 incoming = sum(
                     fixed_transition(previous, token) is not None
                     for previous in fixed_glyph_symbols
@@ -3637,6 +3642,8 @@ def select_row_font_pages(
                     continue
                 ranked_secondary.append(
                     (
+                        entry is None,
+                        entry[0] if entry is not None else 0x7FFF,
                         -suffix_depths,
                         -incoming,
                         abs(candidate_page - preferred),
@@ -3661,6 +3668,7 @@ def select_row_font_pages(
                     :MAX_EXACT_FONT_PAGE_CANDIDATES
                 ]
         failed_pages: list[int] = []
+        attempted_fixed_groups: set[tuple[int, ...]] = set()
         for page in candidate_pages:
             if page in used_pages:
                 continue
@@ -3726,18 +3734,19 @@ def select_row_font_pages(
                             and required_page_tokens % 3 == 0
                             else -1
                         )
-                        if required_page_tokens == 3:
-                            candidate_groups = (
-                                [(failed_pages[0], failed_pages[1], page)]
-                                if len(failed_pages) >= 2
-                                else []
-                            )
+                        if required_page_tokens in {2, 3}:
+                            expanded_pool = tuple((*failed_pages, page))
+                            candidate_groups = []
+                            for page_group in combinations(
+                                expanded_pool,
+                                required_page_tokens,
+                            ):
+                                if page_group in attempted_fixed_groups:
+                                    continue
+                                attempted_fixed_groups.add(page_group)
+                                candidate_groups.append(page_group)
                         else:
-                            candidate_groups = (
-                                [(failed_pages[0], page)]
-                                if failed_pages
-                                else []
-                            )
+                            candidate_groups = []
                     else:
                         candidate_groups = [
                             (anchor, page) for anchor in failed_pages[:4]

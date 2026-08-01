@@ -360,6 +360,52 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
 
         self.assertEqual(pages, ((240, 89, 243, 242),))
 
+    def test_searches_all_ranked_fixed_three_page_combinations(self) -> None:
+        lengths = {
+            previous: {symbol: 1 for symbol in range(0x100)}
+            for previous in range(0x100)
+        }
+
+        def solve_multi(*, pages, **kwargs):
+            del kwargs
+            if set(pages) != {4, 5, 6}:
+                raise ValueError("ranked group is not routable")
+            return ([0xC9] * 20, 0, [0x02] * 10, [6] * 10)
+
+        with (
+            patch(
+                "tools.v5_1_first_context_translation_encoding._code_lengths",
+                return_value=lengths,
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding.FONT_PAGE_COUNT",
+                8,
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_fixed_count_row_visual_symbols",
+                side_effect=ValueError("single page is not routable"),
+            ),
+            patch(
+                "tools.v5_1_first_context_translation_encoding."
+                "solve_fixed_count_row_multi_page_visual_symbols",
+                side_effect=solve_multi,
+            ),
+        ):
+            pages = select_row_font_pages(
+                trees={},
+                target_rows=[{"target_text": "가나다라마바사아자차"}],
+                preserved_by_row=[[]],
+                runtime_constraints=[{
+                    "initial_context": 0xC9,
+                    "original_encoded_bits": 192,
+                    "original_record_length_bytes": 24,
+                    "original_symbol_count": 20,
+                }],
+            )
+
+        self.assertEqual(set(pages[0]), {4, 5, 6})
+
     def test_reports_a_safe_bounded_bit_candidate_after_exact_failure(self) -> None:
         with (
             patch(
