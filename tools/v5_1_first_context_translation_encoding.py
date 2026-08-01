@@ -4910,6 +4910,7 @@ def _main() -> int:
                     "visual_kind": visual_kind,
                     "page": page,
                     "symbol": symbol,
+                    "direct_renderer_page": direct_renderer_page,
                     "tile_sha256": sha256_bytes(after),
                 }
             )

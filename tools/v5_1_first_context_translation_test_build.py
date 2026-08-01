@@ -38,6 +38,7 @@ try:
     from .v5_1_first_context_translation_encoding import (
         LOCAL_COMBINED_FONT_OVERLAY_PATH,
         LOCAL_REPORT_PATH as LOCAL_ENCODING_PATH,
+        direct_renderer_font_tile_offset,
     )
     from .v5_1_renderer_output_trace import _load_json_object
     from .v5_1_test_phrase import FONT_TILE_BYTES, font_tile_offset
@@ -71,6 +72,7 @@ except ImportError:  # pragma: no cover - direct script execution
     from v5_1_first_context_translation_encoding import (
         LOCAL_COMBINED_FONT_OVERLAY_PATH,
         LOCAL_REPORT_PATH as LOCAL_ENCODING_PATH,
+        direct_renderer_font_tile_offset,
     )
     from v5_1_renderer_output_trace import _load_json_object
     from v5_1_test_phrase import FONT_TILE_BYTES, font_tile_offset
@@ -351,7 +353,17 @@ def verify_translation_build(
             decoded == expected_symbols
             and decoded_bits == expected_bits
             and len(expected_symbols) == runtime_symbol_count
-            and expected_symbols[-1] == CANDIDATE_END_SYMBOL
+            and (
+                (
+                    encoding.get("direct_renderer_proof") is True
+                    and encoding.get("terminator_count") == 0
+                    and CANDIDATE_END_SYMBOL not in expected_symbols
+                )
+                or (
+                    encoding.get("direct_renderer_proof") is not True
+                    and expected_symbols[-1] == CANDIDATE_END_SYMBOL
+                )
+            )
         ):
             roundtrips += 1
         else:
@@ -382,7 +394,11 @@ def verify_translation_build(
             or not _is_sha256(tile_sha256)
         ):
             raise ValueError("first context build font assignment is invalid")
-        start = font_tile_offset(page, symbol)
+        start = (
+            direct_renderer_font_tile_offset(page, symbol)
+            if assignment.get("direct_renderer_page") is True
+            else font_tile_offset(page, symbol)
+        )
         end = start + FONT_TILE_BYTES
         verified_glyphs += int(
             sha256_bytes(test[start:end]) == tile_sha256
