@@ -226,6 +226,7 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_active_ram_register_trace.json|\
     analysis/device/v5_1_latest_active_register_rom_source.json|\
     analysis/device/v5_1_latest_active_rom_source_role.json|\
+    analysis/device/v5_1_latest_active_rom_read_block.json|\
     analysis/device/v5_1_latest_critical_path.json|\
     analysis/device/v5_1_latest_visible_unicode_mapping.json|\
     analysis/device/v5_1_latest_initial_font_page_trace.json|\

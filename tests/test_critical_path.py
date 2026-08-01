@@ -19,8 +19,13 @@ from tools.v5_1_active_rom_source_role import (
     PUBLISH_RELATIVE_PATH as ROM_SOURCE_ROLE_PATH,
     build_active_rom_source_role,
 )
+from tools.v5_1_active_rom_read_block import (
+    PUBLISH_RELATIVE_PATH as ROM_READ_BLOCK_PATH,
+    build_active_rom_read_block,
+)
 from tools.v5_1_critical_path import (
     FOCUSED_STAGE,
+    READ_BLOCK_STAGE,
     SOURCE_ROLE_STAGE,
     select_critical_path,
     validate_critical_path,
@@ -143,6 +148,69 @@ class CriticalPathTests(unittest.TestCase):
                 captured_utc="2026-08-02T00:00:00Z",
             )
             self._write_json(root / ROM_SOURCE_ROLE_PATH, role)
+            self.assertIsNone(select_critical_path(root, rom_path))
+
+    def test_bounds_unclassified_reads_once_then_skips_current_result(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            rom_path, target_sha256 = self._ready_root(root)
+            self._write_current_mapping(root, target_sha256)
+            source_sha256 = sha256_file(root / ROM_SOURCE_PATH)
+            role = build_active_rom_source_role(
+                target_sha256=target_sha256,
+                source_active_register_rom_source_sha256=source_sha256,
+                source_register_trace_sha256=sha256_file(
+                    root / REGISTER_TRACE_PATH
+                ),
+                source_target_population_sha256="d" * 64,
+                analysis={
+                    "matching_definition_event_count": 46,
+                    "matching_read_event_count": 46,
+                    "unique_logical_read_count": 8,
+                    "contiguous_logical_span_bytes": 0,
+                    "forward_sequential_transition_count": 0,
+                    "source_script_payload_match_count": 0,
+                    "source_script_length_match_count": 0,
+                    "source_executed_match_count": 0,
+                    "target_transfer_byte_count": 192,
+                    "target_transfer_tile_count": 6,
+                },
+                source_role_name="unclassified-data",
+                captured_utc="2026-08-02T00:00:00Z",
+            )
+            self._write_json(root / ROM_SOURCE_ROLE_PATH, role)
+            selected = select_critical_path(root, rom_path)
+            self.assertIsNotNone(selected)
+            assert selected is not None
+            self.assertEqual(selected["selected_stage"], READ_BLOCK_STAGE)
+
+            role_sha256 = sha256_file(root / ROM_SOURCE_ROLE_PATH)
+            read_block = build_active_rom_read_block(
+                target_sha256=target_sha256,
+                source_active_rom_source_role_sha256=role_sha256,
+                source_active_register_rom_source_sha256=source_sha256,
+                source_target_population_sha256="d" * 64,
+                analysis={
+                    "read_occurrence_count": 46,
+                    "unique_logical_read_count": 8,
+                    "unique_physical_projection_count": 8,
+                    "physical_projection_byte_span": 64,
+                    "contiguous_run_count": 8,
+                    "maximum_contiguous_run_bytes": 1,
+                    "singleton_run_count": 8,
+                    "repeated_read_occurrence_count": 38,
+                    "forward_sequential_transition_count": 0,
+                    "backward_sequential_transition_count": 0,
+                    "same_address_transition_count": 8,
+                    "fixed_stride_bytes": 0,
+                    "script_record_projection_match_count": 0,
+                    "script_payload_projection_match_count": 0,
+                    "script_length_projection_match_count": 0,
+                },
+                access_pattern="scattered-lookup-candidate",
+                captured_utc="2026-08-02T00:00:00Z",
+            )
+            self._write_json(root / ROM_READ_BLOCK_PATH, read_block)
             self.assertIsNone(select_critical_path(root, rom_path))
 
     def test_does_not_focus_without_current_prerequisites(self) -> None:

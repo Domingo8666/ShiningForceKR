@@ -24,6 +24,10 @@ try:
         PUBLISH_RELATIVE_PATH as ROM_SOURCE_ROLE_PATH,
         validate_active_rom_source_role,
     )
+    from .v5_1_active_rom_read_block import (
+        PUBLISH_RELATIVE_PATH as ROM_READ_BLOCK_PATH,
+        validate_active_rom_read_block,
+    )
     from .v5_1_renderer_output_trace import DEFAULT_ROM
 except ImportError:  # pragma: no cover - direct script execution
     from patch_io import sha256_file
@@ -40,14 +44,19 @@ except ImportError:  # pragma: no cover - direct script execution
         PUBLISH_RELATIVE_PATH as ROM_SOURCE_ROLE_PATH,
         validate_active_rom_source_role,
     )
+    from v5_1_active_rom_read_block import (
+        PUBLISH_RELATIVE_PATH as ROM_READ_BLOCK_PATH,
+        validate_active_rom_read_block,
+    )
     from v5_1_renderer_output_trace import DEFAULT_ROM
 
 
 ARTIFACT_KIND = "sanitized-s25u-critical-path"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 PUBLISH_RELATIVE_PATH = Path("analysis/device/v5_1_latest_critical_path.json")
 FOCUSED_STAGE = "active-register-rom-source"
 SOURCE_ROLE_STAGE = "active-rom-source-role"
+READ_BLOCK_STAGE = "active-rom-read-block"
 FALLBACK_STAGE = "continue"
 STAGE_POLICIES = {
     FOCUSED_STAGE: {
@@ -61,6 +70,14 @@ STAGE_POLICIES = {
         "blocked_boundary": "physical-rom-source-to-source-role",
         "selection_reason": "current-rom-source-ready-current-role-missing",
         "next_checkpoint": "classify-active-rom-source-role",
+    },
+    READ_BLOCK_STAGE: {
+        "confirmed_boundary": "active-vram-to-unclassified-rom-read-set",
+        "blocked_boundary": "unclassified-rom-read-set-to-access-pattern",
+        "selection_reason": (
+            "current-unclassified-rom-source-ready-current-read-block-missing"
+        ),
+        "next_checkpoint": "capture-active-rom-read-block",
     },
 }
 TOP_LEVEL_KEYS = {
@@ -158,6 +175,28 @@ def _source_role_current(
     )
 
 
+def _read_block_current(
+    root: Path,
+    *,
+    target_sha256: str,
+    role_sha256: str,
+    source_sha256: str,
+) -> bool:
+    path = root / ROM_READ_BLOCK_PATH
+    if not path.is_file():
+        return False
+    try:
+        value = _load_object(path)
+        validate_active_rom_read_block(value)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    return (
+        value.get("target_sha256") == target_sha256
+        and value.get("source_active_rom_source_role_sha256") == role_sha256
+        and value.get("source_active_register_rom_source_sha256") == source_sha256
+    )
+
+
 def _build_selection(
     *,
     target_sha256: str,
@@ -216,6 +255,22 @@ def select_critical_path(root: Path, rom_path: Path) -> dict[str, object] | None
             trace_sha256=trace_sha256,
             stage=SOURCE_ROLE_STAGE,
         )
+    role_path = root / ROM_SOURCE_ROLE_PATH
+    role = _load_object(role_path)
+    validate_active_rom_source_role(role)
+    if role.get("source_role") == "unclassified-data":
+        role_sha256 = sha256_file(role_path)
+        if not _read_block_current(
+            root,
+            target_sha256=target_sha256,
+            role_sha256=role_sha256,
+            source_sha256=source_sha256,
+        ):
+            return _build_selection(
+                target_sha256=target_sha256,
+                trace_sha256=trace_sha256,
+                stage=READ_BLOCK_STAGE,
+            )
     return None
 
 

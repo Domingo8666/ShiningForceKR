@@ -153,6 +153,17 @@ else
       diagnostic_trigger=probe
       record_stage_failure active-rom-source-role
     fi
+  elif [ "$critical_path_focus" = "active-rom-read-block" ]; then
+    echo "SFKR critical path: bounding the active ROM read pattern."
+    write_next_step \
+      "산발적으로 읽힌 ROM 주소의 간격과 반복을 묶어 조회표인지 연속 데이터인지 판정하고 있습니다."
+    python tools/v5_1_active_rom_read_block.py --if-ready
+    active_rom_read_block_status=$?
+    if [ "$active_rom_read_block_status" -ne 0 ]; then
+      stage_status="$active_rom_read_block_status"
+      diagnostic_trigger=probe
+      record_stage_failure active-rom-read-block
+    fi
   else
   if decoder_selection_ready || group_selection_ready; then
     echo "SFKR runtime stage: using the confirmed decoder stream."
