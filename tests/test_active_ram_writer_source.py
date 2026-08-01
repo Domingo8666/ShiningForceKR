@@ -38,6 +38,38 @@ class ActiveRamWriterSourceTests(unittest.TestCase):
             0x8123,
         )
 
+    def test_classifies_supported_non_block_writers(self) -> None:
+        self.assertEqual(
+            _writer_source(
+                {
+                    "opcodes_hex": "77",
+                    "operand_kind": "hl-indirect",
+                    "registers": {"hl": 0xC120},
+                }
+            ),
+            {"kind": "register"},
+        )
+        self.assertEqual(
+            _writer_source(
+                {
+                    "opcodes_hex": "34",
+                    "operand_kind": "hl-indirect",
+                    "registers": {"hl": 0xC120},
+                }
+            ),
+            {"kind": "memory", "logical_address": 0xC120, "direction": "same"},
+        )
+        self.assertEqual(
+            _writer_source(
+                {
+                    "opcodes_hex": "edb2",
+                    "operand_kind": "block-input",
+                    "registers": {"hl": 0xC120},
+                }
+            ),
+            {"kind": "io"},
+        )
+
     def test_classifies_a_local_system_ram_source_without_publishing_addresses(self) -> None:
         local = {
             "events": [
