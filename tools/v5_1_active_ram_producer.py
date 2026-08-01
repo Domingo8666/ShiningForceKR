@@ -46,7 +46,6 @@ try:
         _remove_breakpoint,
         _set_execute_breakpoint,
     )
-    from .v5_1_runtime_hit_resolver import _parse_trace_line
     from .v5_1_test_display_capture import (
         DECODER_ENTRY_LOGICAL,
         DECODER_ENTRY_TRACE_STEPS,
@@ -85,7 +84,6 @@ except ImportError:  # pragma: no cover - direct script execution
         _remove_breakpoint,
         _set_execute_breakpoint,
     )
-    from v5_1_runtime_hit_resolver import _parse_trace_line
     from v5_1_test_display_capture import (
         DECODER_ENTRY_LOGICAL,
         DECODER_ENTRY_TRACE_STEPS,
@@ -335,48 +333,80 @@ def _write_operand_kind(opcodes: bytes) -> str:
     return "unknown"
 
 
-def latest_target_write(
-    evidence: dict[str, object],
+def _supported_write_length(opcodes: bytes) -> int | None:
+    if not opcodes:
+        return None
+    first = opcodes[0]
+    if first in {
+        0x02,
+        0x12,
+        0x34,
+        0x35,
+        0x70,
+        0x71,
+        0x72,
+        0x73,
+        0x74,
+        0x75,
+        0x77,
+        0xC5,
+        0xD5,
+        0xE5,
+        0xF5,
+    }:
+        return 1
+    if first == 0x36:
+        return 2
+    if first in {0x08, 0x22, 0x32}:
+        return 3
+    if first == 0xCB:
+        return 2
+    if first in {0xDD, 0xFD} and len(opcodes) >= 2:
+        if opcodes[1] == 0xCB:
+            return 4
+        if opcodes[1] == 0x36:
+            return 4
+        return 3
+    if first == 0xED and len(opcodes) >= 2:
+        return 4 if opcodes[1] in {0x43, 0x53, 0x63, 0x73} else 2
+    return None
+
+
+def previous_target_write(
+    rom: bytes,
+    state: dict[str, object],
     target_addresses: set[int],
 ) -> dict[str, object] | None:
-    trace = evidence.get("trace")
-    z80 = evidence.get("z80")
-    if not isinstance(trace, dict) or not isinstance(z80, dict):
-        return None
-    lines = trace.get("lines")
-    if not isinstance(lines, list):
-        return None
-    for line in reversed(lines):
-        if not isinstance(line, str):
+    """Decode the just-completed write directly from the immutable ROM."""
+
+    physical_end = int(state["physical_pc_after"])
+    registers = _registers(state)
+    candidates: list[dict[str, object]] = []
+    for length in range(1, 5):
+        physical_start = physical_end - length
+        if not 0 <= physical_start < physical_end <= len(rom):
             continue
-        parsed = _parse_trace_line(line)
-        if parsed is None:
+        opcodes = rom[physical_start:physical_end]
+        if _supported_write_length(opcodes) != length:
             continue
-        registers = parsed["registers"]
-        assert isinstance(registers, dict)
-        normalized = {str(key): int(value) for key, value in registers.items()}
-        for name in ("IX", "IY"):
-            value = z80.get(name)
-            if isinstance(value, str) and re.fullmatch(r"[0-9A-Fa-f]{1,4}", value):
-                normalized[name.lower()] = int(value, 16)
         addresses = [
             address
-            for address in write_addresses(parsed["opcodes"], normalized)
+            for address in write_addresses(opcodes, registers)
             if address in target_addresses
         ]
-        if not addresses:
-            return None
-        return {
-            "bank": int(parsed["bank"]),
-            "pc": int(parsed["pc"]),
-            "opcodes_hex": bytes(parsed["opcodes"]).hex(),
-            "operand_kind": _write_operand_kind(bytes(parsed["opcodes"])),
-            "registers": normalized,
-            "addresses": addresses,
-            "trace_total_entries": int(trace.get("total_entries", -1)),
-            "raw_trace_line": line,
-        }
-    return None
+        if addresses:
+            candidates.append(
+                {
+                    "bank": int(state["executing_bank"]),
+                    "pc": (int(state["pc_after"]) - length) & 0xFFFF,
+                    "physical_pc": physical_start,
+                    "opcodes_hex": opcodes.hex(),
+                    "operand_kind": _write_operand_kind(opcodes),
+                    "registers": registers,
+                    "addresses": addresses,
+                }
+            )
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def _read_logical_ram_values(
@@ -428,7 +458,6 @@ def _capture_producer_state(
         },
     )
     mapper = _parse_memory_bytes(mapper_payload.get("data"), 4)
-    trace = client.call("get_trace_log", {"count": 64})
     registers = {
         key.lower(): _parse_hex_status(z80.get(key), key)
         for key in ("AF", "BC", "DE", "HL", "IX", "IY", "SP")
@@ -444,13 +473,11 @@ def _capture_producer_state(
         "slot1_bank": mapper[2],
         "slot2_bank": mapper[3],
         "registers": registers,
-        "trace_entries": int(trace.get("count", len(trace.get("lines", [])))),
     }
     return state, {
         "status": status,
         "z80": z80,
         "mapper": mapper_payload,
-        "trace": trace,
     }
 
 
@@ -792,13 +819,11 @@ def main() -> int:
     armed_entry_addresses: list[int] = []
     endpoint_armed = False
     fast_forward = False
-    trace_enabled = False
     selected_state: dict[str, object] | None = None
     ready_state: dict[str, object] | None = None
     events: list[dict[str, object]] = []
     latest_writer_event: dict[int, int] = {}
     write_watch_hit_count = 0
-    last_trace_total = -1
     runtime_stage = "active-ram-producer-mcp-initialize"
 
     def observe_write(
@@ -807,17 +832,13 @@ def main() -> int:
         *,
         status: dict[str, object],
     ) -> None:
-        nonlocal write_watch_hit_count, last_trace_total
+        nonlocal write_watch_hit_count
         write_watch_hit_count += 1
         if write_watch_hit_count > MAX_WRITE_WATCH_HITS:
             raise RuntimeError("active RAM producer write watch saturated")
-        writer = latest_target_write(evidence, target_addresses)
+        writer = previous_target_write(rom, state, target_addresses)
         if writer is None:
             return
-        trace_total = int(writer["trace_total_entries"])
-        if trace_total >= 0 and trace_total <= last_trace_total:
-            return
-        last_trace_total = max(last_trace_total, trace_total)
         addresses = [int(item) for item in writer["addresses"]]
         values = _read_logical_ram_values(
             client,
@@ -842,6 +863,7 @@ def main() -> int:
             latest_writer_event[address] = event_index
 
     try:
+        rom = rom_path.read_bytes()
         tools = client.initialize()
         missing = sorted(REQUIRED_TOOLS - tools)
         if missing:
@@ -861,21 +883,7 @@ def main() -> int:
         ram_area = _select_ram_area(areas)
         ram_area_id = int(ram_area["id"])
         ram_area_size = int(ram_area["size"])
-        started = client.call(
-            "set_trace_log",
-            {
-                "enabled": True,
-                "cpu_irq": False,
-                "vdp_write": False,
-                "vdp_status": False,
-                "psg": False,
-                "ym2413": False,
-                "io_port": False,
-                "bank_switch": True,
-            },
-        )
-        trace_enabled = True
-        last_trace_total = int(started.get("total_entries", -1))
+        client.call("set_trace_log", {"enabled": False})
         for start, end in write_ranges:
             _set_write_range(client, start, end)
             armed_write_ranges.append((start, end))
@@ -1003,11 +1011,6 @@ def main() -> int:
         for start, end in armed_write_ranges:
             try:
                 _remove_range(client, start, end)
-            except Exception:
-                pass
-        if trace_enabled:
-            try:
-                client.call("set_trace_log", {"enabled": False})
             except Exception:
                 pass
         client.close()

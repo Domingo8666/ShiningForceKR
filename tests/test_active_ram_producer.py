@@ -9,6 +9,7 @@ from tools.v5_1_active_ram_producer import (
     build_active_ram_producer,
     contiguous_address_ranges,
     extract_target_values,
+    previous_target_write,
     validate_active_ram_producer,
     write_addresses,
 )
@@ -95,8 +96,6 @@ class ActiveRamProducerTests(unittest.TestCase):
                     }
                 if name == "read_memory":
                     return {"data": "00 00 08 09"}
-                if name == "get_trace_log":
-                    return {"count": 0, "lines": [], "total_entries": 0}
                 raise AssertionError(name)
 
         client = Client()
@@ -107,8 +106,9 @@ class ActiveRamProducerTests(unittest.TestCase):
         )
         self.assertEqual(state["pc_after"], 0x3411)
         self.assertEqual(state["slot1_bank"], 8)
-        self.assertIn("trace", evidence)
+        self.assertIn("z80", evidence)
         self.assertNotIn("get_call_stack", client.calls)
+        self.assertNotIn("get_trace_log", client.calls)
 
     def test_extracts_the_confirmed_previous_step_sources(self) -> None:
         local = {
@@ -178,6 +178,31 @@ class ActiveRamProducerTests(unittest.TestCase):
             write_addresses(bytes.fromhex("ED B8"), registers),
             [0xC122],
         )
+
+    def test_decodes_completed_writer_from_rom_without_a_trace_buffer(self) -> None:
+        rom = bytearray(0x200)
+        rom[0x100:0x102] = bytes.fromhex("ED B0")
+        state = {
+            "physical_pc_after": 0x102,
+            "pc_after": 0x4102,
+            "executing_bank": 0,
+            "registers": {
+                "af": 0,
+                "bc": 0,
+                "de": 0xC121,
+                "hl": 0,
+                "ix": 0,
+                "iy": 0,
+                "sp": 0xD000,
+            },
+        }
+        writer = previous_target_write(bytes(rom), state, {0xC120})
+        self.assertIsNotNone(writer)
+        assert writer is not None
+        self.assertEqual(writer["physical_pc"], 0x100)
+        self.assertEqual(writer["pc"], 0x4100)
+        self.assertEqual(writer["operand_kind"], "block-copy")
+        self.assertEqual(writer["addresses"], [0xC120])
 
     def test_confirms_only_full_nonzero_writer_coverage(self) -> None:
         final_ram = bytearray(0x2000)
