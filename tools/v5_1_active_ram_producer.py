@@ -26,6 +26,7 @@ try:
         McpStdioClient,
         _default_command,
         _runtime_failure_receipt,
+        _step_frames_and_wait,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
@@ -63,6 +64,7 @@ except ImportError:  # pragma: no cover - direct script execution
         McpStdioClient,
         _default_command,
         _runtime_failure_receipt,
+        _step_frames_and_wait,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
@@ -98,7 +100,8 @@ PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_active_ram_producer.json"
 )
 LOCAL_REPORT_PATH = Path("reports/local/v5_1_active_ram_producer.json")
-PRODUCER_WATCH_TIMEOUT_SECONDS = 240.0
+PRODUCER_WARMUP_FRAMES = 10_000
+PRODUCER_WATCH_TIMEOUT_SECONDS = 80.0
 ENDPOINT_WATCH_TIMEOUT_SECONDS = 15.0
 MAX_WRITE_WATCH_HITS = 4096
 COUNT_KEYS = {
@@ -835,16 +838,34 @@ def main() -> int:
         ram_area = _select_ram_area(areas)
         ram_area_id = int(ram_area["id"])
         client.call("set_trace_log", {"enabled": False})
-        for start, end in write_ranges:
-            _set_write_range(client, start, end)
-            armed_write_ranges.append((start, end))
         for address in entry_addresses:
             _set_execute_breakpoint(client, address)
             armed_entry_addresses.append(address)
 
-        runtime_stage = "active-ram-producer-route-watch"
         if any(button is not None for _, button in ATTRACT_ROUTE_SCHEDULE):
             raise RuntimeError("active RAM producer attract route must be passive")
+        runtime_stage = "active-ram-producer-route-warmup"
+        warmup_remaining = PRODUCER_WARMUP_FRAMES
+        while warmup_remaining > 0:
+            frames = min(1_000, warmup_remaining)
+            status = _step_frames_and_wait(client, frames)
+            if status.get("at_breakpoint") is True:
+                state, _ = _capture_producer_state(client)
+                if _entry_matches(
+                    state,
+                    selector_de=selector_de,
+                    entry_ordinal=entry_ordinal,
+                ):
+                    raise RuntimeError(
+                        "active RAM producer target preceded the focused watch"
+                    )
+                continue
+            warmup_remaining -= frames
+
+        for start, end in write_ranges:
+            _set_write_range(client, start, end)
+            armed_write_ranges.append((start, end))
+        runtime_stage = "active-ram-producer-route-watch"
         _set_unlimited_fast_forward(client, True)
         fast_forward = True
         deadline = time.monotonic() + PRODUCER_WATCH_TIMEOUT_SECONDS

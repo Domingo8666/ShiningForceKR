@@ -187,6 +187,7 @@ RUNTIME_FAILURE_STAGES = {
     "active-ram-buffer-producer",
     "active-ram-producer-mcp-initialize",
     "active-ram-producer-load-media",
+    "active-ram-producer-route-warmup",
     "active-ram-producer-route-watch",
     "active-ram-producer-route-ready",
     "active-ram-producer-artifact",
