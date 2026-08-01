@@ -142,6 +142,10 @@ try:
         PUBLISH_RELATIVE_PATH as ACTIVE_VRAM_ROUTE_RELATIVE_PATH,
         validate_active_vram_route,
     )
+    from .v5_1_active_ram_producer import (
+        PUBLISH_RELATIVE_PATH as ACTIVE_RAM_PRODUCER_RELATIVE_PATH,
+        validate_active_ram_producer,
+    )
     from .v5_1_runtime_context_glyph_candidates import (
         PUBLISH_RELATIVE_PATH
         as RUNTIME_CONTEXT_GLYPH_CANDIDATES_RELATIVE_PATH,
@@ -373,6 +377,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as ACTIVE_VRAM_ROUTE_RELATIVE_PATH,
         validate_active_vram_route,
     )
+    from v5_1_active_ram_producer import (
+        PUBLISH_RELATIVE_PATH as ACTIVE_RAM_PRODUCER_RELATIVE_PATH,
+        validate_active_ram_producer,
+    )
     from v5_1_runtime_context_glyph_candidates import (
         PUBLISH_RELATIVE_PATH
         as RUNTIME_CONTEXT_GLYPH_CANDIDATES_RELATIVE_PATH,
@@ -556,6 +564,8 @@ SAFE_ARTIFACTS = {
         validate_runtime_context_glyph_demand,
     ACTIVE_VRAM_ROUTE_RELATIVE_PATH:
         validate_active_vram_route,
+    ACTIVE_RAM_PRODUCER_RELATIVE_PATH:
+        validate_active_ram_producer,
     RUNTIME_CONTEXT_GLYPH_CANDIDATES_RELATIVE_PATH:
         validate_runtime_context_glyph_candidates,
     RUNTIME_CONTEXT_GLYPH_REVIEW_RELATIVE_PATH:

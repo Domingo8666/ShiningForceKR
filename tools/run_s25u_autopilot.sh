@@ -221,6 +221,7 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_visible_script_roundtrip.json|\
     analysis/device/v5_1_latest_renderer_output_trace.json|\
     analysis/device/v5_1_latest_active_vram_route.json|\
+    analysis/device/v5_1_latest_active_ram_producer.json|\
     analysis/device/v5_1_latest_visible_unicode_mapping.json|\
     analysis/device/v5_1_latest_initial_font_page_trace.json|\
     analysis/device/v5_1_latest_font_transfer_source.json|\
