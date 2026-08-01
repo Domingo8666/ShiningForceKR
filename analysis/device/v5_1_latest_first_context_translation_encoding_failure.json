@@ -6,13 +6,13 @@
   "failure_step": "build-runtime-layout-rows",
   "failure_kind": "ValueError",
   "failure_row_index": 1,
-  "failure_detail": "layout-control-count-not-nine",
+  "failure_detail": "layout-no-compatible-control-count",
   "required_visible_symbol_count": 0,
   "maximum_routable_visible_symbol_count": 0,
   "target_encoded_bit_count": 0,
   "bounded_candidate_bit_count": 0,
   "bounded_candidate_relation": "none",
-  "captured_utc": "2026-08-01T10:19:01.051623Z",
+  "captured_utc": "2026-08-01T10:22:41.554188Z",
   "source_and_target_text_local_only": true,
   "next_checkpoint": "repair-first-context-input"
 }
