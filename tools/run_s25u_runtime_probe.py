@@ -185,6 +185,7 @@ RUNTIME_FAILURE_STAGES = {
     "context-glyph-demand-validation",
     "active-vram-route",
     "active-ram-buffer-producer",
+    "active-ram-writer-source",
     "active-ram-producer-mcp-initialize",
     "active-ram-producer-load-media",
     "active-ram-producer-route-warmup",

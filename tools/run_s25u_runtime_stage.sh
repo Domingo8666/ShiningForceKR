@@ -699,6 +699,16 @@ else
   fi
 
   if [ "$stage_status" -eq 0 ]; then
+    python tools/v5_1_active_ram_writer_source.py --if-ready
+    active_ram_writer_source_status=$?
+    if [ "$active_ram_writer_source_status" -ne 0 ]; then
+      stage_status="$active_ram_writer_source_status"
+      diagnostic_trigger=probe
+      record_stage_failure active-ram-writer-source
+    fi
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
     runtime_context_glyph_candidates_output="$(
       python tools/v5_1_runtime_context_glyph_candidates.py --if-ready 2>&1
     )"
