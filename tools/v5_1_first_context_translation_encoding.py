@@ -2289,6 +2289,135 @@ def solve_exact_length_row_multi_page_visual_symbols(
     )
 
 
+def solve_fixed_count_row_visual_symbols(
+    *,
+    trees: dict[int, object],
+    initial_context: int,
+    maximum_bits: int,
+    target_symbol_count: int,
+    page: int,
+    visuals: list[str],
+) -> tuple[list[int], int, list[int]]:
+    """Jointly choose glyph slots and controls for one fixed-count row."""
+
+    symbols, padding_count, assignments = (
+        solve_bounded_length_row_visual_symbols(
+            trees=trees,
+            initial_context=initial_context,
+            maximum_bits=maximum_bits,
+            page=page,
+            visuals=visuals,
+        )
+    )
+    try:
+        padded, _, added_pages = pad_row_to_runtime_symbol_count(
+            trees=trees,
+            initial_context=initial_context,
+            maximum_bits=maximum_bits,
+            target_symbol_count=target_symbol_count,
+            symbols=symbols,
+        )
+        return padded, padding_count + added_pages, assignments
+    except ValueError:
+        pass
+
+    _, bounded_bits = encode_symbols(
+        trees,
+        symbols,
+        initial_symbol=initial_context,
+        end_symbol=CANDIDATE_END_SYMBOL,
+        max_bits=maximum_bits,
+    )
+    first_exact_bits = max(1, bounded_bits - 16)
+    for target_bits in range(first_exact_bits, maximum_bits + 1):
+        try:
+            exact_symbols, exact_padding, exact_assignments = (
+                solve_exact_length_row_visual_symbols(
+                    trees=trees,
+                    initial_context=initial_context,
+                    target_bits=target_bits,
+                    page=page,
+                    visuals=visuals,
+                )
+            )
+        except ValueError:
+            continue
+        if len(exact_symbols) == target_symbol_count:
+            return exact_symbols, exact_padding, exact_assignments
+    raise ValueError("first context row has no joint fixed-count route")
+
+
+def solve_fixed_count_row_multi_page_visual_symbols(
+    *,
+    trees: dict[int, object],
+    initial_context: int,
+    maximum_bits: int,
+    target_symbol_count: int,
+    pages: tuple[int, ...],
+    visuals: list[str],
+) -> tuple[list[int], int, list[int], list[int]]:
+    """Jointly choose multi-page glyph slots for one fixed-count row."""
+
+    symbols, padding_count, assignments, assignment_pages = (
+        solve_bounded_length_row_multi_page_visual_symbols(
+            trees=trees,
+            initial_context=initial_context,
+            maximum_bits=maximum_bits,
+            pages=pages,
+            visuals=visuals,
+        )
+    )
+    try:
+        padded, _, added_pages = pad_row_to_runtime_symbol_count(
+            trees=trees,
+            initial_context=initial_context,
+            maximum_bits=maximum_bits,
+            target_symbol_count=target_symbol_count,
+            symbols=symbols,
+        )
+        return (
+            padded,
+            padding_count + added_pages,
+            assignments,
+            assignment_pages,
+        )
+    except ValueError:
+        pass
+
+    _, bounded_bits = encode_symbols(
+        trees,
+        symbols,
+        initial_symbol=initial_context,
+        end_symbol=CANDIDATE_END_SYMBOL,
+        max_bits=maximum_bits,
+    )
+    first_exact_bits = max(1, bounded_bits - 16)
+    for target_bits in range(first_exact_bits, maximum_bits + 1):
+        try:
+            (
+                exact_symbols,
+                exact_padding,
+                exact_assignments,
+                exact_pages,
+            ) = solve_exact_length_row_multi_page_visual_symbols(
+                trees=trees,
+                initial_context=initial_context,
+                target_bits=target_bits,
+                pages=pages,
+                visuals=visuals,
+            )
+        except ValueError:
+            continue
+        if len(exact_symbols) == target_symbol_count:
+            return (
+                exact_symbols,
+                exact_padding,
+                exact_assignments,
+                exact_pages,
+            )
+    raise ValueError("first context row has no joint multi-page fixed-count route")
+
+
 def diagnose_bounded_candidate_bit_count(
     *,
     trees: dict[int, object],
@@ -2386,20 +2515,8 @@ def select_row_font_pages(
                         visuals=visuals,
                     )
                 else:
-                    candidate_symbols, _, _ = (
-                        solve_bounded_length_row_visual_symbols(
-                            trees=trees,
-                            initial_context=int(constraint["initial_context"]),
-                            maximum_bits=(
-                                int(constraint["original_record_length_bytes"])
-                                * 8
-                            ),
-                            page=page,
-                            visuals=visuals,
-                        )
-                    )
                     if "original_symbol_count" in constraint:
-                        pad_row_to_runtime_symbol_count(
+                        solve_fixed_count_row_visual_symbols(
                             trees=trees,
                             initial_context=int(constraint["initial_context"]),
                             maximum_bits=(
@@ -2409,7 +2526,19 @@ def select_row_font_pages(
                             target_symbol_count=int(
                                 constraint["original_symbol_count"]
                             ),
-                            symbols=candidate_symbols,
+                            page=page,
+                            visuals=visuals,
+                        )
+                    else:
+                        solve_bounded_length_row_visual_symbols(
+                            trees=trees,
+                            initial_context=int(constraint["initial_context"]),
+                            maximum_bits=(
+                                int(constraint["original_record_length_bytes"])
+                                * 8
+                            ),
+                            page=page,
+                            visuals=visuals,
                         )
             except ValueError:
                 if constraint is not None:
@@ -2421,26 +2550,8 @@ def select_row_font_pages(
                         candidate_groups.append(expanded_pool)
                     for page_group in candidate_groups:
                         try:
-                            candidate_symbols, _, _, _ = (
-                                solve_bounded_length_row_multi_page_visual_symbols(
-                                    trees=trees,
-                                    initial_context=int(
-                                        constraint["initial_context"]
-                                    ),
-                                    maximum_bits=(
-                                        int(
-                                            constraint[
-                                                "original_record_length_bytes"
-                                            ]
-                                        )
-                                        * 8
-                                    ),
-                                    pages=page_group,
-                                    visuals=visuals,
-                                )
-                            )
                             if "original_symbol_count" in constraint:
-                                pad_row_to_runtime_symbol_count(
+                                solve_fixed_count_row_multi_page_visual_symbols(
                                     trees=trees,
                                     initial_context=int(
                                         constraint["initial_context"]
@@ -2456,7 +2567,25 @@ def select_row_font_pages(
                                     target_symbol_count=int(
                                         constraint["original_symbol_count"]
                                     ),
-                                    symbols=candidate_symbols,
+                                    pages=page_group,
+                                    visuals=visuals,
+                                )
+                            else:
+                                solve_bounded_length_row_multi_page_visual_symbols(
+                                    trees=trees,
+                                    initial_context=int(
+                                        constraint["initial_context"]
+                                    ),
+                                    maximum_bits=(
+                                        int(
+                                            constraint[
+                                                "original_record_length_bytes"
+                                            ]
+                                        )
+                                        * 8
+                                    ),
+                                    pages=page_group,
+                                    visuals=visuals,
                                 )
                         except ValueError:
                             continue
@@ -2572,17 +2701,33 @@ def build_single_page_symbol_rows(
             if len(row_pages) == 1:
                 page = row_pages[0]
                 try:
-                    (
-                        symbols,
-                        padding_count,
-                        assignments,
-                    ) = solve_bounded_length_row_visual_symbols(
-                        trees=trees,
-                        initial_context=initial_context,
-                        maximum_bits=target_bits,
-                        page=page,
-                        visuals=visuals,
-                    )
+                    if "original_symbol_count" in constraint:
+                        (
+                            symbols,
+                            padding_count,
+                            assignments,
+                        ) = solve_fixed_count_row_visual_symbols(
+                            trees=trees,
+                            initial_context=initial_context,
+                            maximum_bits=target_bits,
+                            target_symbol_count=int(
+                                constraint["original_symbol_count"]
+                            ),
+                            page=page,
+                            visuals=visuals,
+                        )
+                    else:
+                        (
+                            symbols,
+                            padding_count,
+                            assignments,
+                        ) = solve_bounded_length_row_visual_symbols(
+                            trees=trees,
+                            initial_context=initial_context,
+                            maximum_bits=target_bits,
+                            page=page,
+                            visuals=visuals,
+                        )
                 except ValueError:
                     ACTIVE_FAILURE_DETAIL = (
                         "solve-proven-bounded-row"
@@ -2606,18 +2751,35 @@ def build_single_page_symbol_rows(
             else:
                 ACTIVE_FAILURE_DETAIL = "solve-bounded-multi-page-row"
                 try:
-                    (
-                        symbols,
-                        padding_count,
-                        assignments,
-                        assignment_pages,
-                    ) = solve_bounded_length_row_multi_page_visual_symbols(
-                        trees=trees,
-                        initial_context=initial_context,
-                        maximum_bits=target_bits,
-                        pages=row_pages,
-                        visuals=visuals,
-                    )
+                    if "original_symbol_count" in constraint:
+                        (
+                            symbols,
+                            padding_count,
+                            assignments,
+                            assignment_pages,
+                        ) = solve_fixed_count_row_multi_page_visual_symbols(
+                            trees=trees,
+                            initial_context=initial_context,
+                            maximum_bits=target_bits,
+                            target_symbol_count=int(
+                                constraint["original_symbol_count"]
+                            ),
+                            pages=row_pages,
+                            visuals=visuals,
+                        )
+                    else:
+                        (
+                            symbols,
+                            padding_count,
+                            assignments,
+                            assignment_pages,
+                        ) = solve_bounded_length_row_multi_page_visual_symbols(
+                            trees=trees,
+                            initial_context=initial_context,
+                            maximum_bits=target_bits,
+                            pages=row_pages,
+                            visuals=visuals,
+                        )
                 except ValueError:
                     ACTIVE_FAILURE_DETAIL = (
                         "solve-proven-multi-page-row"
@@ -2640,20 +2802,19 @@ def build_single_page_symbol_rows(
             runtime_symbol_count = int(
                 constraint.get("original_symbol_count", len(symbols))
             )
-            fixed_count_padding_symbol_count = 0
-            if "original_symbol_count" in constraint:
-                (
-                    symbols,
-                    fixed_count_padding_symbol_count,
-                    fixed_count_padding_page_select_count,
-                ) = pad_row_to_runtime_symbol_count(
-                    trees=trees,
-                    initial_context=initial_context,
-                    maximum_bits=route_capacity_bits,
-                    target_symbol_count=runtime_symbol_count,
-                    symbols=symbols,
-                )
-                padding_count += fixed_count_padding_page_select_count
+            visible_page_select_count = 0
+            selected_page: int | None = None
+            for assignment_page in assignment_pages:
+                if assignment_page != selected_page:
+                    visible_page_select_count += 1
+                    selected_page = assignment_page
+            fixed_count_padding_symbol_count = max(
+                0,
+                len(symbols)
+                - len(visuals)
+                - 1
+                - visible_page_select_count * 3,
+            )
         if constraint is None:
             runtime_symbol_count = len(symbols)
             fixed_count_padding_symbol_count = 0
