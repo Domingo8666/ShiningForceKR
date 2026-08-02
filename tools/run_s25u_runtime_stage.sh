@@ -241,15 +241,6 @@ else
     python tools/v5_1_first_context_translated_glyph_route.py
     translated_glyph_route_status=$?
     if [ "$translated_glyph_route_status" -ne 0 ]; then
-      echo "Existing private VRAM evidence is insufficient; refreshing it once."
-      python tools/v5_1_first_context_translated_vram_diff.py
-      translated_glyph_route_status=$?
-      if [ "$translated_glyph_route_status" -eq 0 ]; then
-        python tools/v5_1_first_context_translated_glyph_route.py
-        translated_glyph_route_status=$?
-      fi
-    fi
-    if [ "$translated_glyph_route_status" -ne 0 ]; then
       stage_status="$translated_glyph_route_status"
       diagnostic_trigger=probe
       record_stage_failure first-context-translated-glyph-route

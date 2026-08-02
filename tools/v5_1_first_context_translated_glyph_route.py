@@ -145,28 +145,14 @@ def analyze_translated_glyph_route(
                 or tile_index < 0
             ):
                 raise ValueError("legacy translated VRAM tile index is invalid")
-            candidate_hashes = {
-                str(assignment["tile_sha256"])
-                for assignment in normalized_assignments
-                if assignment["tile_sha256"] in legacy_hash_set
-                and int(assignment["symbol"]) == (tile_index & 0xFF)
-            }
-            if len(candidate_hashes) != 1:
-                raise ValueError(
-                    "legacy translated VRAM pairs are not uniquely recoverable"
-                )
             inferred_matches.append(
                 {
                     "tile_index": tile_index,
-                    "tile_sha256": candidate_hashes.pop(),
+                    "candidate_tile_sha256s": sorted(legacy_hash_set),
                 }
             )
-        if len({item["tile_sha256"] for item in inferred_matches}) != len(
-            legacy_hashes
-        ):
-            raise ValueError("legacy translated VRAM pairs are not one-to-one")
         matches = inferred_matches
-        pairing_method = "unique-slot-constrained-legacy-pairs"
+        pairing_method = "slot-constrained-legacy-candidates"
 
     local_matches = []
     all_candidates = []
@@ -180,17 +166,27 @@ def analyze_translated_glyph_route(
             raise ValueError("translated VRAM glyph match is invalid")
         tile_index = match.get("tile_index")
         tile_hash = match.get("tile_sha256")
+        candidate_hashes = match.get("candidate_tile_sha256s")
         if (
             not isinstance(tile_index, int)
             or isinstance(tile_index, bool)
             or tile_index < 0
-            or not _is_sha256(tile_hash)
         ):
             raise ValueError("translated VRAM glyph match fields are invalid")
+        if _is_sha256(tile_hash):
+            candidate_hash_set = {str(tile_hash)}
+        elif (
+            isinstance(candidate_hashes, list)
+            and candidate_hashes
+            and all(_is_sha256(item) for item in candidate_hashes)
+        ):
+            candidate_hash_set = {str(item) for item in candidate_hashes}
+        else:
+            raise ValueError("translated VRAM glyph match hashes are invalid")
         candidates = [
             assignment
             for assignment in normalized_assignments
-            if assignment["tile_sha256"] == tile_hash
+            if assignment["tile_sha256"] in candidate_hash_set
         ]
         aligned = [
             assignment
@@ -206,7 +202,7 @@ def analyze_translated_glyph_route(
         local_matches.append(
             {
                 "tile_index": tile_index,
-                "tile_sha256": tile_hash,
+                "candidate_tile_sha256s": sorted(candidate_hash_set),
                 "candidate_assignments": candidates,
                 "slot_aligned_assignments": aligned,
             }

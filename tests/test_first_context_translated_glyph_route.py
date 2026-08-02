@@ -86,7 +86,7 @@ class FirstContextTranslatedGlyphRouteTests(unittest.TestCase):
         self.assertEqual(counts["uniquely_aligned_match_count"], 2)
         self.assertEqual(
             local["pairing_method"],
-            "unique-slot-constrained-legacy-pairs",
+            "slot-constrained-legacy-candidates",
         )
 
     def test_rejects_an_inconsistent_safe_conclusion(self) -> None:
