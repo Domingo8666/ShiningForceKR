@@ -4,10 +4,10 @@
   "status": "direct-renderer-first-screen-captured",
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "test_target_sha256": "7942926ce737cdc9acd86c3e1ee033cea0fbeb4dafb2dc81f9bed042ab48a568",
-  "first_context_translation_test_build_sha256": "e0743bbcae691fb37dedb79db2b038f862e76d84ef7c2ee84881b808562913a4",
-  "local_encoding_sha256": "349668df9152b99742be96aef18b740f3a6d4b4d7802b9f27b995ae05d877afe",
+  "first_context_translation_test_build_sha256": "7adaa57f7357085e02b44bca8556144e72059635e3fda5760b256bc3f43cebbf",
+  "local_encoding_sha256": "8a2c0bb0a02f5305d8fd99663affa3f711e4b68d0d418eb0cae1ddccfb8055f1",
   "capture_png_sha256": "e4832194848b6fd9a203bc9ffff8e4ec380ea9b203f31783c4a26d90acaea9fd",
-  "captured_utc": "2026-08-02T10:24:20.408884Z",
+  "captured_utc": "2026-08-02T10:27:51.889134Z",
   "runtime_entry": {
     "selector": 2,
     "ordinal": 147
