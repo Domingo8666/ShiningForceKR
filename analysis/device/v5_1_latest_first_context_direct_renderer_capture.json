@@ -3,11 +3,11 @@
   "schema_version": 1,
   "status": "direct-renderer-first-screen-captured",
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "test_target_sha256": "fc390df74f6848bc151de3e5d1a0c2769cd18a6d88f4e4cc6d52726ca56f0ec0",
-  "first_context_translation_test_build_sha256": "18e535427a2b84000dcd96d28548fa3765f9ba0244dc4f7cc9a32c0425f8857c",
-  "local_encoding_sha256": "b252689e0b6a31b9100948411c03c9f30a204aae4d86947a154d156f9fd3d2f9",
+  "test_target_sha256": "03c0f4b00aef8ac4d918331d9a03070878537e80369843963d2a1ccae7f09c2c",
+  "first_context_translation_test_build_sha256": "b92d034c05ec52f74f255f1e9bfdd4f0995ad2a0b971847b145f212fae30cfae",
+  "local_encoding_sha256": "5ffa7bc61cad7ff162b739aae307aece5966283a1ad7eab48f86727168f3bdaf",
   "capture_png_sha256": "0198cd23ee06119156a2f94c890f544e6d50598412e644a46e8d9aca40c9d5ee",
-  "captured_utc": "2026-08-02T09:26:29.734516Z",
+  "captured_utc": "2026-08-02T09:58:51.535767Z",
   "runtime_entry": {
     "selector": 2,
     "ordinal": 147
