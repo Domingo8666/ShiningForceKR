@@ -318,6 +318,23 @@ PY
           --direct-renderer
       fi
     }
+    run_direct_renderer_capture_with_retry() {
+      local attempt=1
+      local capture_status=1
+      while [ "$attempt" -le 3 ]; do
+        python tools/v5_1_first_context_direct_renderer_capture.py
+        capture_status=$?
+        if [ "$capture_status" -eq 0 ]; then
+          return 0
+        fi
+        echo "SFKR direct renderer capture attempt $attempt/3 failed; retrying." >&2
+        attempt=$((attempt + 1))
+        if [ "$attempt" -le 3 ]; then
+          sleep 2
+        fi
+      done
+      return "$capture_status"
+    }
     if python - "$critical_path_request_id" <<'PY'
 from pathlib import Path
 import json
@@ -387,7 +404,7 @@ PY
           --direct-renderer-observed-page &&
         python tools/v5_1_first_context_record_reinsertion.py &&
         python tools/v5_1_first_context_translation_test_build.py &&
-        python tools/v5_1_first_context_direct_renderer_capture.py &&
+        run_direct_renderer_capture_with_retry &&
         run_direct_renderer_consumer_trace_if_mapped 2>&1
       )"
     fi
