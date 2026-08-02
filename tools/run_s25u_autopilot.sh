@@ -119,11 +119,46 @@ last_head_file="$state_dir/last_processed_head"
 stop_file="$state_dir/STOP"
 lock_dir="$state_dir/lock"
 lock_pid_file="$lock_dir/pid"
+status_file="${SFKR_AUTOPILOT_STATUS_FILE:-$root/reports/AUTOPILOT_STATUS.txt}"
+runtime_state="실행 중"
+last_status_message="시작 준비 중"
+
+write_runtime_status() {
+  local current_head="확인 중"
+  local processed_head="아직 없음"
+  local next_step="확인 중"
+  local status_temp=""
+  if git -C "$root" rev-parse HEAD >/dev/null 2>&1; then
+    current_head="$(git -C "$root" rev-parse HEAD)"
+  fi
+  if [ -s "$last_head_file" ]; then
+    processed_head="$(cat "$last_head_file")"
+  fi
+  if [ -s "$root/reports/NEXT_STEP.txt" ]; then
+    next_step="$(head -n 1 "$root/reports/NEXT_STEP.txt")"
+  fi
+
+  mkdir -p "$(dirname "$status_file")"
+  status_temp="$status_file.$$"
+  {
+    printf '%s\n' "Shining Force KR S25U 자동작업 상태"
+    printf '%s\n' "상태: $runtime_state"
+    printf '%s\n' "프로세스: $$"
+    printf '%s\n' "현재 Git 커밋: $current_head"
+    printf '%s\n' "마지막 처리 커밋: $processed_head"
+    printf '%s\n' "현재 작업: $next_step"
+    printf '%s\n' "최근 활동: $last_status_message"
+    printf '%s\n' "자동 갱신 시각: $(date '+%Y-%m-%d %H:%M:%S %Z')"
+    printf '%s\n' "화면을 꺼도 Termux wake lock으로 계속 실행됩니다."
+  } >"$status_temp" && mv "$status_temp" "$status_file"
+}
 
 log() {
-  line="$(date -u '+%Y-%m-%dT%H:%M:%SZ') $*"
+  local line="$(date -u '+%Y-%m-%dT%H:%M:%SZ') $*"
   printf '%s\n' "$line"
   printf '%s\n' "$line" >>"$log_file"
+  last_status_message="$*"
+  write_runtime_status || true
 }
 
 acquire_lock() {
@@ -162,6 +197,15 @@ fi
 
 wake_lock=0
 cleanup() {
+  cleanup_status=$?
+  if [ "$cleanup_status" -eq 0 ]; then
+    runtime_state="중지됨"
+    last_status_message="자동작업이 정상 종료되었습니다."
+  else
+    runtime_state="오류 종료 ($cleanup_status)"
+    last_status_message="자동작업이 오류 상태로 종료되었습니다."
+  fi
+  write_runtime_status || true
   if [ "$wake_lock" -eq 1 ] && command -v termux-wake-unlock >/dev/null 2>&1; then
     termux-wake-unlock >/dev/null 2>&1 || true
   fi
@@ -496,28 +540,32 @@ run_current_head() {
     log "S25U runtime stage exceeded ${runtime_timeout}s; it will be retried"
   fi
 
+  post_head="$(git rev-parse HEAD)"
+  remote_head=""
   if git fetch origin main >/dev/null 2>&1; then
-    post_head="$(git rev-parse HEAD)"
     remote_head="$(git rev-parse origin/main)"
-    if [ "$post_head" = "$remote_head" ]; then
-      if [ "$stage_status" -eq 0 ]; then
-        record_processed_head "$post_head"
-      elif [ "$stage_status" -eq 124 ] || [ "$stage_status" -eq 137 ]; then
-        log "transient runtime timeout keeps commit $post_head eligible for retry"
-      elif [ -z "$(runtime_diagnostic_sha)" ] || \
-        [ "$(runtime_diagnostic_sha)" = "$diagnostic_before" ]; then
-        log "runtime stage produced no fresh diagnostic; keeping commit $post_head eligible for retry"
-      elif runtime_failure_is_retryable; then
-        log "transient runtime diagnostic keeps commit $post_head eligible for retry"
-      else
-        record_processed_head "$post_head"
-        log "deterministic runtime diagnostic recorded; waiting for a new commit after $post_head"
-      fi
-    else
-      log "runtime result is not synchronized with origin/main"
-    fi
   else
     log "could not verify the published runtime result against origin/main"
+  fi
+
+  if [ "$stage_status" -eq 0 ]; then
+    # The runtime stage may create a validated local bundle commit. Mark that
+    # output commit as processed now so the next synchronization pushes it but
+    # does not feed the generated bundle back through the entire pipeline.
+    record_processed_head "$post_head"
+    if [ -n "$remote_head" ] && [ "$post_head" != "$remote_head" ]; then
+      log "successful runtime result $post_head is queued for synchronization"
+    fi
+  elif [ "$stage_status" -eq 124 ] || [ "$stage_status" -eq 137 ]; then
+    log "transient runtime timeout keeps commit $post_head eligible for retry"
+  elif [ -z "$(runtime_diagnostic_sha)" ] || \
+    [ "$(runtime_diagnostic_sha)" = "$diagnostic_before" ]; then
+    log "runtime stage produced no fresh diagnostic; keeping commit $post_head eligible for retry"
+  elif runtime_failure_is_retryable; then
+    log "transient runtime diagnostic keeps commit $post_head eligible for retry"
+  else
+    record_processed_head "$post_head"
+    log "deterministic runtime diagnostic recorded; waiting for a new commit after $post_head"
   fi
 
   log "S25U runtime stage finished with status $stage_status"
