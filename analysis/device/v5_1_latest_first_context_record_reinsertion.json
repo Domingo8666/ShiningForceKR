@@ -4,9 +4,9 @@
   "status": "first-context-record-reinsertion-plan-ready",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "review_batch_sha256": "8eba1e7f4f380c6aa7a3eb2f649719b1fadb3b6ebb33de588387acdd5c3ee47a",
-  "first_context_translation_encoding_sha256": "92b62af822db000fb31b2c18a89dbc1676cce4ad080844862984fbffaf1b8873",
-  "local_reinsertion_sha256": "5e505f4be93e8a259f3004afffbea929dde1535988f96e5d5b83765052f3b7f6",
-  "captured_utc": "2026-08-02T23:27:25.751875Z",
+  "first_context_translation_encoding_sha256": "a6060a9e283df0bbd00c33a3b26d9e12ad3c6d202e7d07b6aca30d2143086653",
+  "local_reinsertion_sha256": "119466824eb6d0757f4933156c337052f08c850d42fcafb0a46303c04d6de8e7",
+  "captured_utc": "2026-08-02T23:36:02.826877Z",
   "capacity": {
     "context_entry_count": 5,
     "distinct_target_record_count": 5,
