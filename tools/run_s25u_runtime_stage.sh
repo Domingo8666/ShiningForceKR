@@ -285,16 +285,63 @@ else
     echo "SFKR critical path: rebuilding the first dialogue on the proven visible font page."
     write_next_step \
       "실기에서 정상 출력된 글꼴 페이지를 사용해 첫 대사 한 줄을 다시 만들고, 콜드부팅 화면을 자동 캡처하고 있습니다."
-    direct_renderer_capture_output="$(
-      python tools/v5_1_first_context_translation_encoding.py \
-        --proven-visible-page &&
-      python tools/v5_1_first_context_record_reinsertion.py &&
-      python tools/v5_1_first_context_translation_test_build.py &&
-      python tools/v5_1_first_context_direct_renderer_capture.py \
-        --proven-visible-page &&
-      python tools/v5_1_first_context_consumer_trace.py \
-        --direct-renderer
-    )"
+    if python - <<'PY'
+from pathlib import Path
+import json
+
+from tools.patch_io import sha256_file
+from tools.v5_1_first_context_direct_renderer_capture import (
+    PUBLISH_RELATIVE_PATH as CAPTURE_PATH,
+    TEST_ROM_PATH,
+    validate_first_context_direct_renderer_capture,
+)
+from tools.v5_1_first_context_translation_encoding import (
+    LOCAL_REPORT_PATH as LOCAL_ENCODING_PATH,
+)
+from tools.v5_1_first_context_translation_test_build import (
+    PUBLISH_RELATIVE_PATH as BUILD_PATH,
+    validate_first_context_translation_test_build,
+)
+
+paths = {
+    "capture": CAPTURE_PATH,
+    "rom": TEST_ROM_PATH,
+    "encoding": LOCAL_ENCODING_PATH,
+    "build": BUILD_PATH,
+}
+if any(not path.is_file() for path in paths.values()):
+    raise SystemExit(1)
+capture = json.loads(paths["capture"].read_text(encoding="utf-8"))
+build = json.loads(paths["build"].read_text(encoding="utf-8"))
+validate_first_context_direct_renderer_capture(capture)
+validate_first_context_translation_test_build(build)
+ready = (
+    sha256_file(paths["rom"]) == build["test_target_sha256"]
+    and capture["test_target_sha256"] == build["test_target_sha256"]
+    and capture["first_context_translation_test_build_sha256"]
+    == sha256_file(paths["build"])
+    and capture["local_encoding_sha256"]
+    == sha256_file(paths["encoding"])
+)
+raise SystemExit(0 if ready else 1)
+PY
+    then
+      direct_renderer_capture_output="$(
+        python tools/v5_1_first_context_consumer_trace.py \
+          --direct-renderer
+      )"
+    else
+      direct_renderer_capture_output="$(
+        python tools/v5_1_first_context_translation_encoding.py \
+          --proven-visible-page &&
+        python tools/v5_1_first_context_record_reinsertion.py &&
+        python tools/v5_1_first_context_translation_test_build.py &&
+        python tools/v5_1_first_context_direct_renderer_capture.py \
+          --proven-visible-page &&
+        python tools/v5_1_first_context_consumer_trace.py \
+          --direct-renderer
+      )"
+    fi
     direct_renderer_capture_status=$?
     printf '%s\n' "$direct_renderer_capture_output"
     if [ "$direct_renderer_capture_status" -ne 0 ]; then
