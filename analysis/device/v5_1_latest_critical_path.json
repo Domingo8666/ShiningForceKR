@@ -8,7 +8,7 @@
   "confirmed_boundary": "translated-custom-glyph-observed-font-page",
   "blocked_boundary": "observed-font-page-to-correct-first-dialogue-screen",
   "selection_reason": "single-observed-font-page-ready-direct-renderer-screen-missing",
-  "generated_utc": "2026-08-02T16:28:14.645563Z",
+  "generated_utc": "2026-08-02T16:33:04.035742Z",
   "baseline_script_bytes_unchanged": true,
   "translation_build_eligible": false,
   "next_checkpoint": "rebuild-first-dialogue-without-inline-page-select"
