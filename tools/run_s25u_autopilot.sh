@@ -308,7 +308,7 @@ $changed
 EOF
 
   log "publishing validated pending safe artifacts"
-  python tools/v5_1_runtime_bundle.py --publish
+  python tools/v5_1_runtime_bundle.py --publish --no-push
 }
 
 safe_local_commits_only() {
@@ -426,7 +426,8 @@ run_current_head() {
   input_head="$(git rev-parse HEAD)"
   diagnostic_before="$(runtime_diagnostic_sha)"
   log "starting S25U runtime stage for commit $input_head"
-  timeout -k 30s "$runtime_timeout" \
+  SFKR_DEFER_RUNTIME_BUNDLE_PUSH=1 \
+    timeout -k 30s "$runtime_timeout" \
     bash tools/run_s25u_runtime_stage.sh --source-rom "$source_rom"
   stage_status=$?
   if [ "$stage_status" -eq 124 ] || [ "$stage_status" -eq 137 ]; then

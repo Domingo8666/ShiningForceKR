@@ -233,6 +233,17 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertLess(final_sync, once_exit)
         self.assertIn("one-shot runtime artifacts synchronized", SCRIPT)
 
+    def test_autopilot_defers_bundle_push_until_after_safe_rebase(self) -> None:
+        self.assertIn(
+            "python tools/v5_1_runtime_bundle.py --publish --no-push",
+            SCRIPT,
+        )
+        self.assertIn("SFKR_DEFER_RUNTIME_BUNDLE_PUSH=1", SCRIPT)
+        self.assertLess(
+            SCRIPT.index("publish_pending_safe_artifacts"),
+            SCRIPT.index("git fetch origin main"),
+        )
+
     def test_runtime_stage_publishes_progress_then_continues_comparison(
         self,
     ) -> None:

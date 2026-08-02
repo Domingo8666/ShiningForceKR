@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
 try:
@@ -1788,7 +1789,11 @@ def _porcelain_path(line: str) -> str:
     return path.replace("\\", "/")
 
 
-def publish_runtime_bundle(root: Path) -> dict[str, object]:
+def publish_runtime_bundle(
+    root: Path,
+    *,
+    push: bool = True,
+) -> dict[str, object]:
     root = root.resolve()
     artifacts = _load_validated_artifacts(root)
     binaries = _load_validated_binary_artifacts(root, artifacts)
@@ -1840,7 +1845,8 @@ def publish_runtime_bundle(root: Path) -> dict[str, object]:
             "--",
             *selected,
         )
-    _git(root, "push", "origin", "HEAD:main")
+    if push:
+        _git(root, "push", "origin", "HEAD:main")
     return {
         "changed": bool(selected),
         "commit": _git(root, "rev-parse", "HEAD").stdout.strip(),
@@ -1849,13 +1855,17 @@ def publish_runtime_bundle(root: Path) -> dict[str, object]:
             str(relative).replace("\\", "/")
             for relative in set(artifacts) | binaries
         ),
+        "pushed": push,
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--publish", action="store_true")
+    parser.add_argument("--no-push", action="store_true")
     args = parser.parse_args()
+    if args.no_push and not args.publish:
+        parser.error("--no-push requires --publish")
     root = Path(__file__).resolve().parents[1]
     artifacts = _load_validated_artifacts(root)
     binaries = _load_validated_binary_artifacts(root, artifacts)
@@ -1864,9 +1874,13 @@ def main() -> int:
         f"{len(artifacts) + len(binaries)} artifact(s)"
     )
     if args.publish:
-        result = publish_runtime_bundle(root)
+        defer_push = args.no_push or os.environ.get(
+            "SFKR_DEFER_RUNTIME_BUNDLE_PUSH"
+        ) == "1"
+        result = publish_runtime_bundle(root, push=not defer_push)
+        action = "Prepared" if defer_push else "Published"
         print(
-            "Published sanitized runtime bundle: "
+            f"{action} sanitized runtime bundle: "
             f"{len(result['paths'])} artifact(s) @ {result['commit']}"
         )
     return 0

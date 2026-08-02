@@ -3,6 +3,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -11,6 +12,7 @@ if str(ROOT) not in sys.path:
 from tools.v5_1_runtime_bundle import (  # noqa: E402
     _load_validated_artifacts,
     _porcelain_path,
+    publish_runtime_bundle,
 )
 from tools.v5_1_runtime_diagnostic import (  # noqa: E402
     write_runtime_diagnostic,
@@ -31,6 +33,62 @@ from tools.v5_1_test_display_review import write_display_review  # noqa: E402
 
 
 class RuntimeBundleTests(unittest.TestCase):
+    def test_commit_only_publish_never_pushes_before_reconciliation(self) -> None:
+        diagnostic = {
+            "artifact_kind": "sanitized-runtime-stage-diagnostic",
+            "schema_version": 3,
+            "status": "runtime-stage-not-ready",
+            "trigger": "setup",
+            "exit_code": 1,
+            "attempt_utc": "2026-07-29T05:00:00Z",
+            "checks": {
+                "proot_available": False,
+                "ubuntu_available": False,
+                "gearsystem_binary_available": False,
+                "dynamic_dependencies_ready": False,
+                "mcp_initialize_ready": False,
+                "required_tools_ready": False,
+                "local_target_present": True,
+                "trace_plan_present": True,
+                "target_identity_ready": True,
+            },
+            "failed_stage": "proot-available",
+            "runtime_observation_present": False,
+            "runtime_failure": None,
+            "next_checkpoint": "repair-first-failed-runtime-stage",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            write_runtime_diagnostic(root, diagnostic)
+
+            def fake_git(_root: Path, *args: str):
+                class Result:
+                    stdout = ""
+
+                result = Result()
+                if args == ("rev-parse", "--show-toplevel"):
+                    result.stdout = str(root)
+                elif args == ("branch", "--show-current"):
+                    result.stdout = "main\n"
+                elif args == ("remote", "get-url", "origin"):
+                    result.stdout = (
+                        "https://github.com/Domingo8666/ShiningForceKR.git\n"
+                    )
+                elif args == ("rev-parse", "HEAD"):
+                    result.stdout = "1" * 40 + "\n"
+                return result
+
+            with patch(
+                "tools.v5_1_runtime_bundle._git",
+                side_effect=fake_git,
+            ) as git_mock:
+                result = publish_runtime_bundle(root, push=False)
+
+        self.assertFalse(result["pushed"])
+        self.assertFalse(
+            any(call.args[1:3] == ("push", "origin") for call in git_mock.call_args_list)
+        )
+
     def test_porcelain_path_accepts_normal_and_rename_entries(self) -> None:
         self.assertEqual(
             _porcelain_path(
