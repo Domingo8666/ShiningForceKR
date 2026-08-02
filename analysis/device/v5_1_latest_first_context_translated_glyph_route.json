@@ -1,0 +1,27 @@
+{
+  "artifact_kind": "sanitized-v5-1-first-context-translated-glyph-route",
+  "schema_version": 1,
+  "status": "translated-glyph-slot-route-unresolved",
+  "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "test_target_sha256": "1753cc9bab075a923ef50ab4b556d556d175ddbee4b3d5625f73102ba7585100",
+  "source_translated_vram_diff_sha256": "63a4d7b315c0bcb7713dea874ec4830b106bfafad4cb70492e579d6b433fdaa6",
+  "source_local_encoding_sha256": "93c5167dd9a202c6ecd02fcbde661e5ab117dba871022e0d347284bd8dd3b87d",
+  "local_route_sha256": "12f5f5d38e94a00a322205ed02f72ab937c8f4428d87aed31f16b3e437f591e2",
+  "captured_utc": "2026-08-02T03:45:52.062786Z",
+  "analysis": {
+    "confirmed_vram_match_count": 3,
+    "assignment_candidate_count": 9,
+    "slot_aligned_candidate_count": 0,
+    "match_with_slot_alignment_count": 0,
+    "uniquely_aligned_match_count": 0,
+    "aligned_candidate_page_count": 0,
+    "aligned_candidate_row_count": 0,
+    "first_row_aligned_candidate_count": 0
+  },
+  "direct_glyph_slot_alignment_confirmed": false,
+  "single_font_page_candidate_confirmed": false,
+  "first_row_candidate_observed": false,
+  "local_payload_policy": "pages-symbols-rows-characters-tile-hashes-and-matches-local-only",
+  "translation_build_eligible": false,
+  "next_checkpoint": "repair-translated-glyph-slot-alignment"
+}
