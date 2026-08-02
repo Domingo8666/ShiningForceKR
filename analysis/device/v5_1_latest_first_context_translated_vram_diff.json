@@ -1,0 +1,28 @@
+{
+  "artifact_kind": "sanitized-v5-1-first-context-translated-vram-diff",
+  "schema_version": 1,
+  "status": "translated-custom-glyph-vram-confirmed",
+  "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "test_target_sha256": "1753cc9bab075a923ef50ab4b556d556d175ddbee4b3d5625f73102ba7585100",
+  "first_context_translation_test_build_sha256": "8390b105c1b88802ffc90cc15f02e820d49cccc818c8f030e1c86882b588a06a",
+  "local_encoding_sha256": "93c5167dd9a202c6ecd02fcbde661e5ab117dba871022e0d347284bd8dd3b87d",
+  "local_capture_sha256": "9f0a94d12d5248637f72c6ba16271badcf9388543645300cc0873f90720c84e6",
+  "captured_utc": "2026-08-02T03:08:29.969439Z",
+  "analysis": {
+    "vram_area_size": 16384,
+    "changed_byte_count": 573,
+    "changed_tile_count": 35,
+    "custom_glyph_hash_count": 23,
+    "test_custom_glyph_tile_match_count": 3,
+    "changed_custom_glyph_tile_match_count": 3,
+    "unique_changed_custom_glyph_match_count": 3
+  },
+  "same_runtime_entry_confirmed": true,
+  "same_initial_context_confirmed": true,
+  "cold_boot_each": true,
+  "translation_vram_difference_observed": true,
+  "custom_glyph_vram_observed": true,
+  "local_payload_policy": "never-publish-vram-bytes-addresses-glyph-identities-screens-or-registers",
+  "translation_build_eligible": false,
+  "next_checkpoint": "trace-first-changed-translated-vram-tile-source"
+}
