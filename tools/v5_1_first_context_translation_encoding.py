@@ -4710,8 +4710,11 @@ def _main() -> int:
         if (
             route.get("artifact_kind")
             != "sanitized-v5-1-first-context-translated-glyph-route"
-            or route.get("schema_version") != 2
-            or route.get("single_font_page_candidate_confirmed") is not True
+            or route.get("schema_version") not in {2, 3}
+            or not (
+                route.get("single_font_page_candidate_confirmed") is True
+                or route.get("best_observed_page_candidate_confirmed") is True
+            )
             or route.get("baseline_target_sha256") != capacity["target_sha256"]
             or not isinstance(route_counts, dict)
             or not isinstance(local_route_analysis, dict)
@@ -4724,12 +4727,18 @@ def _main() -> int:
             expected_hash_count = int(
                 route_counts["matched_hash_with_assignment_count"]
             )
+            best_hash_count = int(route_counts["maximum_page_candidate_glyph_count"])
+            required_hash_count = (
+                expected_hash_count
+                if route.get("single_font_page_candidate_confirmed") is True
+                else best_hash_count
+            )
             candidate_pages = (
                 [
                     int(page)
                     for page, hashes in page_hashes.items()
                     if isinstance(hashes, list)
-                    and len(set(hashes)) == expected_hash_count
+                    and len(set(hashes)) == required_hash_count
                 ]
                 if isinstance(page_hashes, dict)
                 else []

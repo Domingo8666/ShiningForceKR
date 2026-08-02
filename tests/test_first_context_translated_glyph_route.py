@@ -86,9 +86,47 @@ class FirstContextTranslatedGlyphRouteTests(unittest.TestCase):
         self.assertEqual(counts["uniquely_aligned_match_count"], 2)
         self.assertEqual(counts["complete_page_candidate_count"], 1)
         self.assertEqual(counts["maximum_page_candidate_glyph_count"], 2)
+        self.assertEqual(counts["maximum_coverage_page_candidate_count"], 1)
         self.assertEqual(
             local["pairing_method"],
             "slot-constrained-legacy-candidates",
+        )
+
+    def test_selects_unique_majority_observed_page_without_guessing(self) -> None:
+        hashes = [character * 64 for character in "abc"]
+        local_vram = {
+            "analysis": {
+                "changed_custom_glyph_matches": [
+                    {"tile_index": 0x80 + index, "tile_sha256": tile_hash}
+                    for index, tile_hash in enumerate(hashes)
+                ]
+            }
+        }
+        local_encoding = {
+            "character_assignments": [
+                {"row_index": 2, "page": 240, "symbol": 1, "tile_sha256": hashes[0]},
+                {"row_index": 2, "page": 240, "symbol": 2, "tile_sha256": hashes[1]},
+                {"row_index": 3, "page": 241, "symbol": 3, "tile_sha256": hashes[2]},
+            ]
+        }
+        counts, _ = analyze_translated_glyph_route(local_vram, local_encoding)
+        self.assertEqual(counts["maximum_page_candidate_glyph_count"], 2)
+        self.assertEqual(counts["maximum_coverage_page_candidate_count"], 1)
+        value = build_first_context_translated_glyph_route(
+            baseline_target_sha256="1" * 64,
+            test_target_sha256="2" * 64,
+            source_translated_vram_diff_sha256="3" * 64,
+            source_local_encoding_sha256="4" * 64,
+            local_route_sha256="5" * 64,
+            analysis=counts,
+            captured_utc="2026-08-02T00:00:00Z",
+        )
+        validate_first_context_translated_glyph_route(value)
+        self.assertFalse(value["single_font_page_candidate_confirmed"])
+        self.assertTrue(value["best_observed_page_candidate_confirmed"])
+        self.assertEqual(
+            value["next_checkpoint"],
+            "rebuild-first-context-on-observed-font-page",
         )
 
     def test_rejects_an_inconsistent_safe_conclusion(self) -> None:
@@ -106,6 +144,7 @@ class FirstContextTranslatedGlyphRouteTests(unittest.TestCase):
             "assignment_candidate_row_count": 0,
             "complete_page_candidate_count": 0,
             "maximum_page_candidate_glyph_count": 0,
+            "maximum_coverage_page_candidate_count": 0,
             "first_row_assignment_candidate_count": 0,
         }
         value = build_first_context_translated_glyph_route(

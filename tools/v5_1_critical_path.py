@@ -430,7 +430,8 @@ def _translated_glyph_route_current(
     except (OSError, ValueError, json.JSONDecodeError):
         return False
     return (
-        value.get("baseline_target_sha256") == target_sha256
+        value.get("schema_version") == 3
+        and value.get("baseline_target_sha256") == target_sha256
         and value.get("baseline_target_sha256")
         == diff.get("baseline_target_sha256")
         and value.get("test_target_sha256") == diff.get("test_target_sha256")
@@ -601,8 +602,14 @@ def select_critical_path(root: Path, rom_path: Path) -> dict[str, object] | None
                     glyph_route = _load_object(glyph_route_path)
                     validate_first_context_translated_glyph_route(glyph_route)
                     if (
-                        glyph_route.get("single_font_page_candidate_confirmed")
-                        is True
+                        (
+                            glyph_route.get("single_font_page_candidate_confirmed")
+                            is True
+                            or glyph_route.get(
+                                "best_observed_page_candidate_confirmed"
+                            )
+                            is True
+                        )
                         and not _direct_renderer_capture_current(
                             root,
                             target_sha256=target_sha256,

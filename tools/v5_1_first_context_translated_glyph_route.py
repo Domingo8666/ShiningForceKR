@@ -45,14 +45,14 @@ except ImportError:  # pragma: no cover - direct script execution
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-translated-glyph-route"
 LOCAL_ARTIFACT_KIND = "local-v5-1-first-context-translated-glyph-route"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_translated_glyph_route.json"
 )
 LOCAL_REPORT_PATH = Path(
     "reports/local/v5_1_first_context_translated_glyph_route.json"
 )
-COUNT_KEYS = {
+COUNT_KEYS_V2 = {
     "confirmed_vram_match_count",
     "assignment_candidate_count",
     "slot_aligned_candidate_count",
@@ -68,7 +68,8 @@ COUNT_KEYS = {
     "maximum_page_candidate_glyph_count",
     "first_row_assignment_candidate_count",
 }
-TOP_LEVEL_KEYS = {
+COUNT_KEYS = COUNT_KEYS_V2 | {"maximum_coverage_page_candidate_count"}
+TOP_LEVEL_KEYS_V2 = {
     "artifact_kind",
     "schema_version",
     "status",
@@ -86,6 +87,7 @@ TOP_LEVEL_KEYS = {
     "translation_build_eligible",
     "next_checkpoint",
 }
+TOP_LEVEL_KEYS = TOP_LEVEL_KEYS_V2 | {"best_observed_page_candidate_confirmed"}
 
 
 def _is_sha256(value: object) -> bool:
@@ -234,6 +236,11 @@ def analyze_translated_glyph_route(
         (len(hashes) for hashes in page_hashes.values()),
         default=0,
     )
+    maximum_coverage_page_count = sum(
+        bool(maximum_page_glyph_count)
+        and len(hashes) == maximum_page_glyph_count
+        for hashes in page_hashes.values()
+    )
     complete_page_count = sum(
         hashes == observed_hashes for hashes in page_hashes.values()
     )
@@ -256,6 +263,7 @@ def analyze_translated_glyph_route(
         ),
         "complete_page_candidate_count": complete_page_count,
         "maximum_page_candidate_glyph_count": maximum_page_glyph_count,
+        "maximum_coverage_page_candidate_count": maximum_coverage_page_count,
         "first_row_assignment_candidate_count": sum(
             int(item["row_index"]) == 1 for item in observed_assignments
         ),
@@ -290,6 +298,13 @@ def build_first_context_translated_glyph_route(
     single_page = aligned and analysis["aligned_candidate_page_count"] == 1
     if not aligned:
         single_page = analysis["complete_page_candidate_count"] == 1
+    best_observed_page = single_page or (
+        not aligned
+        and analysis["maximum_page_candidate_glyph_count"] > 0
+        and analysis["maximum_coverage_page_candidate_count"] == 1
+        and analysis["maximum_page_candidate_glyph_count"] * 2
+        >= analysis["matched_hash_with_assignment_count"]
+    )
     first_row = (
         analysis["first_row_aligned_candidate_count"] > 0
         if aligned
@@ -312,6 +327,7 @@ def build_first_context_translated_glyph_route(
         "analysis": analysis,
         "direct_glyph_slot_alignment_confirmed": aligned,
         "single_font_page_candidate_confirmed": single_page,
+        "best_observed_page_candidate_confirmed": best_observed_page,
         "first_row_candidate_observed": first_row,
         "local_payload_policy": (
             "pages-symbols-rows-characters-tile-hashes-and-matches-local-only"
@@ -322,7 +338,7 @@ def build_first_context_translated_glyph_route(
             if aligned
             else (
                 "rebuild-first-context-on-observed-font-page"
-                if single_page
+                if best_observed_page
                 else "capture-changed-glyph-vdp-source-page"
             )
         ),
@@ -332,11 +348,15 @@ def build_first_context_translated_glyph_route(
 
 
 def validate_first_context_translated_glyph_route(value: dict[str, object]) -> None:
-    if set(value) != TOP_LEVEL_KEYS:
+    schema_version = value.get("schema_version")
+    expected_top_level = (
+        TOP_LEVEL_KEYS if schema_version == SCHEMA_VERSION else TOP_LEVEL_KEYS_V2
+    )
+    if schema_version not in {2, SCHEMA_VERSION} or set(value) != expected_top_level:
         raise ValueError("translated glyph route fields do not match")
     if (
         value.get("artifact_kind") != ARTIFACT_KIND
-        or value.get("schema_version") != SCHEMA_VERSION
+        or schema_version not in {2, SCHEMA_VERSION}
         or value.get("status")
         not in {
             "translated-glyph-slot-route-confirmed",
@@ -355,9 +375,10 @@ def validate_first_context_translated_glyph_route(value: dict[str, object]) -> N
     ):
         raise ValueError("translated glyph route identity is invalid")
     counts = value.get("analysis")
+    expected_count_keys = COUNT_KEYS if schema_version == SCHEMA_VERSION else COUNT_KEYS_V2
     if (
         not isinstance(counts, dict)
-        or set(counts) != COUNT_KEYS
+        or set(counts) != expected_count_keys
         or any(
             not isinstance(item, int) or isinstance(item, bool) or item < 0
             for item in counts.values()
@@ -372,6 +393,15 @@ def validate_first_context_translated_glyph_route(value: dict[str, object]) -> N
     single_page = aligned and counts["aligned_candidate_page_count"] == 1
     if not aligned:
         single_page = counts["complete_page_candidate_count"] == 1
+    best_observed_page = single_page
+    if schema_version == SCHEMA_VERSION:
+        best_observed_page = single_page or (
+            not aligned
+            and counts["maximum_page_candidate_glyph_count"] > 0
+            and counts["maximum_coverage_page_candidate_count"] == 1
+            and counts["maximum_page_candidate_glyph_count"] * 2
+            >= counts["matched_hash_with_assignment_count"]
+        )
     first_row = (
         counts["first_row_aligned_candidate_count"] > 0
         if aligned
@@ -380,6 +410,11 @@ def validate_first_context_translated_glyph_route(value: dict[str, object]) -> N
     if (
         value["direct_glyph_slot_alignment_confirmed"] is not aligned
         or value["single_font_page_candidate_confirmed"] is not single_page
+        or (
+            schema_version == SCHEMA_VERSION
+            and value["best_observed_page_candidate_confirmed"]
+            is not best_observed_page
+        )
         or value["first_row_candidate_observed"] is not first_row
         or value["translation_build_eligible"] is not False
         or value["status"]
@@ -394,7 +429,7 @@ def validate_first_context_translated_glyph_route(value: dict[str, object]) -> N
             if aligned
             else (
                 "rebuild-first-context-on-observed-font-page"
-                if single_page
+                if best_observed_page
                 else "capture-changed-glyph-vdp-source-page"
             )
         )
