@@ -37,6 +37,7 @@ from tools.v5_1_active_rom_cursor_reset import (
 )
 from tools.v5_1_critical_path import (
     CURSOR_RESET_STAGE,
+    DIRECT_RENDERER_CAPTURE_STAGE,
     FOCUSED_STAGE,
     LOOKUP_INDEX_STAGE,
     PATH_SCOPE_STAGE,
@@ -44,6 +45,7 @@ from tools.v5_1_critical_path import (
     SOURCE_ROLE_STAGE,
     TRANSLATED_VRAM_DIFF_STAGE,
     TRANSLATED_GLYPH_ROUTE_STAGE,
+    _direct_renderer_consumer_trace_needed,
     select_critical_path,
     validate_critical_path,
 )
@@ -372,6 +374,40 @@ class CriticalPathTests(unittest.TestCase):
             rom_path.parent.mkdir(parents=True)
             rom_path.write_bytes(b"rom")
             self.assertIsNone(select_critical_path(root, rom_path))
+
+    def test_prioritizes_current_direct_build_with_stale_consumer_trace(
+        self,
+    ) -> None:
+        repository = Path(__file__).resolve().parents[1]
+        relative_paths = (
+            Path("analysis/device/v5_1_latest_first_context_direct_renderer_capture.json"),
+            Path("analysis/device/v5_1_latest_first_context_direct_renderer_capture.png"),
+            Path("analysis/device/v5_1_latest_first_context_translation_test_build.json"),
+            Path("analysis/device/v5_1_latest_first_context_consumer_trace.json"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative_path in relative_paths:
+                target = root / relative_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((repository / relative_path).read_bytes())
+            build = json.loads(
+                (root / relative_paths[2]).read_text(encoding="utf-8")
+            )
+            consumer_path = root / relative_paths[3]
+            consumer = json.loads(consumer_path.read_text(encoding="utf-8"))
+            consumer["test_target_sha256"] = "0" * 64
+            self._write_json(consumer_path, consumer)
+            self.assertTrue(
+                _direct_renderer_consumer_trace_needed(
+                    root,
+                    target_sha256=build["baseline_target_sha256"],
+                )
+            )
+            self.assertEqual(
+                DIRECT_RENDERER_CAPTURE_STAGE,
+                "first-context-direct-renderer-capture",
+            )
 
 
 if __name__ == "__main__":

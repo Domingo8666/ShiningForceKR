@@ -54,6 +54,10 @@ try:
         PUBLISH_RELATIVE_PATH as TRANSLATION_TEST_BUILD_PATH,
         validate_first_context_translation_test_build,
     )
+    from .v5_1_first_context_consumer_trace import (
+        PUBLISH_RELATIVE_PATH as CONSUMER_TRACE_PATH,
+        validate_first_context_consumer_trace,
+    )
     from .v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ROM_CURSOR_RESET_PATH,
         validate_active_rom_cursor_reset,
@@ -103,6 +107,10 @@ except ImportError:  # pragma: no cover - direct script execution
     from v5_1_first_context_translation_test_build import (
         PUBLISH_RELATIVE_PATH as TRANSLATION_TEST_BUILD_PATH,
         validate_first_context_translation_test_build,
+    )
+    from v5_1_first_context_consumer_trace import (
+        PUBLISH_RELATIVE_PATH as CONSUMER_TRACE_PATH,
+        validate_first_context_consumer_trace,
     )
     from v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ROM_CURSOR_RESET_PATH,
@@ -484,6 +492,58 @@ def _direct_renderer_capture_current(
     )
 
 
+def _direct_renderer_consumer_trace_needed(
+    root: Path,
+    *,
+    target_sha256: str,
+) -> bool:
+    """Prefer the current direct build when its consumer proof is stale."""
+
+    capture_path = root / DIRECT_RENDERER_CAPTURE_PATH
+    image_path = root / DIRECT_RENDERER_CAPTURE_IMAGE_PATH
+    build_path = root / TRANSLATION_TEST_BUILD_PATH
+    trace_path = root / CONSUMER_TRACE_PATH
+    if any(
+        not path.is_file()
+        for path in (capture_path, image_path, build_path)
+    ):
+        return False
+    try:
+        capture = _load_object(capture_path)
+        build = _load_object(build_path)
+        validate_first_context_direct_renderer_capture(capture)
+        validate_first_context_translation_test_build(build)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    capture_sha256 = sha256_file(capture_path)
+    inputs_current = (
+        capture.get("renderer_route") == "proven-visible-page"
+        and capture.get("baseline_target_sha256") == target_sha256
+        and build.get("baseline_target_sha256") == target_sha256
+        and capture.get("test_target_sha256") == build.get("test_target_sha256")
+        and capture.get("capture_png_sha256") == sha256_file(image_path)
+    )
+    if not inputs_current:
+        return False
+    if not trace_path.is_file():
+        return True
+    try:
+        trace = _load_object(trace_path)
+        validate_first_context_consumer_trace(trace)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return True
+    return not (
+        trace.get("baseline_target_sha256") == target_sha256
+        and trace.get("test_target_sha256") == build.get("test_target_sha256")
+        and trace.get("first_context_translation_test_build_sha256")
+        == sha256_file(build_path)
+        and trace.get("first_context_translation_runtime_capture_sha256")
+        == capture_sha256
+        and trace.get("first_context_translation_visual_review_sha256")
+        == capture_sha256
+    )
+
+
 def _build_selection(
     *,
     target_sha256: str,
@@ -597,6 +657,15 @@ def select_critical_path(root: Path, rom_path: Path) -> dict[str, object] | None
                         stage=PATH_SCOPE_STAGE,
                     )
                 if path_scope.get("current_path_relevant_to_translation_fix") is False:
+                    if _direct_renderer_consumer_trace_needed(
+                        root,
+                        target_sha256=target_sha256,
+                    ):
+                        return _build_selection(
+                            target_sha256=target_sha256,
+                            trace_sha256=trace_sha256,
+                            stage=DIRECT_RENDERER_CAPTURE_STAGE,
+                        )
                     if not _translated_vram_diff_current(
                         root,
                         target_sha256=target_sha256,
