@@ -1537,33 +1537,58 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
         FIRST_CONTEXT_CONSUMER_TRACE_RELATIVE_PATH
     )
     if first_context_consumer_trace is not None:
-        if (
-            FIRST_CONTEXT_TRANSLATION_TEST_BUILD_RELATIVE_PATH not in artifacts
-            or FIRST_CONTEXT_TRANSLATION_RUNTIME_CAPTURE_RELATIVE_PATH
-            not in artifacts
-            or FIRST_CONTEXT_TRANSLATION_VISUAL_REVIEW_RELATIVE_PATH
-            not in artifacts
-            or first_context_consumer_trace["test_target_sha256"]
-            != first_context_translation_test_build["test_target_sha256"]
-            or first_context_consumer_trace[
+        normal_consumer_inputs_ready = (
+            FIRST_CONTEXT_TRANSLATION_TEST_BUILD_RELATIVE_PATH in artifacts
+            and FIRST_CONTEXT_TRANSLATION_RUNTIME_CAPTURE_RELATIVE_PATH
+            in artifacts
+            and FIRST_CONTEXT_TRANSLATION_VISUAL_REVIEW_RELATIVE_PATH
+            in artifacts
+            and first_context_consumer_trace["test_target_sha256"]
+            == first_context_translation_test_build["test_target_sha256"]
+            and first_context_consumer_trace[
                 "first_context_translation_test_build_sha256"
             ]
-            != sha256_file(
+            == sha256_file(
                 root / FIRST_CONTEXT_TRANSLATION_TEST_BUILD_RELATIVE_PATH
             )
-            or first_context_consumer_trace[
+            and first_context_consumer_trace[
                 "first_context_translation_runtime_capture_sha256"
             ]
-            != sha256_file(
+            == sha256_file(
                 root / FIRST_CONTEXT_TRANSLATION_RUNTIME_CAPTURE_RELATIVE_PATH
             )
-            or first_context_consumer_trace[
+            and first_context_consumer_trace[
                 "first_context_translation_visual_review_sha256"
             ]
-            != sha256_file(
+            == sha256_file(
                 root / FIRST_CONTEXT_TRANSLATION_VISUAL_REVIEW_RELATIVE_PATH
             )
-        ):
+        )
+        direct_renderer_capture = artifacts.get(
+            DIRECT_RENDERER_CAPTURE_RELATIVE_PATH
+        )
+        direct_consumer_inputs_ready = (
+            direct_renderer_capture is not None
+            and first_context_consumer_trace["baseline_target_sha256"]
+            == direct_renderer_capture["baseline_target_sha256"]
+            and first_context_consumer_trace["test_target_sha256"]
+            == direct_renderer_capture["test_target_sha256"]
+            and first_context_consumer_trace[
+                "first_context_translation_test_build_sha256"
+            ]
+            == direct_renderer_capture[
+                "first_context_translation_test_build_sha256"
+            ]
+            and first_context_consumer_trace[
+                "first_context_translation_runtime_capture_sha256"
+            ]
+            == sha256_file(root / DIRECT_RENDERER_CAPTURE_RELATIVE_PATH)
+            and first_context_consumer_trace[
+                "first_context_translation_visual_review_sha256"
+            ]
+            == sha256_file(root / DIRECT_RENDERER_CAPTURE_RELATIVE_PATH)
+        )
+        if not normal_consumer_inputs_ready and not direct_consumer_inputs_ready:
             artifacts.pop(FIRST_CONTEXT_CONSUMER_TRACE_RELATIVE_PATH)
     group_context_resolution = artifacts.get(
         GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH

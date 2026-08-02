@@ -9,7 +9,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from tools.patch_io import sha256_file  # noqa: E402
 from tools.v5_1_runtime_bundle import (  # noqa: E402
+    SAFE_ARTIFACTS,
+    SAFE_BINARY_ARTIFACTS,
     _load_validated_artifacts,
     _porcelain_path,
     publish_runtime_bundle,
@@ -33,6 +36,48 @@ from tools.v5_1_test_display_review import write_display_review  # noqa: E402
 
 
 class RuntimeBundleTests(unittest.TestCase):
+    def test_keeps_consumer_trace_bound_to_direct_renderer_capture(self) -> None:
+        repository = Path(__file__).resolve().parents[1]
+        relative_paths = (
+            Path("analysis/device/v5_1_latest_first_context_translation_test_build.json"),
+            Path("analysis/device/v5_1_latest_first_context_direct_renderer_capture.json"),
+            Path("analysis/device/v5_1_latest_first_context_direct_renderer_capture.png"),
+            Path("analysis/device/v5_1_latest_first_context_consumer_trace.json"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative_path in set(SAFE_ARTIFACTS) | set(SAFE_BINARY_ARTIFACTS):
+                source = repository / relative_path
+                if not source.is_file():
+                    continue
+                target = root / relative_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(source.read_bytes())
+            build_path, capture_path, _, trace_path = (
+                root / relative_path for relative_path in relative_paths
+            )
+            capture = json.loads(capture_path.read_text(encoding="utf-8"))
+            trace = json.loads(trace_path.read_text(encoding="utf-8"))
+            trace["baseline_target_sha256"] = capture[
+                "baseline_target_sha256"
+            ]
+            trace["test_target_sha256"] = capture["test_target_sha256"]
+            trace["first_context_translation_test_build_sha256"] = (
+                capture["first_context_translation_test_build_sha256"]
+            )
+            trace["first_context_translation_runtime_capture_sha256"] = (
+                sha256_file(capture_path)
+            )
+            trace["first_context_translation_visual_review_sha256"] = (
+                sha256_file(capture_path)
+            )
+            trace_path.write_text(
+                json.dumps(trace, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            artifacts = _load_validated_artifacts(root)
+        self.assertIn(relative_paths[3], artifacts)
+
     def test_commit_only_publish_never_pushes_before_reconciliation(self) -> None:
         diagnostic = {
             "artifact_kind": "sanitized-runtime-stage-diagnostic",
