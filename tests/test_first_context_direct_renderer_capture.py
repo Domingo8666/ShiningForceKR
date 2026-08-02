@@ -176,6 +176,10 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
         self.assertEqual(safe["constant_loader_base"], loader_base)
         self.assertEqual(safe["constant_write_slot_shift"], 0)
         self.assertTrue(all(sample["screenshot_tile_candidates"] for sample in local["samples"]))
+        self.assertEqual(
+            [sample["screen_tiles"] for sample in safe["sample_route_candidates"]],
+            [[loader_base + symbol] for symbol in symbols],
+        )
 
     def test_keeps_partial_slot_alignment_out_of_safe_receipt(self) -> None:
         vram = bytearray(0x4000)
@@ -325,7 +329,7 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
     def test_accepts_rendered_assignment_capture_receipt(self) -> None:
         value = {
             "artifact_kind": "sanitized-v5-1-first-context-direct-renderer-capture",
-            "schema_version": 6,
+            "schema_version": 7,
             "status": "direct-renderer-first-screen-captured",
             "baseline_target_sha256": "a" * 64,
             "test_target_sha256": "b" * 64,
@@ -348,7 +352,13 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
                 "route_evidence_count": 5,
                 "common_route_candidate_count": 1,
                 "sample_route_candidates": [
-                    {"index": index, "routes": [[44, 256, 3]]}
+                    {
+                        "index": index,
+                        "encoded_symbol": 0x10 + index,
+                        "rendered_tile": 0x113 + index,
+                        "screen_tiles": [0x113 + index],
+                        "routes": [[44, 256, 3]],
+                    }
                     for index in range(5)
                 ],
             },
@@ -358,6 +368,13 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
             "next_checkpoint": "rebuild-first-dialogue-with-observed-slot-shift",
         }
         validate_first_context_direct_renderer_capture(value)
+        legacy = copy.deepcopy(value)
+        legacy["schema_version"] = 6
+        legacy["slot_alignment"]["sample_route_candidates"] = [
+            {"index": index, "routes": [[44, 256, 3]]}
+            for index in range(5)
+        ]
+        validate_first_context_direct_renderer_capture(legacy)
 
     def test_accepts_slot_aligned_capture_receipt(self) -> None:
         value = {

@@ -39,7 +39,8 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-direct-renderer-capture"
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
+ROUTE_SCHEMA_VERSIONS = {6, SCHEMA_VERSION}
 NAME_TABLE_BASE = 0x3800
 NAME_TABLE_WIDTH = 32
 # Gearsystem returns the cropped 160x144 Game Gear viewport.  Its upper-left
@@ -381,6 +382,11 @@ def analyze_direct_renderer_slot_alignment(
         "sample_route_candidates": [
             {
                 "index": int(sample["index"]),
+                "encoded_symbol": int(sample["encoded_symbol"]),
+                "rendered_tile": int(sample["rendered_tile"]),
+                "screen_tiles": [
+                    int(tile) for tile in sample["screenshot_tile_candidates"]
+                ],
                 "routes": sample["route_candidates"],
             }
             for sample in samples
@@ -409,7 +415,7 @@ def validate_first_context_direct_renderer_capture(
         (schema_version == 2 and set(value) == TOP_LEVEL_KEYS_V2)
         or (schema_version == 3 and set(value) == TOP_LEVEL_KEYS)
         or (
-            schema_version in {4, 5, SCHEMA_VERSION}
+            schema_version in {4, 5, 6, SCHEMA_VERSION}
             and set(value) == TOP_LEVEL_KEYS_V4
         )
     ):
@@ -417,7 +423,7 @@ def validate_first_context_direct_renderer_capture(
     runtime_entry = value.get("runtime_entry")
     if (
         value.get("artifact_kind") != ARTIFACT_KIND
-        or schema_version not in {2, 3, 4, 5, SCHEMA_VERSION}
+        or schema_version not in {2, 3, 4, 5, 6, SCHEMA_VERSION}
         or value.get("status") != "direct-renderer-first-screen-captured"
         or value.get("renderer_route")
         not in {"direct-observed-page", "proven-visible-page"}
@@ -443,7 +449,7 @@ def validate_first_context_direct_renderer_capture(
         or value.get("translation_build_eligible") is not False
     ):
         raise ValueError("direct renderer capture is inconsistent")
-    if schema_version in {3, SCHEMA_VERSION} and (
+    if schema_version in {3, 6, SCHEMA_VERSION} and (
         not isinstance(value.get("runtime_stage_request_id"), str)
         or re.fullmatch(
             r"[a-z0-9][a-z0-9._-]{0,63}",
@@ -477,7 +483,7 @@ def validate_first_context_direct_renderer_capture(
         or not 0 <= alignment["unique_desired_vram_match_count"] <= alignment["sample_count"]
         or not isinstance(confirmed, bool)
         or (
-            schema_version == SCHEMA_VERSION
+            schema_version in ROUTE_SCHEMA_VERSIONS
             and (
                 not isinstance(alignment.get("rendered_assignment_match_count"), int)
                 or not 0
@@ -502,7 +508,7 @@ def validate_first_context_direct_renderer_capture(
                 not isinstance(alignment.get("constant_loader_base"), int)
                 or not isinstance(alignment.get("constant_write_slot_shift"), int)
                 or (
-                    schema_version == SCHEMA_VERSION
+                    schema_version in ROUTE_SCHEMA_VERSIONS
                     and not isinstance(alignment.get("observed_assignment_page"), int)
                 )
             )
@@ -513,7 +519,7 @@ def validate_first_context_direct_renderer_capture(
                 alignment.get("constant_loader_base") is not None
                 or alignment.get("constant_write_slot_shift") is not None
                 or (
-                    schema_version == SCHEMA_VERSION
+                    schema_version in ROUTE_SCHEMA_VERSIONS
                     and alignment.get("observed_assignment_page") is not None
                 )
             )
@@ -526,15 +532,48 @@ def validate_first_context_direct_renderer_capture(
         )
     ):
         raise ValueError("direct renderer slot alignment is inconsistent")
-    if schema_version == SCHEMA_VERSION:
+    if schema_version in ROUTE_SCHEMA_VERSIONS:
         for expected_index, sample in enumerate(
             alignment["sample_route_candidates"]
         ):
             routes = sample.get("routes") if isinstance(sample, dict) else None
+            screen_tiles = (
+                sample.get("screen_tiles") if isinstance(sample, dict) else None
+            )
+            expected_sample_keys = (
+                {"index", "routes"}
+                if schema_version == 6
+                else {
+                    "index",
+                    "encoded_symbol",
+                    "rendered_tile",
+                    "screen_tiles",
+                    "routes",
+                }
+            )
             if (
                 not isinstance(sample, dict)
-                or set(sample) != {"index", "routes"}
+                or set(sample) != expected_sample_keys
                 or sample.get("index") != expected_index
+                or (
+                    schema_version == SCHEMA_VERSION
+                    and (
+                        not isinstance(sample.get("encoded_symbol"), int)
+                        or isinstance(sample.get("encoded_symbol"), bool)
+                        or not 0 <= sample["encoded_symbol"] <= 0xFF
+                        or not isinstance(sample.get("rendered_tile"), int)
+                        or isinstance(sample.get("rendered_tile"), bool)
+                        or not 0 <= sample["rendered_tile"] <= 0x1FF
+                        or not isinstance(screen_tiles, list)
+                        or len(screen_tiles) > 512
+                        or any(
+                            not isinstance(tile, int)
+                            or isinstance(tile, bool)
+                            or not 0 <= tile <= 0x1FF
+                            for tile in screen_tiles
+                        )
+                    )
+                )
                 or not isinstance(routes, list)
                 or len(routes) > 512
                 or any(
