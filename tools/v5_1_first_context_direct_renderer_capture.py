@@ -32,7 +32,10 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-direct-renderer-capture"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
+RUNTIME_STAGE_REQUEST_PATH = Path(
+    "analysis/control/s25u_runtime_stage_request.json"
+)
 TEST_ROM_PATH = Path(
     "build/Final_Conflict_Korean_first_context_translation_test.gg"
 )
@@ -48,7 +51,7 @@ LOCAL_EVIDENCE_PATH = Path(
 FAILURE_STAGE_PATH = Path(
     "reports/local/v5_1_first_context_direct_renderer_capture_failure_stage.txt"
 )
-TOP_LEVEL_KEYS = {
+TOP_LEVEL_KEYS_V2 = {
     "artifact_kind",
     "schema_version",
     "status",
@@ -66,6 +69,7 @@ TOP_LEVEL_KEYS = {
     "translation_build_eligible",
     "next_checkpoint",
 }
+TOP_LEVEL_KEYS = TOP_LEVEL_KEYS_V2 | {"runtime_stage_request_id"}
 RUNTIME_ENTRY_KEYS = {"selector", "ordinal"}
 
 
@@ -76,12 +80,16 @@ def _is_sha256(value: object) -> bool:
 def validate_first_context_direct_renderer_capture(
     value: dict[str, object],
 ) -> None:
-    if set(value) != TOP_LEVEL_KEYS:
+    schema_version = value.get("schema_version")
+    if not (
+        (schema_version == 2 and set(value) == TOP_LEVEL_KEYS_V2)
+        or (schema_version == SCHEMA_VERSION and set(value) == TOP_LEVEL_KEYS)
+    ):
         raise ValueError("direct renderer capture fields do not match")
     runtime_entry = value.get("runtime_entry")
     if (
         value.get("artifact_kind") != ARTIFACT_KIND
-        or value.get("schema_version") != SCHEMA_VERSION
+        or schema_version not in {2, SCHEMA_VERSION}
         or value.get("status") != "direct-renderer-first-screen-captured"
         or value.get("renderer_route")
         not in {"direct-observed-page", "proven-visible-page"}
@@ -109,6 +117,15 @@ def validate_first_context_direct_renderer_capture(
         != "human-verify-first-direct-renderer-dialogue-screen"
     ):
         raise ValueError("direct renderer capture is inconsistent")
+    if schema_version == SCHEMA_VERSION and (
+        not isinstance(value.get("runtime_stage_request_id"), str)
+        or re.fullmatch(
+            r"[a-z0-9][a-z0-9._-]{0,63}",
+            value["runtime_stage_request_id"],
+        )
+        is None
+    ):
+        raise ValueError("direct renderer capture request identity is invalid")
 
 
 def main() -> int:
@@ -120,12 +137,23 @@ def main() -> int:
         "rom": root / TEST_ROM_PATH,
         "build": root / TEST_BUILD_PATH,
         "encoding": root / LOCAL_ENCODING_PATH,
+        "request": root / RUNTIME_STAGE_REQUEST_PATH,
     }
     if not all(path.is_file() for path in paths.values()):
         raise SystemExit("direct renderer capture input is missing")
     build = json.loads(paths["build"].read_text(encoding="utf-8"))
     encoding = json.loads(paths["encoding"].read_text(encoding="utf-8"))
-    if not isinstance(build, dict) or not isinstance(encoding, dict):
+    request = json.loads(paths["request"].read_text(encoding="utf-8"))
+    if (
+        not isinstance(build, dict)
+        or not isinstance(encoding, dict)
+        or not isinstance(request, dict)
+        or set(request) != {"request_id", "stage"}
+        or request.get("stage") != "first-context-direct-renderer-capture"
+        or not isinstance(request.get("request_id"), str)
+        or re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", request["request_id"])
+        is None
+    ):
         raise ValueError("direct renderer capture input is invalid")
     validate_first_context_translation_test_build(build)
     rows = encoding.get("rows")
@@ -180,6 +208,7 @@ def main() -> int:
             if args.proven_visible_page
             else "direct-observed-page"
         ),
+        "runtime_stage_request_id": request["request_id"],
         "direct_renderer_first_row_confirmed": True,
         "cold_boot": True,
         "human_visual_review_required": True,

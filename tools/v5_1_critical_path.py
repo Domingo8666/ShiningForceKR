@@ -47,6 +47,7 @@ try:
     from .v5_1_first_context_direct_renderer_capture import (
         PUBLISH_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_PATH,
         PUBLISH_IMAGE_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_IMAGE_PATH,
+        RUNTIME_STAGE_REQUEST_PATH,
         validate_first_context_direct_renderer_capture,
     )
     from .v5_1_first_context_translation_test_build import (
@@ -96,6 +97,7 @@ except ImportError:  # pragma: no cover - direct script execution
     from v5_1_first_context_direct_renderer_capture import (
         PUBLISH_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_PATH,
         PUBLISH_IMAGE_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_IMAGE_PATH,
+        RUNTIME_STAGE_REQUEST_PATH,
         validate_first_context_direct_renderer_capture,
     )
     from v5_1_first_context_translation_test_build import (
@@ -448,17 +450,30 @@ def _direct_renderer_capture_current(
     path = root / DIRECT_RENDERER_CAPTURE_PATH
     image_path = root / DIRECT_RENDERER_CAPTURE_IMAGE_PATH
     build_path = root / TRANSLATION_TEST_BUILD_PATH
-    if not path.is_file() or not image_path.is_file() or not build_path.is_file():
+    request_path = root / RUNTIME_STAGE_REQUEST_PATH
+    if (
+        not path.is_file()
+        or not image_path.is_file()
+        or not build_path.is_file()
+        or not request_path.is_file()
+    ):
         return False
     try:
         value = _load_object(path)
         build = _load_object(build_path)
+        request = _load_object(request_path)
         validate_first_context_direct_renderer_capture(value)
         validate_first_context_translation_test_build(build)
     except (OSError, ValueError, json.JSONDecodeError):
         return False
     return (
-        value.get("schema_version") == 2
+        set(request) == {"request_id", "stage"}
+        and request.get("stage") == "first-context-direct-renderer-capture"
+        and isinstance(request.get("request_id"), str)
+        and re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", request["request_id"])
+        is not None
+        and value.get("schema_version") == 3
+        and value.get("runtime_stage_request_id") == request["request_id"]
         and value.get("renderer_route") == "proven-visible-page"
         and value.get("baseline_target_sha256") == target_sha256
         and build.get("baseline_target_sha256") == target_sha256
