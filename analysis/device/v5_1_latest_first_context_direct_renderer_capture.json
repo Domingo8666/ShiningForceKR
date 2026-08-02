@@ -4,16 +4,16 @@
   "status": "direct-renderer-first-screen-captured",
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "test_target_sha256": "ae8bf442022d6e1fec4c810bc6e3007fb5a6656ea41da319e6867697c1c99436",
-  "first_context_translation_test_build_sha256": "6366f0d336800bf828cfeecf0f4e78d0cb56c87a62419140dd4c331fc3b93c84",
-  "local_encoding_sha256": "44d2301a938f696a54cd92e9261bdbe971cf84df7121cef6ac6a3d617e0a09e3",
+  "first_context_translation_test_build_sha256": "38d934ff55ffe416a7f060f8d37bb42a32588b2300fdb75f51296ad8035050ce",
+  "local_encoding_sha256": "599e08da9477716eecd0f1e757ebd02f0601dd384db97aa4cfd7975c54ff6902",
   "capture_png_sha256": "0198cd23ee06119156a2f94c890f544e6d50598412e644a46e8d9aca40c9d5ee",
-  "captured_utc": "2026-08-02T17:35:52.082205Z",
+  "captured_utc": "2026-08-02T17:48:26.202838Z",
   "runtime_entry": {
     "selector": 2,
     "ordinal": 147
   },
   "renderer_route": "direct-observed-page",
-  "runtime_stage_request_id": "direct-renderer-slot-map-20260802-34",
+  "runtime_stage_request_id": "direct-renderer-slot-map-20260802-35",
   "direct_renderer_first_row_confirmed": true,
   "slot_alignment": {
     "sample_count": 5,
