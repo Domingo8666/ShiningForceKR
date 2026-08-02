@@ -98,6 +98,14 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn('nice -n "$nice_level" bash', MANAGER)
         self.assertIn("백그라운드 우선순위: nice $nice_level", MANAGER)
 
+    def test_screen_off_runtime_keeps_a_managed_termux_wake_lock(self) -> None:
+        self.assertIn("termux-wake-lock", RUNTIME_STAGE)
+        self.assertIn('touch "$wake_lock_file"', RUNTIME_STAGE)
+        self.assertIn("acquire_wake_lock()", MANAGER)
+        self.assertIn("release_wake_lock()", MANAGER)
+        self.assertIn("termux-wake-unlock", MANAGER)
+        self.assertIn("화면 꺼짐 작업 유지: $wake_lock_state", MANAGER)
+
     def test_runtime_stage_batches_exact_no_change_rejections(self) -> None:
         self.assertIn("comparison_attempt_limit=8", RUNTIME_STAGE)
         self.assertIn(

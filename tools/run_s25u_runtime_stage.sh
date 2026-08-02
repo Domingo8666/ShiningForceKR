@@ -4,6 +4,17 @@ set -uo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root"
 
+# The running autopilot can fetch this script before its manager is restarted.
+# Acquire the Termux wake lock here as well so a screen-off runtime stage keeps
+# progressing.  The manager records ownership and releases it on a safe stop.
+state_dir="${SFKR_AUTOPILOT_STATE_DIR:-$HOME/.local/state/shiningforcekr}"
+wake_lock_file="$state_dir/wake_lock_owned"
+if command -v termux-wake-lock >/dev/null 2>&1 &&
+  termux-wake-lock >/dev/null 2>&1; then
+  mkdir -p "$state_dir"
+  touch "$wake_lock_file"
+fi
+
 source_rom=""
 while [ "$#" -gt 0 ]; do
   case "$1" in

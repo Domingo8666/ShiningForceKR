@@ -51,10 +51,8 @@ try:
     )
     from .v5_1_test_display_capture import (
         ATTRACT_CAPTURE_SCHEDULE,
-        ATTRACT_CAPTURE_TIMEOUT_SECONDS,
         DECODER_ENTRY_LOGICAL,
         MAX_REJECTED_TARGET_HITS,
-        _continue_until_breakpoint,
         _parse_screenshot,
         _write_bytes_atomic,
     )
@@ -93,10 +91,8 @@ except ImportError:  # pragma: no cover - direct script execution
     )
     from v5_1_test_display_capture import (
         ATTRACT_CAPTURE_SCHEDULE,
-        ATTRACT_CAPTURE_TIMEOUT_SECONDS,
         DECODER_ENTRY_LOGICAL,
         MAX_REJECTED_TARGET_HITS,
-        _continue_until_breakpoint,
         _parse_screenshot,
         _write_bytes_atomic,
     )
@@ -145,17 +141,20 @@ TOP_LEVEL_KEYS = {
     "translation_build_eligible",
     "next_checkpoint",
 }
-ANCHOR_TIMEOUT_SECONDS = 240.0
-
-
 def _anchor_hit_limit() -> int:
-    """Reuse the proven normal-speed first-context anchor search budget."""
+    """Reuse the proven per-step first-context anchor search budget."""
+
+    return MAX_REJECTED_TARGET_HITS
+
+
+def _anchor_frame_schedule() -> tuple[tuple[int, str | None], ...]:
+    """Return the passive frame-step schedule that reached this dialogue."""
 
     if not ATTRACT_CAPTURE_SCHEDULE or any(
         button is not None for _, button in ATTRACT_CAPTURE_SCHEDULE
     ):
         raise RuntimeError("translated VRAM comparison schedule must be passive")
-    return MAX_REJECTED_TARGET_HITS
+    return ATTRACT_CAPTURE_SCHEDULE
 
 
 def _record_failure_stage(path: Path, stage: str) -> None:
@@ -431,22 +430,26 @@ def _capture_anchor_vram(
         _record_failure_stage(failure_stage_path, f"{phase_prefix}-anchor")
         client.call("debug_reset")
         client.call("debug_pause")
-        hit_limit = _anchor_hit_limit()
         arm()
         selected_state: dict[str, object] | None = None
-        timeout = max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, ANCHOR_TIMEOUT_SECONDS)
-        for _ in range(hit_limit):
-            status = _continue_until_breakpoint(client, timeout)
-            if status.get("at_breakpoint") is not True:
+        for frames, _ in _anchor_frame_schedule():
+            for _ in range(_anchor_hit_limit()):
+                status = _step_frames_and_wait(client, frames)
+                if status.get("at_breakpoint") is not True:
+                    break
+                state, _ = _capture_state(client)
+                selector, ordinal = _entry_coordinates(state)
+                disarm()
+                if (
+                    selector == CONFIRMED_SELECTOR
+                    and ordinal == CONFIRMED_ORDINAL
+                ):
+                    selected_state = state
+                    break
+                _step_instruction_and_wait(client)
+                arm()
+            if selected_state is not None:
                 break
-            state, _ = _capture_state(client)
-            selector, ordinal = _entry_coordinates(state)
-            disarm()
-            if selector == CONFIRMED_SELECTOR and ordinal == CONFIRMED_ORDINAL:
-                selected_state = state
-                break
-            _step_instruction_and_wait(client)
-            arm()
         if selected_state is None:
             raise RuntimeError("confirmed dialogue anchor was not reached")
         _record_failure_stage(failure_stage_path, f"{phase_prefix}-context")

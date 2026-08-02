@@ -130,6 +130,23 @@ stop_file="$state_dir/STOP"
 private_log="$state_dir/autopilot.log"
 launcher_log="$state_dir/launcher.log"
 boot_launcher="$HOME/.termux/boot/shiningforcekr-autopilot"
+wake_lock_file="$state_dir/wake_lock_owned"
+
+acquire_wake_lock() {
+  if command -v termux-wake-lock >/dev/null 2>&1 &&
+    termux-wake-lock >/dev/null 2>&1; then
+    touch "$wake_lock_file"
+  fi
+}
+
+release_wake_lock() {
+  if [ -e "$wake_lock_file" ]; then
+    if command -v termux-wake-unlock >/dev/null 2>&1; then
+      termux-wake-unlock >/dev/null 2>&1 || true
+    fi
+    rm -f "$wake_lock_file"
+  fi
+}
 
 read_live_pid() {
   local candidate=""
@@ -211,6 +228,7 @@ stop_autopilot() {
   else
     echo "S25U autopilot is not running"
   fi
+  release_wake_lock
   write_status
 }
 
@@ -245,6 +263,10 @@ write_status() {
   if [ -x "$boot_launcher" ]; then
     boot_state="설치됨"
   fi
+  wake_lock_state="비활성"
+  if [ -e "$wake_lock_file" ]; then
+    wake_lock_state="활성"
+  fi
 
   status_parent="$(dirname "$status_file")"
   mkdir -p "$status_parent"
@@ -256,6 +278,7 @@ write_status() {
       printf '%s\n' "프로세스: $live_pid"
     fi
     printf '%s\n' "부팅 실행기: $boot_state"
+    printf '%s\n' "화면 꺼짐 작업 유지: $wake_lock_state"
     printf '%s\n' "백그라운드 우선순위: nice $nice_level"
     printf '%s\n' "현재 Git 커밋: $current_head"
     printf '%s\n' "마지막 처리 커밋: $last_head"
@@ -307,6 +330,7 @@ start_autopilot() {
   fi
 
   rm -f "$stop_file"
+  acquire_wake_lock
   autopilot_args=(
     --source-rom "$source_rom"
     --interval "$interval"
