@@ -3,8 +3,8 @@
   "schema_version": 3,
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
-  "exit_code": 124,
-  "attempt_utc": "2026-08-02T17:51:32Z",
+  "exit_code": 1,
+  "attempt_utc": "2026-08-02T18:00:59Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -20,7 +20,7 @@
   "runtime_observation_present": true,
   "runtime_failure": {
     "schema_version": 1,
-    "failure_stage": "first-context-consumer-trace-timeout",
+    "failure_stage": "first-context-direct-renderer-capture",
     "failure_kind": "runtime-error",
     "mcp_method": null
   },
