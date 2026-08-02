@@ -4,7 +4,7 @@
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
   "exit_code": 1,
-  "attempt_utc": "2026-08-02T02:25:11Z",
+  "attempt_utc": "2026-08-02T02:41:22Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -20,7 +20,7 @@
   "runtime_observation_present": true,
   "runtime_failure": {
     "schema_version": 1,
-    "failure_stage": "first-context-translated-vram-diff",
+    "failure_stage": "first-context-translated-vram-baseline-anchor",
     "failure_kind": "runtime-error",
     "mcp_method": null
   },
