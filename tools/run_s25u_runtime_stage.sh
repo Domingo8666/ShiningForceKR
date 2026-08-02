@@ -330,6 +330,7 @@ ready = (
     and capture["test_target_sha256"] == build["test_target_sha256"]
     and capture["renderer_route"] == "direct-observed-page"
     and isinstance(capture.get("slot_alignment"), dict)
+    and capture["slot_alignment"].get("mapping_confirmed") is True
     and capture["local_encoding_sha256"]
     == published_encoding["local_encoding_sha256"]
     and capture["local_encoding_sha256"]

@@ -152,6 +152,58 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
         self.assertEqual(safe["constant_loader_base"], 0x100)
         self.assertEqual(safe["constant_write_slot_shift"], 3)
 
+    def test_confirms_three_consistent_glyphs_when_two_are_unmatched(self) -> None:
+        vram = bytearray(0x4000)
+        intended_tiles = [bytes([10 + index]) * 32 for index in range(5)]
+        rendered_tiles = [bytes([20 + index]) * 32 for index in range(3)]
+        rendered_indexes = [0x113, 0x114, 0x115, 0x180, 0x181]
+        for tile, tile_index in zip(rendered_tiles, rendered_indexes):
+            start = tile_index * 32
+            vram[start:start + 32] = tile
+        for index, tile_index in enumerate(rendered_indexes):
+            offset = NAME_TABLE_BASE + 2 * (
+                FIRST_DIALOGUE_TEXT_ROW * NAME_TABLE_WIDTH
+                + FIRST_DIALOGUE_TEXT_COLUMN
+                + index
+            )
+            vram[offset:offset + 2] = tile_index.to_bytes(2, "little")
+        encoding = {
+            "rows": [
+                {
+                    "direct_renderer_proof": True,
+                    "visible_symbol_count": 5,
+                }
+            ],
+            "character_assignments": [
+                {
+                    "row_index": 1,
+                    "visual_kind": "approved-target-character",
+                    "page": 21,
+                    "symbol": 0x10 + index,
+                    "tile_sha256": sha256(tile).hexdigest(),
+                }
+                for index, tile in enumerate(intended_tiles)
+            ] + [
+                {
+                    "row_index": 3,
+                    "visual_kind": "approved-target-character",
+                    "page": 44,
+                    "symbol": 0x13 + index,
+                    "tile_sha256": sha256(tile).hexdigest(),
+                }
+                for index, tile in enumerate(rendered_tiles)
+            ],
+        }
+
+        safe, local = analyze_direct_renderer_slot_alignment(bytes(vram), encoding)
+
+        self.assertTrue(safe["mapping_confirmed"])
+        self.assertEqual(safe["rendered_assignment_match_count"], 3)
+        self.assertEqual(safe["observed_assignment_page"], 44)
+        self.assertEqual(safe["constant_write_slot_shift"], 3)
+        self.assertEqual(local["route_evidence_count"], 3)
+        self.assertEqual(local["minimum_route_evidence"], 3)
+
     def test_accepts_rendered_assignment_capture_receipt(self) -> None:
         value = {
             "artifact_kind": "sanitized-v5-1-first-context-direct-renderer-capture",

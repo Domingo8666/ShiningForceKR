@@ -157,6 +157,7 @@ def analyze_direct_renderer_slot_alignment(
 
     # (font page, VRAM loader base, physical write slot - decoded symbol)
     common_routes: set[tuple[int, int, int]] | None = None
+    route_evidence_count = 0
     unique_matches = 0
     rendered_assignment_matches = 0
     samples = []
@@ -211,7 +212,15 @@ def analyze_direct_renderer_slot_alignment(
                     )
                     for tile in desired_tiles
                 }
-        common_routes = routes if common_routes is None else common_routes & routes
+        # Punctuation and repeated blank tiles are not always unique in VRAM.
+        # Do not let an unmatched sample erase a route established by several
+        # independent Hangul glyphs; intersect only samples that actually
+        # produce a page/base/shift candidate.
+        if routes:
+            route_evidence_count += 1
+            common_routes = (
+                routes if common_routes is None else common_routes & routes
+            )
         samples.append(
             {
                 "index": index,
@@ -224,7 +233,10 @@ def analyze_direct_renderer_slot_alignment(
             }
         )
     routes = common_routes or set()
-    confirmed = len(routes) == 1
+    minimum_route_evidence = min(3, visible_count)
+    confirmed = (
+        route_evidence_count >= minimum_route_evidence and len(routes) == 1
+    )
     page, loader_base, write_slot_shift = (
         next(iter(routes)) if confirmed else (None, None, None)
     )
@@ -246,6 +258,8 @@ def analyze_direct_renderer_slot_alignment(
         "text_column": FIRST_DIALOGUE_TEXT_COLUMN,
         "text_row": FIRST_DIALOGUE_TEXT_ROW,
         "samples": samples,
+        "route_evidence_count": route_evidence_count,
+        "minimum_route_evidence": minimum_route_evidence,
     }
     return safe, local
 
