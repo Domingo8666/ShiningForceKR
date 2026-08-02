@@ -150,6 +150,31 @@ class S25UAutopilotTests(unittest.TestCase):
             '    == sha256_file(paths["encoding"])',
             RUNTIME_STAGE,
         )
+        self.assertIn(
+            'local_rows[0].get("direct_renderer_proof") is True',
+            RUNTIME_STAGE,
+        )
+
+    def test_direct_renderer_stage_rebuilds_without_inline_page_token(self) -> None:
+        direct_branch = RUNTIME_STAGE.index(
+            'elif [ "$critical_path_focus" = "first-context-direct-renderer-capture" ]'
+        )
+        next_branch = RUNTIME_STAGE.index(
+            'elif [ "$critical_path_focus" = "active-rom-cursor-reset" ]',
+            direct_branch,
+        )
+        branch = RUNTIME_STAGE[direct_branch:next_branch]
+        self.assertIn("--direct-renderer-observed-page", branch)
+        encoding_call = branch.index(
+            "python tools/v5_1_first_context_translation_encoding.py"
+        )
+        capture_call = branch.index(
+            "python tools/v5_1_first_context_direct_renderer_capture.py"
+        )
+        self.assertNotIn(
+            "--proven-visible-page",
+            branch[encoding_call:capture_call],
+        )
 
     def test_direct_renderer_stage_requires_current_trace_output(self) -> None:
         self.assertIn(

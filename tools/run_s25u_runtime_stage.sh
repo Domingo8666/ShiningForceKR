@@ -316,12 +316,14 @@ if any(not path.is_file() for path in paths.values()):
     raise SystemExit(1)
 capture = json.loads(paths["capture"].read_text(encoding="utf-8"))
 build = json.loads(paths["build"].read_text(encoding="utf-8"))
+local_encoding = json.loads(paths["encoding"].read_text(encoding="utf-8"))
 published_encoding = json.loads(
     paths["published_encoding"].read_text(encoding="utf-8")
 )
 validate_first_context_direct_renderer_capture(capture)
 validate_first_context_translation_test_build(build)
 validate_first_context_translation_encoding(published_encoding)
+local_rows = local_encoding.get("rows")
 ready = (
     sha256_file(paths["rom"]) == build["test_target_sha256"]
     and capture["test_target_sha256"] == build["test_target_sha256"]
@@ -329,6 +331,10 @@ ready = (
     == published_encoding["local_encoding_sha256"]
     and capture["local_encoding_sha256"]
     == sha256_file(paths["encoding"])
+    and isinstance(local_rows, list)
+    and bool(local_rows)
+    and isinstance(local_rows[0], dict)
+    and local_rows[0].get("direct_renderer_proof") is True
 )
 raise SystemExit(0 if ready else 1)
 PY
@@ -349,7 +355,7 @@ PY
       if command -v timeout >/dev/null 2>&1; then
         direct_renderer_capture_output="$(
           python tools/v5_1_first_context_translation_encoding.py \
-            --proven-visible-page &&
+            --direct-renderer-observed-page &&
           python tools/v5_1_first_context_record_reinsertion.py &&
           python tools/v5_1_first_context_translation_test_build.py &&
           python tools/v5_1_first_context_direct_renderer_capture.py \
@@ -361,7 +367,7 @@ PY
       else
         direct_renderer_capture_output="$(
           python tools/v5_1_first_context_translation_encoding.py \
-            --proven-visible-page &&
+            --direct-renderer-observed-page &&
           python tools/v5_1_first_context_record_reinsertion.py &&
           python tools/v5_1_first_context_translation_test_build.py &&
           python tools/v5_1_first_context_direct_renderer_capture.py \
