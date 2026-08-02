@@ -66,7 +66,10 @@ try:
         REQUIRED_TOOLS,
         _entry_coordinates,
     )
-    from .v5_1_test_display_capture import _continue_until_breakpoint
+    from .v5_1_test_display_capture import (
+        _continue_until_breakpoint,
+        _set_unlimited_fast_forward,
+    )
 except ImportError:  # pragma: no cover - direct script execution
     from patch_io import sha256_file
     from run_s25u_renderer_probe import HUFFMAN_VECTOR_START, _last_rom_read
@@ -117,7 +120,10 @@ except ImportError:  # pragma: no cover - direct script execution
         REQUIRED_TOOLS,
         _entry_coordinates,
     )
-    from v5_1_test_display_capture import _continue_until_breakpoint
+    from v5_1_test_display_capture import (
+        _continue_until_breakpoint,
+        _set_unlimited_fast_forward,
+    )
 
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-consumer-trace"
@@ -635,6 +641,7 @@ def _capture_contexts(
     entry_address = f"{DECODER_ENTRY_LOGICAL:04X}"
     entry_armed = False
     vector_armed = False
+    fast_forward_enabled = False
     armed_vector_ranges: list[tuple[str, str]] = []
     local: dict[str, object] = {"anchor_hits": [], "vector_events": []}
 
@@ -727,7 +734,9 @@ def _capture_contexts(
         if any(button is not None for _, button in ATTRACT_CAPTURE_SCHEDULE):
             raise RuntimeError("consumer trace attract schedule must be passive")
         arm_entry()
-        anchor_timeout = max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 240.0)
+        _set_unlimited_fast_forward(client, True)
+        fast_forward_enabled = True
+        anchor_timeout = max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 60.0)
         anchor_reached = False
         anchor_state: dict[str, object] | None = None
         for _ in range(MAX_REJECTED_TARGET_HITS):
@@ -753,6 +762,8 @@ def _capture_contexts(
             arm_entry()
         if not anchor_reached or anchor_state is None:
             raise RuntimeError("consumer trace confirmed anchor was not reached")
+        _set_unlimited_fast_forward(client, False)
+        fast_forward_enabled = False
 
         client.call(
             "set_trace_log",
@@ -864,6 +875,11 @@ def _capture_contexts(
         )
         raise
     finally:
+        if fast_forward_enabled:
+            try:
+                _set_unlimited_fast_forward(client, False)
+            except RuntimeError:
+                pass
         try:
             disarm_entry()
         except RuntimeError:

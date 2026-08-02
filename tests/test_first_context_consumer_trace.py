@@ -39,6 +39,14 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
         self.assertEqual(capture_lines.count("disarm_vectors()"), 1)
         self.assertIn("MAX_VECTOR_READ_HITS = 20", TRACE_SOURCE)
 
+    def test_anchor_uses_bounded_unlimited_fast_forward(self) -> None:
+        self.assertIn("_set_unlimited_fast_forward(client, True)", TRACE_SOURCE)
+        self.assertIn("_set_unlimited_fast_forward(client, False)", TRACE_SOURCE)
+        self.assertIn(
+            "max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 60.0)",
+            TRACE_SOURCE,
+        )
+
     def test_maps_either_vector_byte_to_its_context(self) -> None:
         self.assertEqual(vector_context_from_physical(HUFFMAN_VECTOR_START), 0)
         self.assertEqual(vector_context_from_physical(HUFFMAN_VECTOR_START + 1), 0)
