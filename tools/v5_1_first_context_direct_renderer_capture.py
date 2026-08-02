@@ -36,8 +36,19 @@ ARTIFACT_KIND = "sanitized-v5-1-first-context-direct-renderer-capture"
 SCHEMA_VERSION = 6
 NAME_TABLE_BASE = 0x3800
 NAME_TABLE_WIDTH = 32
-FIRST_DIALOGUE_TEXT_COLUMN = 1
-FIRST_DIALOGUE_TEXT_ROW = 12
+# Gearsystem returns the cropped 160x144 Game Gear viewport.  Its upper-left
+# pixel corresponds to tile (6, 3) in the 256x224 VDP name table.  The first
+# dialogue glyph is at viewport tile (1, 11), not name-table tile (1, 11).
+GAME_GEAR_VIEWPORT_TILE_COLUMN = 6
+GAME_GEAR_VIEWPORT_TILE_ROW = 3
+FIRST_DIALOGUE_VIEWPORT_TEXT_COLUMN = 1
+FIRST_DIALOGUE_VIEWPORT_TEXT_ROW = 11
+FIRST_DIALOGUE_TEXT_COLUMN = (
+    GAME_GEAR_VIEWPORT_TILE_COLUMN + FIRST_DIALOGUE_VIEWPORT_TEXT_COLUMN
+)
+FIRST_DIALOGUE_TEXT_ROW = (
+    GAME_GEAR_VIEWPORT_TILE_ROW + FIRST_DIALOGUE_VIEWPORT_TEXT_ROW
+)
 VRAM_TILE_BYTES = 32
 RUNTIME_STAGE_REQUEST_PATH = Path(
     "analysis/control/s25u_runtime_stage_request.json"

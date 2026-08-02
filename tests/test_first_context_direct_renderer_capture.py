@@ -7,6 +7,10 @@ import unittest
 from tools.v5_1_first_context_direct_renderer_capture import (
     FIRST_DIALOGUE_TEXT_COLUMN,
     FIRST_DIALOGUE_TEXT_ROW,
+    FIRST_DIALOGUE_VIEWPORT_TEXT_COLUMN,
+    FIRST_DIALOGUE_VIEWPORT_TEXT_ROW,
+    GAME_GEAR_VIEWPORT_TILE_COLUMN,
+    GAME_GEAR_VIEWPORT_TILE_ROW,
     NAME_TABLE_BASE,
     NAME_TABLE_WIDTH,
     analyze_direct_renderer_slot_alignment,
@@ -15,6 +19,14 @@ from tools.v5_1_first_context_direct_renderer_capture import (
 
 
 class FirstContextDirectRendererCaptureTests(unittest.TestCase):
+    def test_dialogue_coordinates_include_game_gear_viewport_crop(self) -> None:
+        self.assertEqual(GAME_GEAR_VIEWPORT_TILE_COLUMN, 6)
+        self.assertEqual(GAME_GEAR_VIEWPORT_TILE_ROW, 3)
+        self.assertEqual(FIRST_DIALOGUE_VIEWPORT_TEXT_COLUMN, 1)
+        self.assertEqual(FIRST_DIALOGUE_VIEWPORT_TEXT_ROW, 11)
+        self.assertEqual(FIRST_DIALOGUE_TEXT_COLUMN, 7)
+        self.assertEqual(FIRST_DIALOGUE_TEXT_ROW, 14)
+
     def test_resolves_constant_direct_renderer_write_slot_shift(self) -> None:
         vram = bytearray(0x4000)
         tiles = [bytes([1]) * 32, bytes([2]) * 32]
