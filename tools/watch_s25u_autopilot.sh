@@ -9,10 +9,26 @@ launcher_log="$state_dir/launcher.log"
 lock_pid_file="$state_dir/lock/pid"
 
 while true; do
+  battery_status="$(getprop debug.tracing.battery_status 2>/dev/null || true)"
+  case "$battery_status" in
+    2)
+      refresh_interval=2
+      power_label="충전 중"
+      ;;
+    5)
+      refresh_interval=2
+      power_label="충전 완료"
+      ;;
+    *)
+      refresh_interval=10
+      power_label="충전 중 아님"
+      ;;
+  esac
+
   printf '\033[2J\033[H'
   printf '%s\n' 'Shining Force KR - S25U 실시간 자동작업'
   printf '%s\n' '이 화면은 보기 전용이며 닫아도 자동작업은 계속됩니다.'
-  printf '%s\n\n' '2초마다 자동으로 새로고침합니다. 종료: Ctrl+C'
+  printf '%s\n\n' "$power_label: ${refresh_interval}초마다 자동 새로고침합니다. 종료: Ctrl+C"
 
   live_pid=""
   if [ -s "$lock_pid_file" ]; then
@@ -51,5 +67,5 @@ while true; do
   else
     printf '%s\n' '로그를 기다리고 있습니다.'
   fi
-  sleep 2
+  sleep "$refresh_interval"
 done
