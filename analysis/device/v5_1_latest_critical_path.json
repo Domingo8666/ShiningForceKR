@@ -4,12 +4,12 @@
   "status": "one-unresolved-boundary-selected",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "source_register_trace_sha256": "0f172e70a48edac1ac849469ea5709d94ccc350bb3cc6d365aefe9d4d1d70040",
-  "selected_stage": "active-rom-path-scope",
-  "confirmed_boundary": "active-vram-to-incremental-rom-source-path",
-  "blocked_boundary": "incremental-rom-source-path-to-translation-relevance",
-  "selection_reason": "current-incremental-source-ready-current-path-scope-missing",
-  "generated_utc": "2026-08-02T02:17:49.018347Z",
+  "selected_stage": "first-context-translated-vram-diff",
+  "confirmed_boundary": "approved-translation-to-static-test-rom",
+  "blocked_boundary": "static-test-rom-to-translated-glyph-vram",
+  "selection_reason": "current-rom-path-is-nontext-capture-baseline-test-vram-difference",
+  "generated_utc": "2026-08-02T02:18:31.518630Z",
   "baseline_script_bytes_unchanged": true,
   "translation_build_eligible": false,
-  "next_checkpoint": "classify-active-rom-path-scope"
+  "next_checkpoint": "capture-translated-test-rom-vram-difference"
 }
