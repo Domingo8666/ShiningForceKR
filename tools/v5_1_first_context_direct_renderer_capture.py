@@ -12,8 +12,7 @@ import argparse
 
 try:
     from .patch_io import sha256_file
-    from .v5_1_font_catalog import tile_ink_mask
-    from .v5_1_png_pixels import DEFAULT_TEXT_INK_RGBA, decode_png_rgba
+    from .v5_1_png_pixels import decode_png_rgba
     from .v5_1_first_context_translated_vram_diff import _capture_anchor_vram
     from .v5_1_first_context_translation_encoding import (
         FONT_PAGE_COUNT,
@@ -26,8 +25,7 @@ try:
     )
 except ImportError:  # pragma: no cover - direct script execution
     from patch_io import sha256_file
-    from v5_1_font_catalog import tile_ink_mask
-    from v5_1_png_pixels import DEFAULT_TEXT_INK_RGBA, decode_png_rgba
+    from v5_1_png_pixels import decode_png_rgba
     from v5_1_first_context_translated_vram_diff import _capture_anchor_vram
     from v5_1_first_context_translation_encoding import (
         FONT_PAGE_COUNT,
@@ -135,24 +133,49 @@ def _screenshot_dialogue_tile_candidates(
         or top + 8 > image.height
     ):
         raise ValueError("direct renderer screenshot viewport is invalid")
-    tiles_by_mask: dict[tuple[int, ...], list[int]] = {}
+    def normalize(values: list[object]) -> tuple[int, ...]:
+        labels: dict[object, int] = {}
+        result = []
+        for value in values:
+            if value not in labels:
+                labels[value] = len(labels)
+            result.append(labels[value])
+        return tuple(result)
+
+    def tile_pixels(tile: bytes) -> list[int]:
+        result = []
+        for row in range(8):
+            planes = tile[row * 4:row * 4 + 4]
+            for column in range(8):
+                bit = 7 - column
+                result.append(sum(((plane >> bit) & 1) << index for index, plane in enumerate(planes)))
+        return result
+
+    tiles_by_pattern: dict[tuple[int, ...], set[int]] = {}
     for tile_index in range(len(vram) // VRAM_TILE_BYTES):
         start = tile_index * VRAM_TILE_BYTES
-        mask = tile_ink_mask(vram[start:start + VRAM_TILE_BYTES])
-        tiles_by_mask.setdefault(mask, []).append(tile_index)
+        pixels = tile_pixels(vram[start:start + VRAM_TILE_BYTES])
+        rows = [pixels[row * 8:row * 8 + 8] for row in range(8)]
+        variants = (
+            rows,
+            [list(reversed(row)) for row in rows],
+            list(reversed(rows)),
+            [list(reversed(row)) for row in reversed(rows)],
+        )
+        for variant in variants:
+            pattern = normalize([value for row in variant for value in row])
+            tiles_by_pattern.setdefault(pattern, set()).add(tile_index)
     result = []
     for glyph_index in range(visible_count):
         glyph_left = left + glyph_index * 8
-        mask_rows = []
+        screenshot_pixels = []
         for row in range(8):
-            bits = 0
             for column in range(8):
                 pixel = (top + row) * image.width + glyph_left + column
                 offset = pixel * 4
-                if image.rgba[offset:offset + 4] == DEFAULT_TEXT_INK_RGBA:
-                    bits |= 1 << (7 - column)
-            mask_rows.append(bits)
-        result.append(tiles_by_mask.get(tuple(mask_rows), []))
+                screenshot_pixels.append(image.rgba[offset:offset + 4])
+        pattern = normalize(screenshot_pixels)
+        result.append(sorted(tiles_by_pattern.get(pattern, set())))
     return result
 
 
