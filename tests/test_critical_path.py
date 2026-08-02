@@ -394,6 +394,14 @@ class CriticalPathTests(unittest.TestCase):
             build = json.loads(
                 (root / relative_paths[2]).read_text(encoding="utf-8")
             )
+            capture_path = root / relative_paths[0]
+            capture = json.loads(capture_path.read_text(encoding="utf-8"))
+            capture["test_target_sha256"] = build["test_target_sha256"]
+            capture["first_context_translation_test_build_sha256"] = (
+                sha256_file(root / relative_paths[2])
+            )
+            capture["renderer_route"] = "direct-observed-page"
+            self._write_json(capture_path, capture)
             consumer_path = root / relative_paths[3]
             consumer = json.loads(consumer_path.read_text(encoding="utf-8"))
             consumer["test_target_sha256"] = "0" * 64

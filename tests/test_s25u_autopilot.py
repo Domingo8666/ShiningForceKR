@@ -141,6 +141,10 @@ class S25UAutopilotTests(unittest.TestCase):
             RUNTIME_STAGE,
         )
         self.assertIn(
+            'capture["renderer_route"] == "direct-observed-page"',
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
             'capture["local_encoding_sha256"]\n'
             '    == published_encoding["local_encoding_sha256"]',
             RUNTIME_STAGE,
@@ -174,6 +178,13 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertNotIn(
             "--proven-visible-page",
             branch[encoding_call:capture_call],
+        )
+        capture_segment = branch[capture_call:]
+        capture_line = capture_segment.splitlines()[0]
+        self.assertNotIn("--proven-visible-page", capture_line)
+        self.assertNotIn(
+            "--proven-visible-page",
+            capture_segment.split("python tools/v5_1_first_context_consumer_trace.py", 1)[0],
         )
 
     def test_direct_renderer_stage_requires_current_trace_output(self) -> None:

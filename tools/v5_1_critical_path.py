@@ -517,7 +517,8 @@ def _direct_renderer_consumer_trace_needed(
         return False
     capture_sha256 = sha256_file(capture_path)
     inputs_current = (
-        capture.get("renderer_route") == "proven-visible-page"
+        capture.get("renderer_route")
+        in {"proven-visible-page", "direct-observed-page"}
         and capture.get("baseline_target_sha256") == target_sha256
         and build.get("baseline_target_sha256") == target_sha256
         and capture.get("test_target_sha256") == build.get("test_target_sha256")

@@ -327,6 +327,7 @@ local_rows = local_encoding.get("rows")
 ready = (
     sha256_file(paths["rom"]) == build["test_target_sha256"]
     and capture["test_target_sha256"] == build["test_target_sha256"]
+    and capture["renderer_route"] == "direct-observed-page"
     and capture["local_encoding_sha256"]
     == published_encoding["local_encoding_sha256"]
     and capture["local_encoding_sha256"]
@@ -358,8 +359,7 @@ PY
             --direct-renderer-observed-page &&
           python tools/v5_1_first_context_record_reinsertion.py &&
           python tools/v5_1_first_context_translation_test_build.py &&
-          python tools/v5_1_first_context_direct_renderer_capture.py \
-            --proven-visible-page &&
+          python tools/v5_1_first_context_direct_renderer_capture.py &&
           timeout -k 15s 180s \
             python tools/v5_1_first_context_consumer_trace.py \
             --direct-renderer 2>&1
@@ -370,8 +370,7 @@ PY
             --direct-renderer-observed-page &&
           python tools/v5_1_first_context_record_reinsertion.py &&
           python tools/v5_1_first_context_translation_test_build.py &&
-          python tools/v5_1_first_context_direct_renderer_capture.py \
-            --proven-visible-page &&
+          python tools/v5_1_first_context_direct_renderer_capture.py &&
           python tools/v5_1_first_context_consumer_trace.py \
             --direct-renderer 2>&1
         )"
