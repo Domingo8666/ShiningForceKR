@@ -11,7 +11,9 @@ from tools.v5_1_first_context_consumer_trace import (
     extract_vector_contexts_from_trace,
     summarize_consumer_contexts,
     validate_first_context_consumer_trace,
+    vector_context_from_physical,
 )
+from tools.run_s25u_renderer_probe import HUFFMAN_VECTOR_START  # noqa: E402
 
 
 SHA_A = "a" * 64
@@ -23,6 +25,17 @@ SHA_F = "f" * 64
 
 
 class FirstContextConsumerTraceTests(unittest.TestCase):
+    def test_maps_either_vector_byte_to_its_context(self) -> None:
+        self.assertEqual(vector_context_from_physical(HUFFMAN_VECTOR_START), 0)
+        self.assertEqual(vector_context_from_physical(HUFFMAN_VECTOR_START + 1), 0)
+        self.assertEqual(
+            vector_context_from_physical(HUFFMAN_VECTOR_START + 0x1FF),
+            0xFF,
+        )
+        self.assertIsNone(
+            vector_context_from_physical(HUFFMAN_VECTOR_START + 0x200)
+        )
+
     def test_extracts_vector_contexts_from_continuous_trace(self) -> None:
         lines = [
             "08:5000 A:20 BC:0000 DE:0000 HL:0000 SP:DFF0  32 FF FF",

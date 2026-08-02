@@ -291,7 +291,9 @@ else
       python tools/v5_1_first_context_record_reinsertion.py &&
       python tools/v5_1_first_context_translation_test_build.py &&
       python tools/v5_1_first_context_direct_renderer_capture.py \
-        --proven-visible-page
+        --proven-visible-page &&
+      python tools/v5_1_first_context_consumer_trace.py \
+        --direct-renderer
     )"
     direct_renderer_capture_status=$?
     printf '%s\n' "$direct_renderer_capture_output"

@@ -31,6 +31,10 @@ try:
         CANDIDATE_END_SYMBOL,
         LOCAL_REPORT_PATH as LOCAL_ENCODING_PATH,
     )
+    from .v5_1_first_context_direct_renderer_capture import (
+        PUBLISH_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_PATH,
+        validate_first_context_direct_renderer_capture,
+    )
     from .v5_1_first_context_translation_runtime_capture import (
         PUBLISH_RELATIVE_PATH as RUNTIME_CAPTURE_PATH,
         TEST_ROM_PATH,
@@ -77,6 +81,10 @@ except ImportError:  # pragma: no cover - direct script execution
     from v5_1_first_context_translation_encoding import (
         CANDIDATE_END_SYMBOL,
         LOCAL_REPORT_PATH as LOCAL_ENCODING_PATH,
+    )
+    from v5_1_first_context_direct_renderer_capture import (
+        PUBLISH_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_PATH,
+        validate_first_context_direct_renderer_capture,
     )
     from v5_1_first_context_translation_runtime_capture import (
         PUBLISH_RELATIVE_PATH as RUNTIME_CAPTURE_PATH,
@@ -151,6 +159,18 @@ TRACE_DIAGNOSTIC_COUNT_KEYS = {
     "logical_vector_window_read_count",
     "mapped_vector_read_count",
 }
+
+
+def vector_context_from_physical(physical: object) -> int | None:
+    if (
+        not isinstance(physical, int)
+        or isinstance(physical, bool)
+        or not HUFFMAN_VECTOR_START
+        <= physical
+        < HUFFMAN_VECTOR_START + 0x200
+    ):
+        return None
+    return (physical - HUFFMAN_VECTOR_START) // 2
 SAFE_FIELDS = {
     "artifact_kind",
     "schema_version",
@@ -646,12 +666,12 @@ def _capture_contexts(
             )
             entry_armed = False
 
-    def arm_vectors(context: int) -> None:
+    def arm_vectors(context: int | None = None) -> None:
         nonlocal vector_armed, armed_vector_ranges
         armed_vector_ranges = []
         for base in VECTOR_LOGICAL_BASES:
-            start = base + context * 2
-            end = start + 1
+            start = base if context is None else base + context * 2
+            end = base + 0x1FF if context is None else start + 1
             start_hex = f"{start:04X}"
             end_hex = f"{end:04X}"
             client.call(
@@ -748,11 +768,16 @@ def _capture_contexts(
             },
         )
         diagnostic_lines: list[str] = []
-        for planned_index, planned_context in enumerate(planned_contexts):
-            expected_physical = HUFFMAN_VECTOR_START + planned_context * 2
+        for planned_index in range(MAX_VECTOR_READ_HITS):
+            planned_context = (
+                planned_contexts[planned_index]
+                if planned_index < len(planned_contexts)
+                else None
+            )
             accepted = False
+            observed_context: int | None = None
             for false_hit_index in range(MAX_NONVECTOR_HITS_PER_CONTEXT):
-                arm_vectors(planned_context)
+                arm_vectors()
                 status = _continue_until_breakpoint(
                     client,
                     FIRST_VECTOR_TIMEOUT_SECONDS
@@ -780,14 +805,16 @@ def _capture_contexts(
                     if sample is not None
                     else None
                 )
+                observed_context = vector_context_from_physical(physical)
                 accepted = (
                     sample is not None
                     and sample.get("classification")
                     == "korean-huffman-vector"
-                    and physical in {expected_physical, expected_physical + 1}
+                    and observed_context is not None
                 )
                 event: dict[str, object] = {
                     "planned_index": planned_index,
+                    "planned_context": planned_context,
                     "false_hit_index": false_hit_index,
                     "state": state,
                     "evidence": evidence,
@@ -797,7 +824,8 @@ def _capture_contexts(
                 local["vector_events"].append(event)
                 disarm_vectors()
                 if accepted:
-                    contexts.append(planned_context)
+                    assert observed_context is not None
+                    contexts.append(observed_context)
                     break
                 # Read breakpoints are reported after the memory instruction
                 # has completed. Re-arming resumes at the next instruction;
@@ -861,6 +889,7 @@ def _capture_contexts(
 def _main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--if-needed", action="store_true")
+    parser.add_argument("--direct-renderer", action="store_true")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     if args.if_needed and not first_context_consumer_trace_needed(root):
@@ -870,8 +899,16 @@ def _main() -> int:
     paths = {
         "rom": root / TEST_ROM_PATH,
         "build": root / TEST_BUILD_PATH,
-        "runtime": root / RUNTIME_CAPTURE_PATH,
-        "review": root / VISUAL_REVIEW_PATH,
+        "runtime": root / (
+            DIRECT_RENDERER_CAPTURE_PATH
+            if args.direct_renderer
+            else RUNTIME_CAPTURE_PATH
+        ),
+        "review": root / (
+            DIRECT_RENDERER_CAPTURE_PATH
+            if args.direct_renderer
+            else VISUAL_REVIEW_PATH
+        ),
         "encoding": root / LOCAL_ENCODING_PATH,
     }
     if any(not path.is_file() for path in paths.values()):
@@ -881,8 +918,11 @@ def _main() -> int:
     review = _load_json(paths["review"])
     encoding = _load_json(paths["encoding"])
     validate_first_context_translation_test_build(build)
-    validate_first_context_translation_runtime_capture(runtime)
-    validate_first_context_translation_visual_review(review)
+    if args.direct_renderer:
+        validate_first_context_direct_renderer_capture(runtime)
+    else:
+        validate_first_context_translation_runtime_capture(runtime)
+        validate_first_context_translation_visual_review(review)
     rows = encoding.get("rows")
     if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
         raise ValueError("first context consumer trace encoding rows are missing")
@@ -891,12 +931,17 @@ def _main() -> int:
     initial_context = first_row.get("initial_context")
     if not isinstance(expected_symbols, list) or not isinstance(initial_context, int):
         raise ValueError("first context consumer trace encoding row is invalid")
-    if (
-        review["status"] != "first-context-translation-runtime-visual-fail"
-        or review["test_target_sha256"] != runtime["test_target_sha256"]
-        or runtime["test_target_sha256"] != build["test_target_sha256"]
-        or sha256_file(paths["rom"]) != build["test_target_sha256"]
-    ):
+    runtime_identity_ready = (
+        runtime["test_target_sha256"] == build["test_target_sha256"]
+        and sha256_file(paths["rom"]) == build["test_target_sha256"]
+    )
+    review_identity_ready = (
+        runtime_identity_ready
+        if args.direct_renderer
+        else review["status"] == "first-context-translation-runtime-visual-fail"
+        and review["test_target_sha256"] == runtime["test_target_sha256"]
+    )
+    if not runtime_identity_ready or not review_identity_ready:
         raise ValueError("first context consumer trace identity disagrees")
 
     observed_contexts, local_capture = _capture_contexts(
@@ -938,6 +983,11 @@ def _main() -> int:
         "expected_symbols": expected_symbols,
         "observed_contexts": observed_contexts,
         "capture": local_capture,
+        "trace_source": (
+            "direct-renderer-capture"
+            if args.direct_renderer
+            else "failed-visual-review"
+        ),
         "publication_policy": (
             "never-publish-symbols-context-values-registers-hit-order-or-text"
         ),
