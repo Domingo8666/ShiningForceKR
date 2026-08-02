@@ -8,7 +8,7 @@
   "confirmed_boundary": "translated-custom-glyph-vram",
   "blocked_boundary": "translated-vram-tile-to-font-assignment-route",
   "selection_reason": "current-translated-vram-ready-current-glyph-slot-route-missing",
-  "generated_utc": "2026-08-02T11:24:56.394633Z",
+  "generated_utc": "2026-08-02T11:28:24.396374Z",
   "baseline_script_bytes_unchanged": true,
   "translation_build_eligible": false,
   "next_checkpoint": "join-translated-vram-tiles-to-private-font-assignments"
