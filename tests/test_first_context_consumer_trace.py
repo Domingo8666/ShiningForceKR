@@ -7,6 +7,7 @@ import unittest
 
 from tools.sfgfc_huffman import CANDIDATE_END_SYMBOL
 from tools.v5_1_first_context_consumer_trace import (
+    _fast_entry_coordinates,
     analyze_vector_contexts_from_trace,
     build_first_context_consumer_trace,
     extract_vector_contexts_from_trace,
@@ -31,6 +32,22 @@ TRACE_SOURCE = (
 
 
 class FirstContextConsumerTraceTests(unittest.TestCase):
+    def test_fast_entry_coordinates_read_only_z80_status(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def call(self, method: str) -> dict[str, str]:
+                self.calls.append(method)
+                return {"DE": "0002", "BC": "9300"}
+
+        client = FakeClient()
+        self.assertEqual(
+            _fast_entry_coordinates(client),  # type: ignore[arg-type]
+            (2, 147),
+        )
+        self.assertEqual(client.calls, ["get_z80_status"])
+
     def test_vector_breakpoints_stay_armed_across_samples(self) -> None:
         capture_source = TRACE_SOURCE.split("def _capture_contexts(", 1)[1]
         capture_source = capture_source.split("def _main()", 1)[0]

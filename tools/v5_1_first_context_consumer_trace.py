@@ -631,6 +631,36 @@ def extract_vector_contexts_from_trace(
     return contexts
 
 
+def _fast_entry_coordinates(
+    client: McpStdioClient,
+) -> tuple[int, int]:
+    """Read only the two registers needed to reject a decoder-entry hit."""
+
+    payload = client.call("get_z80_status")
+    if not isinstance(payload, dict):
+        raise RuntimeError("consumer trace registers are missing")
+    registers: dict[str, int] = {}
+    for name in ("DE", "BC"):
+        value = payload.get(name)
+        if isinstance(value, bool):
+            raise RuntimeError("consumer trace registers are invalid")
+        if isinstance(value, int):
+            parsed = value
+        elif isinstance(value, str):
+            try:
+                parsed = int(value, 16)
+            except ValueError as error:
+                raise RuntimeError(
+                    "consumer trace registers are invalid"
+                ) from error
+        else:
+            raise RuntimeError("consumer trace registers are invalid")
+        if not 0 <= parsed <= 0xFFFF:
+            raise RuntimeError("consumer trace registers are invalid")
+        registers[name.lower()] = parsed
+    return _entry_coordinates({"registers": registers})
+
+
 def _capture_contexts(
     *,
     rom_path: Path,
@@ -746,21 +776,29 @@ def _capture_contexts(
             status = _continue_until_breakpoint(client, anchor_timeout)
             if status.get("at_breakpoint") is not True:
                 break
-            state, evidence = _capture_state(client)
-            selector, ordinal = _entry_coordinates(state)
+            selector, ordinal = _fast_entry_coordinates(client)
+            disarm_entry()
+            if selector == CONFIRMED_SELECTOR and ordinal == CONFIRMED_ORDINAL:
+                state, evidence = _capture_state(client)
+                local["anchor_hits"].append(
+                    {
+                        "selector": selector,
+                        "ordinal": ordinal,
+                        "accepted": True,
+                        "state": state,
+                        "evidence": evidence,
+                    }
+                )
+                anchor_reached = True
+                anchor_state = state
+                break
             local["anchor_hits"].append(
                 {
                     "selector": selector,
                     "ordinal": ordinal,
-                    "state": state,
-                    "evidence": evidence,
+                    "accepted": False,
                 }
             )
-            disarm_entry()
-            if selector == CONFIRMED_SELECTOR and ordinal == CONFIRMED_ORDINAL:
-                anchor_reached = True
-                anchor_state = state
-                break
             _step_instruction_and_wait(client)
             arm_entry()
         if not anchor_reached or anchor_state is None:
