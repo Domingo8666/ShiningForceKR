@@ -7,6 +7,7 @@ import unittest
 
 from tools.patch_io import sha256_bytes
 from tools.v5_1_first_context_translated_vram_diff import (
+    ANCHOR_TIMEOUT_SECONDS,
     _anchor_hit_limit,
     _record_failure_stage,
     analyze_translated_vram_diff,
@@ -16,9 +17,9 @@ from tools.v5_1_first_context_translated_vram_diff import (
 
 
 class FirstContextTranslatedVramDiffTests(unittest.TestCase):
-    def test_anchor_hunt_reuses_the_proven_full_attract_budget(self) -> None:
-        self.assertEqual(_anchor_hit_limit(), 64 * 12)
-        self.assertGreater(_anchor_hit_limit(), 147)
+    def test_anchor_hunt_reuses_the_proven_normal_speed_policy(self) -> None:
+        self.assertEqual(_anchor_hit_limit(), 64)
+        self.assertEqual(ANCHOR_TIMEOUT_SECONDS, 240.0)
 
     def test_records_only_the_current_bounded_failure_phase(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

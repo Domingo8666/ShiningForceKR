@@ -56,7 +56,6 @@ try:
         MAX_REJECTED_TARGET_HITS,
         _continue_until_breakpoint,
         _parse_screenshot,
-        _set_unlimited_fast_forward,
         _write_bytes_atomic,
     )
 except ImportError:  # pragma: no cover - direct script execution
@@ -99,7 +98,6 @@ except ImportError:  # pragma: no cover - direct script execution
         MAX_REJECTED_TARGET_HITS,
         _continue_until_breakpoint,
         _parse_screenshot,
-        _set_unlimited_fast_forward,
         _write_bytes_atomic,
     )
 
@@ -147,18 +145,17 @@ TOP_LEVEL_KEYS = {
     "translation_build_eligible",
     "next_checkpoint",
 }
-FAST_FORWARD_TOOLS = {"set_fast_forward_speed", "toggle_fast_forward"}
-ANCHOR_TIMEOUT_SECONDS = 60.0
+ANCHOR_TIMEOUT_SECONDS = 240.0
 
 
 def _anchor_hit_limit() -> int:
-    """Reuse the proven passive-attract search budget for the exact anchor."""
+    """Reuse the proven normal-speed first-context anchor search budget."""
 
     if not ATTRACT_CAPTURE_SCHEDULE or any(
         button is not None for _, button in ATTRACT_CAPTURE_SCHEDULE
     ):
         raise RuntimeError("translated VRAM comparison schedule must be passive")
-    return MAX_REJECTED_TARGET_HITS * len(ATTRACT_CAPTURE_SCHEDULE)
+    return MAX_REJECTED_TARGET_HITS
 
 
 def _record_failure_stage(path: Path, stage: str) -> None:
@@ -388,7 +385,6 @@ def _capture_anchor_vram(
     _record_failure_stage(failure_stage_path, f"{phase_prefix}-initialize")
     client = McpStdioClient(_default_command())
     breakpoint_armed = False
-    fast_forward_enabled = False
     entry_address = f"{DECODER_ENTRY_LOGICAL:04X}"
 
     def arm() -> None:
@@ -420,7 +416,7 @@ def _capture_anchor_vram(
 
     try:
         tools = client.initialize()
-        missing = sorted((REQUIRED_TOOLS | FAST_FORWARD_TOOLS) - tools)
+        missing = sorted(REQUIRED_TOOLS - tools)
         if missing:
             raise RuntimeError(f"Gearsystem MCP tools missing: {missing}")
         _record_failure_stage(failure_stage_path, f"{phase_prefix}-media")
@@ -436,8 +432,6 @@ def _capture_anchor_vram(
         client.call("debug_reset")
         client.call("debug_pause")
         hit_limit = _anchor_hit_limit()
-        _set_unlimited_fast_forward(client, True)
-        fast_forward_enabled = True
         arm()
         selected_state: dict[str, object] | None = None
         timeout = max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, ANCHOR_TIMEOUT_SECONDS)
@@ -455,8 +449,6 @@ def _capture_anchor_vram(
             arm()
         if selected_state is None:
             raise RuntimeError("confirmed dialogue anchor was not reached")
-        _set_unlimited_fast_forward(client, False)
-        fast_forward_enabled = False
         _record_failure_stage(failure_stage_path, f"{phase_prefix}-context")
         initial_context, _ = _capture_runtime_initial_context(
             client,
@@ -488,11 +480,6 @@ def _capture_anchor_vram(
             "screenshot": {"file": str(evidence_path), **screen_metadata},
         }
     finally:
-        if fast_forward_enabled:
-            try:
-                _set_unlimited_fast_forward(client, False)
-            except RuntimeError:
-                pass
         if breakpoint_armed:
             try:
                 disarm()
