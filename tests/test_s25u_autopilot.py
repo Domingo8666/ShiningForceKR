@@ -106,6 +106,18 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn("termux-wake-unlock", MANAGER)
         self.assertIn("화면 꺼짐 작업 유지: $wake_lock_state", MANAGER)
 
+    def test_runtime_stage_accepts_only_whitelisted_commit_requests(self) -> None:
+        self.assertIn("git log -1 --pretty=%s", RUNTIME_STAGE)
+        self.assertIn(
+            '"Run stage: first-context-translated-glyph-route"',
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
+            '"Run stage: first-context-direct-renderer-capture"',
+            RUNTIME_STAGE,
+        )
+        self.assertNotIn("eval", RUNTIME_STAGE)
+
     def test_runtime_stage_batches_exact_no_change_rejections(self) -> None:
         self.assertIn("comparison_attempt_limit=8", RUNTIME_STAGE)
         self.assertIn(

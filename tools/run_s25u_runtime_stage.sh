@@ -142,6 +142,18 @@ else
       --if-ready \
       --print-next-stage 2>/dev/null || printf 'continue\n'
   )"
+  # A signed repository commit can request one already-whitelisted stage.  This
+  # keeps device-only evidence private while allowing a stale derived receipt
+  # to be rebuilt deterministically without an interactive Termux command.
+  stage_request="$(git log -1 --pretty=%s 2>/dev/null || true)"
+  case "$stage_request" in
+    "Run stage: first-context-translated-glyph-route")
+      critical_path_focus="first-context-translated-glyph-route"
+      ;;
+    "Run stage: first-context-direct-renderer-capture")
+      critical_path_focus="first-context-direct-renderer-capture"
+      ;;
+  esac
   if [ "$critical_path_focus" = "active-register-rom-source" ]; then
     echo "SFKR critical path: mapping the one unresolved ROM source boundary."
     write_next_step \
