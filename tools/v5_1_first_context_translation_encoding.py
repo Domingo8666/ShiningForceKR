@@ -1335,6 +1335,7 @@ def solve_direct_renderer_proof_symbols(
     maximum_bits: int,
     visuals: list[str],
     font_slot_shift: int = 0,
+    physical_symbol_by_decoded: dict[int, int] | None = None,
 ) -> tuple[list[int], list[int]]:
     """Build one fixed-count row without the disproven inline page token.
 
@@ -1349,6 +1350,7 @@ def solve_direct_renderer_proof_symbols(
     Android low-memory manager before Python can publish a failure artifact.
     """
 
+    physical_symbols = physical_symbol_by_decoded or {}
     if (
         not 0 <= initial_context <= 0xFF
         or not 1 <= maximum_bits <= 0x7FFF
@@ -1356,6 +1358,15 @@ def solve_direct_renderer_proof_symbols(
         or not isinstance(font_slot_shift, int)
         or isinstance(font_slot_shift, bool)
         or not -0x5D <= font_slot_shift <= 0x5D
+        or any(
+            not isinstance(decoded, int)
+            or isinstance(decoded, bool)
+            or not FONT_GLYPH_FIRST_SYMBOL <= decoded <= DIRECT_RENDERER_GLYPH_LAST_SYMBOL
+            or not isinstance(physical, int)
+            or isinstance(physical, bool)
+            or not FONT_GLYPH_FIRST_SYMBOL <= physical <= DIRECT_RENDERER_GLYPH_LAST_SYMBOL
+            for decoded, physical in physical_symbols.items()
+        )
         or any(not isinstance(visual, str) or not visual for visual in visuals)
     ):
         raise ValueError("direct renderer proof inputs are invalid")
@@ -1372,6 +1383,7 @@ def solve_direct_renderer_proof_symbols(
     )
     assignments: list[int] = []
     visual_by_symbol: dict[int, str] = {}
+    visual_by_physical_symbol: dict[int, str] = {}
     visited_node_count = 0
 
     def search(previous: int, bits: int) -> bool:
@@ -1391,9 +1403,16 @@ def solve_direct_renderer_proof_symbols(
         visual = visuals[len(assignments)]
         for symbol, code_length in lengths.get(previous, {}).items():
             assigned_visual = visual_by_symbol.get(symbol)
+            physical_symbol = physical_symbols.get(symbol)
+            physical_visual = (
+                visual_by_physical_symbol.get(physical_symbol)
+                if physical_symbol is not None
+                else None
+            )
             if (
                 symbol not in glyph_symbols
                 or assigned_visual is not None and assigned_visual != visual
+                or physical_visual is not None and physical_visual != visual
             ):
                 continue
             total = bits + int(code_length)
@@ -1411,10 +1430,19 @@ def solve_direct_renderer_proof_symbols(
             )
         for code_length, _, symbol in sorted(candidates):
             was_unassigned = symbol not in visual_by_symbol
+            physical_symbol = physical_symbols.get(symbol)
+            was_physical_unassigned = (
+                physical_symbol is not None
+                and physical_symbol not in visual_by_physical_symbol
+            )
             assignments.append(symbol)
             visual_by_symbol.setdefault(symbol, visual)
+            if physical_symbol is not None:
+                visual_by_physical_symbol.setdefault(physical_symbol, visual)
             if search(symbol, bits + code_length):
                 return True
+            if was_physical_unassigned:
+                del visual_by_physical_symbol[physical_symbol]
             if was_unassigned:
                 del visual_by_symbol[symbol]
             assignments.pop()
@@ -1423,6 +1451,80 @@ def solve_direct_renderer_proof_symbols(
     if not search(initial_context, 0):
         raise ValueError("direct renderer proof has no Huffman glyph route")
     return [*assignments, CANDIDATE_END_SYMBOL], assignments
+
+
+def infer_direct_renderer_physical_symbol_map(
+    capture: dict[str, object],
+) -> tuple[int, int, dict[int, int]] | None:
+    """Recover one page/base and decoded-to-physical map from schema-8 samples.
+
+    The direct renderer does not apply a constant decoded-symbol shift.  A
+    screenshot-confirmed name-table tile and a physical ROM font slot instead
+    imply a ``(page, loader base)`` pair.  Intersect those pairs across every
+    visible sample; only a unique common pair is safe to use for the next build.
+    """
+
+    alignment = capture.get("slot_alignment")
+    if capture.get("schema_version") != 8 or not isinstance(alignment, dict):
+        return None
+    samples = alignment.get("sample_route_candidates")
+    if not isinstance(samples, list) or not samples:
+        return None
+    common_pairs: set[tuple[int, int]] | None = None
+    decoded_physical_candidates: list[tuple[int, set[tuple[int, int, int]]]] = []
+    for sample in samples:
+        if not isinstance(sample, dict):
+            return None
+        decoded = sample.get("encoded_symbol")
+        rendered = sample.get("rendered_tile")
+        font_tiles = sample.get("font_tiles")
+        if (
+            not isinstance(decoded, int)
+            or isinstance(decoded, bool)
+            or not isinstance(rendered, int)
+            or isinstance(rendered, bool)
+            or not isinstance(font_tiles, list)
+        ):
+            return None
+        candidates: set[tuple[int, int, int]] = set()
+        for candidate in font_tiles:
+            if (
+                not isinstance(candidate, list)
+                or len(candidate) != 2
+                or not all(isinstance(value, int) and not isinstance(value, bool) for value in candidate)
+            ):
+                continue
+            page, physical = candidate
+            loader_base = rendered - physical
+            if (
+                0 <= page < FONT_PAGE_COUNT
+                and FONT_GLYPH_FIRST_SYMBOL <= physical <= DIRECT_RENDERER_GLYPH_LAST_SYMBOL
+                and 0 <= loader_base <= 0x1FF
+            ):
+                candidates.add((page, loader_base, physical))
+        pairs = {(page, loader_base) for page, loader_base, _ in candidates}
+        if not pairs:
+            return None
+        common_pairs = pairs if common_pairs is None else common_pairs & pairs
+        decoded_physical_candidates.append((decoded, candidates))
+    if common_pairs is None or len(common_pairs) != 1:
+        return None
+    page, loader_base = next(iter(common_pairs))
+    physical_by_decoded: dict[int, int] = {}
+    for decoded, candidates in decoded_physical_candidates:
+        physical_candidates = {
+            physical
+            for candidate_page, candidate_base, physical in candidates
+            if (candidate_page, candidate_base) == (page, loader_base)
+        }
+        if len(physical_candidates) != 1:
+            return None
+        physical = next(iter(physical_candidates))
+        previous = physical_by_decoded.get(decoded)
+        if previous is not None and previous != physical:
+            return None
+        physical_by_decoded[decoded] = physical
+    return page, loader_base, physical_by_decoded
 
 
 def direct_renderer_font_tile_offset(page: int, symbol: int) -> int:
@@ -4334,6 +4436,7 @@ def build_single_page_symbol_rows(
     direct_renderer_first_row: bool = False,
     direct_renderer_pages: tuple[int, ...] = (DIRECT_RENDERER_PROOF_PAGE,),
     direct_renderer_slot_shift: int = 0,
+    direct_renderer_physical_symbols: dict[int, int] | None = None,
     proven_first_row_page: int | None = None,
 ) -> tuple[
     dict[str, int],
@@ -4347,6 +4450,7 @@ def build_single_page_symbol_rows(
     )
     if len(visual_rows) != len(pages):
         raise ValueError("first context row font page count does not match")
+    renderer_physical_symbols = direct_renderer_physical_symbols or {}
     if (
         not direct_renderer_pages
         or len(direct_renderer_pages) != len(set(direct_renderer_pages))
@@ -4354,6 +4458,15 @@ def build_single_page_symbol_rows(
         or not isinstance(direct_renderer_slot_shift, int)
         or isinstance(direct_renderer_slot_shift, bool)
         or not -0x5D <= direct_renderer_slot_shift <= 0x5D
+        or any(
+            not isinstance(decoded, int)
+            or isinstance(decoded, bool)
+            or not FONT_GLYPH_FIRST_SYMBOL <= decoded <= DIRECT_RENDERER_GLYPH_LAST_SYMBOL
+            or not isinstance(physical, int)
+            or isinstance(physical, bool)
+            or not FONT_GLYPH_FIRST_SYMBOL <= physical <= DIRECT_RENDERER_GLYPH_LAST_SYMBOL
+            for decoded, physical in renderer_physical_symbols.items()
+        )
     ):
         raise ValueError("direct renderer proof page candidates are invalid")
     if proven_first_row_page is not None and (
@@ -4432,6 +4545,7 @@ def build_single_page_symbol_rows(
                 maximum_bits=target_bits,
                 visuals=renderer_visuals,
                 font_slot_shift=direct_renderer_slot_shift,
+                physical_symbol_by_decoded=renderer_physical_symbols,
             )
             assignment_pages = [direct_renderer_pages[0]] * len(assignments)
             padding_count = 0
@@ -4693,7 +4807,9 @@ def build_single_page_symbol_rows(
                     **(
                         {
                             "direct_renderer_page": True,
-                            "font_symbol": symbol + direct_renderer_slot_shift,
+                            "font_symbol": renderer_physical_symbols.get(
+                                symbol, symbol + direct_renderer_slot_shift
+                            ),
                         }
                         if direct_renderer_page
                         else {}
@@ -5043,6 +5159,7 @@ def _main() -> int:
     validate_poc_expansion_proof(poc_expansion_proof)
     direct_renderer_pages: tuple[int, ...] = (DIRECT_RENDERER_PROOF_PAGE,)
     direct_renderer_slot_shift = 0
+    direct_renderer_physical_symbols: dict[int, int] = {}
     direct_renderer_first_row = (
         args.direct_renderer_page is not None
         or args.direct_renderer_observed_page
@@ -5075,6 +5192,7 @@ def _main() -> int:
         if capture_path.is_file():
             capture = _load_json_object(capture_path)
             alignment = capture.get("slot_alignment")
+            inferred_mapping = infer_direct_renderer_physical_symbol_map(capture)
             if (
                 capture.get("artifact_kind")
                 == "sanitized-v5-1-first-context-direct-renderer-capture"
@@ -5091,6 +5209,19 @@ def _main() -> int:
                 direct_renderer_slot_shift = int(
                     alignment["constant_write_slot_shift"]
                 )
+            elif (
+                capture.get("artifact_kind")
+                == "sanitized-v5-1-first-context-direct-renderer-capture"
+                and capture.get("baseline_target_sha256")
+                == capacity["target_sha256"]
+                and capture.get("renderer_route") == "direct-observed-page"
+                and inferred_mapping is not None
+            ):
+                (
+                    calibrated_page,
+                    _calibrated_loader_base,
+                    direct_renderer_physical_symbols,
+                ) = inferred_mapping
         if calibrated_page is not None:
             candidate_pages = [calibrated_page]
         elif route.get("direct_glyph_slot_alignment_confirmed") is True:
@@ -5301,6 +5432,7 @@ def _main() -> int:
         direct_renderer_first_row=direct_renderer_first_row,
         direct_renderer_pages=direct_renderer_pages,
         direct_renderer_slot_shift=direct_renderer_slot_shift,
+        direct_renderer_physical_symbols=direct_renderer_physical_symbols,
         proven_first_row_page=proven_first_row_page,
     )
     symbol_counts["preserved_non_text_glyph_occurrence_count"] = sum(

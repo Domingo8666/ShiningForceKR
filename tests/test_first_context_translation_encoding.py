@@ -28,6 +28,7 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     direct_renderer_font_tile_offset,
     exact_multi_page_state_limit,
     exact_length_row_symbols,
+    infer_direct_renderer_physical_symbol_map,
     pad_row_to_runtime_symbol_count,
     resolve_runtime_records_from_visible_anchor,
     select_row_font_pages,
@@ -263,6 +264,46 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(symbols, [0x02, 0xC9])
         self.assertEqual(assignments, [0x02])
         self.assertLessEqual(assignments[0] + 1, 0x5F)
+
+    def test_direct_renderer_rejects_known_physical_slot_collision(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x04, 0x05),
+            0x04: tree(0x04, 0x03, 0x06),
+            0x03: tree(0x03, 0xC9, 0xFE),
+            0x06: tree(0x06, 0xC9, 0xFE),
+        }
+        symbols, assignments = solve_direct_renderer_proof_symbols(
+            trees=trees,
+            initial_context=0xC9,
+            maximum_bits=8,
+            visuals=["text:라", "text:!"],
+            physical_symbol_by_decoded={0x04: 0x06, 0x03: 0x06},
+        )
+        self.assertEqual(symbols, [0x04, 0x06, 0xC9])
+        self.assertEqual(assignments, [0x04, 0x06])
+
+    def test_infers_nonconstant_direct_renderer_physical_slots(self) -> None:
+        capture = {
+            "schema_version": 8,
+            "slot_alignment": {
+                "sample_route_candidates": [
+                    {
+                        "encoded_symbol": 0x5F,
+                        "rendered_tile": 98,
+                        "font_tiles": [[19, 4], [20, 3]],
+                    },
+                    {
+                        "encoded_symbol": 0x02,
+                        "rendered_tile": 97,
+                        "font_tiles": [[19, 3], [20, 5]],
+                    },
+                ],
+            },
+        }
+        self.assertEqual(
+            infer_direct_renderer_physical_symbol_map(capture),
+            (19, 94, {0x5F: 4, 0x02: 3}),
+        )
 
     def test_first_row_direct_renderer_omits_inline_page_token(self) -> None:
         direct_symbols = [*range(0x02, 0x0A), 0xC9]
