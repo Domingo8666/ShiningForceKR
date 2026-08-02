@@ -151,6 +151,16 @@ FAST_FORWARD_TOOLS = {"set_fast_forward_speed", "toggle_fast_forward"}
 ANCHOR_TIMEOUT_SECONDS = 60.0
 
 
+def _anchor_hit_limit() -> int:
+    """Reuse the proven passive-attract search budget for the exact anchor."""
+
+    if not ATTRACT_CAPTURE_SCHEDULE or any(
+        button is not None for _, button in ATTRACT_CAPTURE_SCHEDULE
+    ):
+        raise RuntimeError("translated VRAM comparison schedule must be passive")
+    return MAX_REJECTED_TARGET_HITS * len(ATTRACT_CAPTURE_SCHEDULE)
+
+
 def _record_failure_stage(path: Path, stage: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(stage + "\n", encoding="utf-8")
@@ -425,14 +435,13 @@ def _capture_anchor_vram(
         _record_failure_stage(failure_stage_path, f"{phase_prefix}-anchor")
         client.call("debug_reset")
         client.call("debug_pause")
-        if any(button is not None for _, button in ATTRACT_CAPTURE_SCHEDULE):
-            raise RuntimeError("translated VRAM comparison schedule must be passive")
+        hit_limit = _anchor_hit_limit()
         _set_unlimited_fast_forward(client, True)
         fast_forward_enabled = True
         arm()
         selected_state: dict[str, object] | None = None
         timeout = max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, ANCHOR_TIMEOUT_SECONDS)
-        for _ in range(MAX_REJECTED_TARGET_HITS):
+        for _ in range(hit_limit):
             status = _continue_until_breakpoint(client, timeout)
             if status.get("at_breakpoint") is not True:
                 break
