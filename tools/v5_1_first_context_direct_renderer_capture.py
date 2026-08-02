@@ -38,11 +38,11 @@ NAME_TABLE_BASE = 0x3800
 NAME_TABLE_WIDTH = 32
 # Gearsystem returns the cropped 160x144 Game Gear viewport.  Its upper-left
 # pixel corresponds to tile (6, 3) in the 256x224 VDP name table.  The first
-# dialogue glyph is at viewport tile (1, 11), not name-table tile (1, 11).
+# dialogue glyph is at viewport tile (1, 12), not name-table tile (1, 12).
 GAME_GEAR_VIEWPORT_TILE_COLUMN = 6
 GAME_GEAR_VIEWPORT_TILE_ROW = 3
 FIRST_DIALOGUE_VIEWPORT_TEXT_COLUMN = 1
-FIRST_DIALOGUE_VIEWPORT_TEXT_ROW = 11
+FIRST_DIALOGUE_VIEWPORT_TEXT_ROW = 12
 FIRST_DIALOGUE_TEXT_COLUMN = (
     GAME_GEAR_VIEWPORT_TILE_COLUMN + FIRST_DIALOGUE_VIEWPORT_TEXT_COLUMN
 )

@@ -23,9 +23,9 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
         self.assertEqual(GAME_GEAR_VIEWPORT_TILE_COLUMN, 6)
         self.assertEqual(GAME_GEAR_VIEWPORT_TILE_ROW, 3)
         self.assertEqual(FIRST_DIALOGUE_VIEWPORT_TEXT_COLUMN, 1)
-        self.assertEqual(FIRST_DIALOGUE_VIEWPORT_TEXT_ROW, 11)
+        self.assertEqual(FIRST_DIALOGUE_VIEWPORT_TEXT_ROW, 12)
         self.assertEqual(FIRST_DIALOGUE_TEXT_COLUMN, 7)
-        self.assertEqual(FIRST_DIALOGUE_TEXT_ROW, 14)
+        self.assertEqual(FIRST_DIALOGUE_TEXT_ROW, 15)
 
     def test_resolves_constant_direct_renderer_write_slot_shift(self) -> None:
         vram = bytearray(0x4000)
