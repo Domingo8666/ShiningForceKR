@@ -3,11 +3,11 @@
   "schema_version": 3,
   "status": "visible-glyph-map-incomplete",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "captured_utc": "2026-08-02T09:14:48.790515Z",
+  "captured_utc": "2026-08-02T09:16:15.706854Z",
   "runtime_entry": {
-    "record_length_bytes": 16,
-    "mapped_bank": 8,
     "physical_start": 133395,
+    "mapped_bank": 8,
+    "record_length_bytes": 16,
     "logical_start": 18707
   },
   "mapping": {
