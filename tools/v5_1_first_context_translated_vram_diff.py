@@ -145,6 +145,7 @@ TOP_LEVEL_KEYS = {
     "next_checkpoint",
 }
 FAST_FORWARD_TOOLS = {"set_fast_forward_speed", "toggle_fast_forward"}
+ANCHOR_TIMEOUT_SECONDS = 60.0
 
 
 def _is_sha256(value: object) -> bool:
@@ -417,7 +418,7 @@ def _capture_anchor_vram(
         fast_forward_enabled = True
         arm()
         selected_state: dict[str, object] | None = None
-        timeout = max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 240.0)
+        timeout = max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, ANCHOR_TIMEOUT_SECONDS)
         for _ in range(MAX_REJECTED_TARGET_HITS):
             status = _continue_until_breakpoint(client, timeout)
             if status.get("at_breakpoint") is not True:
