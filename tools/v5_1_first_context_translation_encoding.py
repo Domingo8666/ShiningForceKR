@@ -2504,6 +2504,185 @@ def solve_exact_length_row_visual_symbols(
     raise ValueError("first context visual row has no exact-length Huffman route")
 
 
+def solve_exact_length_row_blank_padded_visual_symbols(
+    *,
+    trees: dict[int, object],
+    initial_context: int,
+    target_bits: int,
+    page: int,
+    visuals: list[str],
+) -> tuple[list[int], list[int], int]:
+    """Fill an exact record with same-page blank glyphs, not page controls.
+
+    Runtime captures proved two separate constraints on this renderer branch:
+    the consumer reads the whole declared record, and page-select padding is
+    not visually inert.  Emit exactly one page token, map the approved text,
+    then consume the remaining Huffman budget with glyph slots whose tiles are
+    explicitly zeroed before placing the terminator on the final bit.
+    """
+
+    if (
+        not 0 <= initial_context <= 0xFF
+        or not 1 <= target_bits <= 0x7FFF
+        or not 0 <= page < FONT_PAGE_COUNT
+        or not visuals
+        or any(not isinstance(visual, str) or not visual for visual in visuals)
+    ):
+        raise ValueError("first context exact blank-padded inputs are invalid")
+    glyph_symbols = tuple(
+        range(FONT_GLYPH_FIRST_SYMBOL, FONT_GLYPH_LAST_SYMBOL + 1)
+    )
+    if len(set(visuals)) + 1 > len(glyph_symbols):
+        raise ValueError("first context exact blank-padded row is too wide")
+    lengths = _code_lengths(trees)
+    page_token = tuple(page_select_symbols(page))
+
+    def transition(
+        previous: int,
+        sequence: tuple[int, ...],
+    ) -> tuple[int, int] | None:
+        bits = 0
+        for symbol in sequence:
+            code_length = lengths.get(previous, {}).get(symbol)
+            if code_length is None:
+                return None
+            bits += int(code_length)
+            previous = symbol
+        return bits, previous
+
+    selected = transition(initial_context, page_token)
+    if selected is None or selected[0] >= target_bits:
+        raise ValueError("first context exact blank-padded page is not selectable")
+    start_bits, start_previous = selected
+    expanded_nodes = 0
+    maximum_nodes = 200_000
+    assignments: list[int] = []
+    symbol_by_visual: dict[str, int] = {}
+    visual_by_symbol: dict[int, str] = {}
+    visited: set[tuple[int, int, int, tuple[tuple[str, int], ...]]] = set()
+
+    def blank_suffix(
+        previous: int,
+        bits: int,
+        forbidden: frozenset[int],
+    ) -> tuple[int, ...] | None:
+        start = (bits, previous)
+        queue = deque([start])
+        paths: dict[tuple[int, int], tuple[int, ...]] = {start: ()}
+        while queue:
+            current_bits, current = queue.popleft()
+            end_length = lengths.get(current, {}).get(CANDIDATE_END_SYMBOL)
+            if (
+                end_length is not None
+                and current_bits + int(end_length) == target_bits
+            ):
+                return paths[(current_bits, current)]
+            candidates = sorted(
+                (
+                    (int(code_length), symbol)
+                    for symbol, code_length in lengths.get(current, {}).items()
+                    if symbol in glyph_symbols and symbol not in forbidden
+                ),
+                key=lambda item: (
+                    CANDIDATE_END_SYMBOL
+                    not in lengths.get(item[1], {}),
+                    item[0],
+                    item[1],
+                ),
+            )
+            for code_length, symbol in candidates:
+                next_bits = current_bits + code_length
+                if next_bits >= target_bits:
+                    continue
+                state = (next_bits, symbol)
+                if state in paths:
+                    continue
+                paths[state] = paths[(current_bits, current)] + (symbol,)
+                queue.append(state)
+        return None
+
+    def search_visible(previous: int, bits: int, depth: int) -> tuple[
+        tuple[int, ...], tuple[int, ...]
+    ] | None:
+        nonlocal expanded_nodes
+        expanded_nodes += 1
+        if expanded_nodes > maximum_nodes:
+            raise ValueError(
+                "first context exact blank-padded search limit exceeded"
+            )
+        state = (
+            previous,
+            bits,
+            depth,
+            tuple(sorted(symbol_by_visual.items())),
+        )
+        if state in visited:
+            return None
+        visited.add(state)
+        if depth == len(visuals):
+            suffix = blank_suffix(
+                previous,
+                bits,
+                frozenset(visual_by_symbol),
+            )
+            if suffix is None:
+                return None
+            return suffix, tuple(assignments)
+
+        visual = visuals[depth]
+        assigned = symbol_by_visual.get(visual)
+        if assigned is not None:
+            candidates = ((int(lengths.get(previous, {}).get(assigned, 0)), assigned),)
+        else:
+            candidates = tuple(
+                sorted(
+                    (
+                        (int(code_length), symbol)
+                        for symbol, code_length in lengths.get(previous, {}).items()
+                        if symbol in glyph_symbols and symbol not in visual_by_symbol
+                    ),
+                    key=lambda item: (
+                        not bool(
+                            set(lengths.get(item[1], {})) & set(glyph_symbols)
+                        ),
+                        item[0],
+                        item[1],
+                    ),
+                )
+            )
+        for code_length, symbol in candidates:
+            if code_length <= 0 or bits + code_length >= target_bits:
+                continue
+            was_unassigned = visual not in symbol_by_visual
+            if was_unassigned:
+                symbol_by_visual[visual] = symbol
+                visual_by_symbol[symbol] = visual
+            assignments.append(symbol)
+            result = search_visible(symbol, bits + code_length, depth + 1)
+            if result is not None:
+                return result
+            assignments.pop()
+            if was_unassigned:
+                del symbol_by_visual[visual]
+                del visual_by_symbol[symbol]
+        return None
+
+    solved = search_visible(start_previous, start_bits, 0)
+    if solved is None:
+        raise ValueError(
+            "first context row has no exact blank-padded Huffman route"
+        )
+    blank_symbols, visible_assignments = solved
+    symbols = [
+        *page_token,
+        *visible_assignments,
+        *blank_symbols,
+        CANDIDATE_END_SYMBOL,
+    ]
+    all_assignments = [*visible_assignments, *blank_symbols]
+    return symbols, all_assignments, len(blank_symbols)
+
+
 def exact_multi_page_state_limit(page_count: int) -> int:
     if not 1 <= page_count <= FONT_PAGE_COUNT:
         raise ValueError("first context exact page count is invalid")
@@ -3912,7 +4091,7 @@ def select_row_font_pages(
                     )
                 else:
                     if row_index == 0 and proven_first_row_page is not None:
-                        solve_exact_length_row_visual_symbols(
+                        solve_exact_length_row_blank_padded_visual_symbols(
                             trees=trees,
                             initial_context=int(constraint["initial_context"]),
                             target_bits=(
@@ -4236,15 +4415,23 @@ def build_single_page_symbol_rows(
                     if exact_storage_first_row:
                         (
                             symbols,
-                            padding_count,
                             assignments,
-                        ) = solve_exact_length_row_visual_symbols(
+                            blank_padding_count,
+                        ) = solve_exact_length_row_blank_padded_visual_symbols(
                             trees=trees,
                             initial_context=initial_context,
                             target_bits=target_bits,
                             page=page,
                             visuals=renderer_visuals,
                         )
+                        renderer_visuals = [
+                            *renderer_visuals,
+                            *(
+                                "technical-blank"
+                                for _ in range(blank_padding_count)
+                            ),
+                        ]
+                        padding_count = 0
                     elif "original_symbol_count" in constraint:
                         (
                             symbols,
@@ -4361,6 +4548,8 @@ def build_single_page_symbol_rows(
                 - 1
                 - visible_page_select_count * 3,
             )
+            if exact_storage_first_row:
+                fixed_count_padding_symbol_count = blank_padding_count
         if not direct_renderer_page:
             page_select_count = 1 + padding_count
             terminator_count = 1
