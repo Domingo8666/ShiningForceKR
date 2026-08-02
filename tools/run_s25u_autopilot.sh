@@ -586,10 +586,21 @@ while true; do
     if [ -f "$last_head_file" ]; then
       last_head="$(cat "$last_head_file")"
     fi
-    if [ "$force" -eq 1 ] || [ "$current_head" != "$last_head" ]; then
+    if [ "$force" -eq 1 ]; then
       run_current_head
       cycle_status=$?
       force=0
+    elif [ -n "$last_head" ] && [ "$current_head" != "$last_head" ] &&
+      git merge-base --is-ancestor "$last_head" "$current_head" &&
+      safe_local_commits_only "$last_head..$current_head"; then
+      # A successful stage can leave a few validated artifacts for the next
+      # synchronization pass. If that pass creates only sanitized runtime
+      # bundle commits, they are outputs of the completed stage, not new work.
+      record_processed_head "$current_head"
+      log "synchronized generated runtime artifacts through $current_head; waiting for a new source commit"
+    elif [ "$current_head" != "$last_head" ]; then
+      run_current_head
+      cycle_status=$?
     else
       log "commit $current_head was already processed"
     fi
