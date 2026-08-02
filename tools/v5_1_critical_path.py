@@ -458,7 +458,9 @@ def _direct_renderer_capture_current(
     except (OSError, ValueError, json.JSONDecodeError):
         return False
     return (
-        value.get("baseline_target_sha256") == target_sha256
+        value.get("schema_version") == 2
+        and value.get("renderer_route") == "proven-visible-page"
+        and value.get("baseline_target_sha256") == target_sha256
         and build.get("baseline_target_sha256") == target_sha256
         and value.get("test_target_sha256") == build.get("test_target_sha256")
         and value.get("first_context_translation_test_build_sha256")

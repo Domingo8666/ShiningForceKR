@@ -64,6 +64,11 @@ try:
     )
     from .v5_1_font_catalog import parse_bdf_glyphs
     from .v5_1_renderer_output_trace import _load_json_object
+    from .v5_1_poc_expansion import EXPANSION_PAGE
+    from .v5_1_poc_expansion_proof import (
+        PUBLISH_RELATIVE_PATH as POC_EXPANSION_PROOF_PATH,
+        validate_poc_expansion_proof,
+    )
     from .v5_1_runtime_context_glyph_preservation import (
         LOCAL_REPORT_PATH as LOCAL_PRESERVATION_PATH,
         PUBLISH_RELATIVE_PATH as PRESERVATION_PATH,
@@ -133,6 +138,11 @@ except ImportError:  # pragma: no cover - direct script execution
     )
     from v5_1_font_catalog import parse_bdf_glyphs
     from v5_1_renderer_output_trace import _load_json_object
+    from v5_1_poc_expansion import EXPANSION_PAGE
+    from v5_1_poc_expansion_proof import (
+        PUBLISH_RELATIVE_PATH as POC_EXPANSION_PROOF_PATH,
+        validate_poc_expansion_proof,
+    )
     from v5_1_runtime_context_glyph_preservation import (
         LOCAL_REPORT_PATH as LOCAL_PRESERVATION_PATH,
         PUBLISH_RELATIVE_PATH as PRESERVATION_PATH,
@@ -3756,6 +3766,7 @@ def select_row_font_pages(
     runtime_constraints: list[dict[str, object]] | None = None,
     direct_renderer_first_row: bool = False,
     direct_renderer_pages: tuple[int, ...] = (DIRECT_RENDERER_PROOF_PAGE,),
+    proven_first_row_page: int | None = None,
 ) -> tuple[int | tuple[int, ...], ...]:
     global ACTIVE_FAILURE_ROW_INDEX, ACTIVE_FAILURE_DETAIL
     visual_rows = build_row_visuals(
@@ -3772,6 +3783,11 @@ def select_row_font_pages(
         or any(not 0 <= page < FONT_PAGE_COUNT for page in direct_renderer_pages)
     ):
         raise ValueError("direct renderer proof page candidates are invalid")
+    if proven_first_row_page is not None and (
+        direct_renderer_first_row
+        or not 0 <= proven_first_row_page < FONT_PAGE_COUNT
+    ):
+        raise ValueError("proven first-row page is invalid")
     pages: list[int | tuple[int, ...]] = []
     used_pages: set[int] = set()
     constraints = runtime_constraints or [None] * len(visual_rows)
@@ -3820,7 +3836,9 @@ def select_row_font_pages(
             else "solve-extra-single-page-row"
         )
         preferred = (
-            ROW_FONT_PAGES[row_index]
+            proven_first_row_page
+            if row_index == 0 and proven_first_row_page is not None
+            else ROW_FONT_PAGES[row_index]
             if row_index < len(ROW_FONT_PAGES)
             else FONT_PAGE_COUNT - 1 - row_index
         )
@@ -4075,6 +4093,7 @@ def build_single_page_symbol_rows(
     pages: tuple[int | tuple[int, ...], ...] = ROW_FONT_PAGES,
     direct_renderer_first_row: bool = False,
     direct_renderer_pages: tuple[int, ...] = (DIRECT_RENDERER_PROOF_PAGE,),
+    proven_first_row_page: int | None = None,
 ) -> tuple[
     dict[str, int],
     list[dict[str, object]],
@@ -4093,6 +4112,11 @@ def build_single_page_symbol_rows(
         or any(not 0 <= page < FONT_PAGE_COUNT for page in direct_renderer_pages)
     ):
         raise ValueError("direct renderer proof page candidates are invalid")
+    if proven_first_row_page is not None and (
+        direct_renderer_first_row
+        or not 0 <= proven_first_row_page < FONT_PAGE_COUNT
+    ):
+        raise ValueError("proven first-row page is invalid")
     if runtime_constraints is not None and len(runtime_constraints) != len(
         visual_rows
     ):
@@ -4336,6 +4360,10 @@ def build_single_page_symbol_rows(
             }
         if direct_renderer_page:
             row["direct_renderer_proof"] = True
+        if expected_index == 1 and proven_first_row_page is not None:
+            if row_pages != (proven_first_row_page,):
+                raise ValueError("first row did not use the proven visible page")
+            row["proven_visible_page_route"] = True
         if constraint is not None:
             for key in (
                 "target_selector",
@@ -4648,12 +4676,19 @@ def _main() -> int:
     parser.add_argument("--if-ready", action="store_true")
     parser.add_argument("--direct-renderer-page", type=int)
     parser.add_argument("--direct-renderer-observed-page", action="store_true")
+    parser.add_argument("--proven-visible-page", action="store_true")
     args = parser.parse_args()
     if (
-        args.direct_renderer_page is not None
-        and args.direct_renderer_observed_page
+        sum(
+            (
+                args.direct_renderer_page is not None,
+                args.direct_renderer_observed_page,
+                args.proven_visible_page,
+            )
+        )
+        > 1
     ):
-        raise ValueError("direct renderer page selectors are mutually exclusive")
+        raise ValueError("first-row renderer routes are mutually exclusive")
     paths = {
         "capacity": root / CAPACITY_PATH,
         "local_capacity": root / LOCAL_CAPACITY_PATH,
@@ -4666,6 +4701,7 @@ def _main() -> int:
         "local_projection": root / LOCAL_PROJECTION_PATH,
         "visible_entry_proof": root / VISIBLE_ENTRY_PROOF_PATH,
         "active_vram_route": root / ACTIVE_VRAM_ROUTE_PATH,
+        "poc_expansion_proof": root / POC_EXPANSION_PROOF_PATH,
         "patch": root / PATCH_PATH,
         "bdf": root / LOCAL_BDF_PATH,
         "target": root / TARGET_PATH,
@@ -4692,6 +4728,8 @@ def _main() -> int:
     validate_runtime_context_glyph_preservation(preservation)
     validate_visible_entry_proof(visible_entry_proof)
     validate_active_vram_route(active_vram_route)
+    poc_expansion_proof = _load_json_object(paths["poc_expansion_proof"])
+    validate_poc_expansion_proof(poc_expansion_proof)
     direct_renderer_pages: tuple[int, ...] = (DIRECT_RENDERER_PROOF_PAGE,)
     direct_renderer_first_row = (
         args.direct_renderer_page is not None
@@ -4761,9 +4799,27 @@ def _main() -> int:
             raise ValueError("direct renderer page does not match observed route")
         direct_renderer_pages = (requested_page,)
         direct_route_confirmed = True
+    proven_first_row_page = None
+    proven_visible_route_confirmed = False
+    if args.proven_visible_page:
+        display_proof = poc_expansion_proof.get("display_proof")
+        if (
+            poc_expansion_proof.get("status") != "expanded-poc-visible-pass"
+            or poc_expansion_proof.get("baseline_target_sha256")
+            != capacity["target_sha256"]
+            or not isinstance(display_proof, dict)
+            or display_proof.get("exact_phrase_matches") != 1
+            or display_proof.get("surrounding_text_readable") is not True
+            or display_proof.get("portrait_intact") is not True
+            or display_proof.get("dialogue_box_intact") is not True
+        ):
+            raise ValueError("proven visible page evidence is not current")
+        proven_first_row_page = EXPANSION_PAGE
+        proven_visible_route_confirmed = True
     if (
         active_vram_route["translation_build_eligible"] is not True
         and not direct_route_confirmed
+        and not proven_visible_route_confirmed
     ):
         if args.if_ready:
             print(
@@ -4894,6 +4950,7 @@ def _main() -> int:
         runtime_constraints=runtime_constraints,
         direct_renderer_first_row=direct_renderer_first_row,
         direct_renderer_pages=direct_renderer_pages,
+        proven_first_row_page=proven_first_row_page,
     )
     ACTIVE_FAILURE_STEP = "build-symbol-rows"
     (
@@ -4908,6 +4965,7 @@ def _main() -> int:
         pages=selected_row_font_pages,
         direct_renderer_first_row=direct_renderer_first_row,
         direct_renderer_pages=direct_renderer_pages,
+        proven_first_row_page=proven_first_row_page,
     )
     symbol_counts["preserved_non_text_glyph_occurrence_count"] = sum(
         len(row) for row in preserved_by_row

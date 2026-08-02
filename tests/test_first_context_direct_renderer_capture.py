@@ -12,7 +12,7 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
     def test_accepts_safe_capture_receipt(self) -> None:
         value = {
             "artifact_kind": "sanitized-v5-1-first-context-direct-renderer-capture",
-            "schema_version": 1,
+            "schema_version": 2,
             "status": "direct-renderer-first-screen-captured",
             "baseline_target_sha256": "a" * 64,
             "test_target_sha256": "b" * 64,
@@ -21,6 +21,7 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
             "capture_png_sha256": "e" * 64,
             "captured_utc": "2026-08-02T00:00:00Z",
             "runtime_entry": {"selector": 2, "ordinal": 147},
+            "renderer_route": "proven-visible-page",
             "direct_renderer_first_row_confirmed": True,
             "cold_boot": True,
             "human_visual_review_required": True,

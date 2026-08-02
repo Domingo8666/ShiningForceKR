@@ -282,15 +282,16 @@ else
       record_stage_failure first-context-translated-glyph-route
     fi
   elif [ "$critical_path_focus" = "first-context-direct-renderer-capture" ]; then
-    echo "SFKR critical path: rebuilding the first dialogue on the observed font page."
+    echo "SFKR critical path: rebuilding the first dialogue on the proven visible font page."
     write_next_step \
-      "관측된 실제 글꼴 페이지를 직접 사용해 첫 대사 한 줄을 다시 만들고, 콜드부팅 화면을 자동 캡처하고 있습니다."
+      "실기에서 정상 출력된 글꼴 페이지를 사용해 첫 대사 한 줄을 다시 만들고, 콜드부팅 화면을 자동 캡처하고 있습니다."
     direct_renderer_capture_output="$(
       python tools/v5_1_first_context_translation_encoding.py \
-        --direct-renderer-observed-page &&
+        --proven-visible-page &&
       python tools/v5_1_first_context_record_reinsertion.py &&
       python tools/v5_1_first_context_translation_test_build.py &&
-      python tools/v5_1_first_context_direct_renderer_capture.py
+      python tools/v5_1_first_context_direct_renderer_capture.py \
+        --proven-visible-page
     )"
     direct_renderer_capture_status=$?
     printf '%s\n' "$direct_renderer_capture_output"

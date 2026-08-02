@@ -230,6 +230,44 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertEqual(pages, (21, 241))
         solver.assert_called_once()
 
+    def test_prefers_the_previously_visible_page_for_first_row(self) -> None:
+        with patch(
+            "tools.v5_1_first_context_translation_encoding."
+            "solve_bounded_length_row_visual_symbols",
+            return_value=([0x02, 0xC9], 0, [0x02]),
+        ) as solver:
+            pages = select_row_font_pages(
+                trees={},
+                target_rows=[{"target_text": "가"}],
+                preserved_by_row=[[]],
+                runtime_constraints=[{
+                    "initial_context": 0xC9,
+                    "original_record_length_bytes": 16,
+                }],
+                proven_first_row_page=89,
+            )
+        self.assertEqual(pages, (89,))
+        self.assertEqual(solver.call_args.kwargs["page"], 89)
+
+    def test_marks_proven_visible_page_route_on_first_row(self) -> None:
+        with patch(
+            "tools.v5_1_first_context_translation_encoding."
+            "solve_bounded_length_row_visual_symbols",
+            return_value=([0x02, 0xC9], 0, [0x02]),
+        ):
+            _, rows, _ = build_single_page_symbol_rows(
+                trees={},
+                target_rows=[{"review_index": 1, "target_text": "가"}],
+                preserved_by_row=[[]],
+                runtime_constraints=[{
+                    "initial_context": 0xC9,
+                    "original_record_length_bytes": 16,
+                }],
+                pages=(89,),
+                proven_first_row_page=89,
+            )
+        self.assertTrue(rows[0]["proven_visible_page_route"])
+
     def test_accepts_direct_renderer_failure_diagnostics(self) -> None:
         failure = build_first_context_translation_encoding_failure(
             category="row-route",

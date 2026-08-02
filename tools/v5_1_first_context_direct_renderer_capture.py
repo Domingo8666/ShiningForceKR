@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
+import argparse
 
 try:
     from .patch_io import sha256_file
@@ -31,7 +32,7 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-direct-renderer-capture"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 TEST_ROM_PATH = Path(
     "build/Final_Conflict_Korean_first_context_translation_test.gg"
 )
@@ -58,6 +59,7 @@ TOP_LEVEL_KEYS = {
     "capture_png_sha256",
     "captured_utc",
     "runtime_entry",
+    "renderer_route",
     "direct_renderer_first_row_confirmed",
     "cold_boot",
     "human_visual_review_required",
@@ -81,6 +83,8 @@ def validate_first_context_direct_renderer_capture(
         value.get("artifact_kind") != ARTIFACT_KIND
         or value.get("schema_version") != SCHEMA_VERSION
         or value.get("status") != "direct-renderer-first-screen-captured"
+        or value.get("renderer_route")
+        not in {"direct-observed-page", "proven-visible-page"}
         or not all(
             _is_sha256(value.get(key))
             for key in (
@@ -109,6 +113,9 @@ def validate_first_context_direct_renderer_capture(
 
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--proven-visible-page", action="store_true")
+    args = parser.parse_args()
     paths = {
         "rom": root / TEST_ROM_PATH,
         "build": root / TEST_BUILD_PATH,
@@ -128,7 +135,11 @@ def main() -> int:
         or not isinstance(rows, list)
         or not rows
         or not isinstance(rows[0], dict)
-        or rows[0].get("direct_renderer_proof") is not True
+        or (
+            rows[0].get("proven_visible_page_route") is not True
+            if args.proven_visible_page
+            else rows[0].get("direct_renderer_proof") is not True
+        )
     ):
         raise ValueError("direct renderer capture identity disagrees")
 
@@ -164,6 +175,11 @@ def main() -> int:
             "selector": int(capture["selector"]),
             "ordinal": int(capture["ordinal"]),
         },
+        "renderer_route": (
+            "proven-visible-page"
+            if args.proven_visible_page
+            else "direct-observed-page"
+        ),
         "direct_renderer_first_row_confirmed": True,
         "cold_boot": True,
         "human_visual_review_required": True,
