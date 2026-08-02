@@ -252,7 +252,7 @@ class S25UAutopilotTests(unittest.TestCase):
         )
 
     def test_autopilot_retries_only_transient_runtime_failures(self) -> None:
-        self.assertIn('SFKR_RUNTIME_TIMEOUT:-300', SCRIPT)
+        self.assertIn('SFKR_RUNTIME_TIMEOUT:-480', SCRIPT)
         self.assertIn('if [ "$runtime_timeout" -lt 300 ]', SCRIPT)
         self.assertIn('timeout -k 30s "$runtime_timeout"', SCRIPT)
         self.assertIn("runtime_failure_is_retryable", SCRIPT)

@@ -44,6 +44,11 @@ try:
         PUBLISH_RELATIVE_PATH as TRANSLATED_GLYPH_ROUTE_PATH,
         validate_first_context_translated_glyph_route,
     )
+    from .v5_1_first_context_direct_renderer_capture import (
+        PUBLISH_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_PATH,
+        PUBLISH_IMAGE_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_IMAGE_PATH,
+        validate_first_context_direct_renderer_capture,
+    )
     from .v5_1_first_context_translation_test_build import (
         PUBLISH_RELATIVE_PATH as TRANSLATION_TEST_BUILD_PATH,
         validate_first_context_translation_test_build,
@@ -88,6 +93,11 @@ except ImportError:  # pragma: no cover - direct script execution
         PUBLISH_RELATIVE_PATH as TRANSLATED_GLYPH_ROUTE_PATH,
         validate_first_context_translated_glyph_route,
     )
+    from v5_1_first_context_direct_renderer_capture import (
+        PUBLISH_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_PATH,
+        PUBLISH_IMAGE_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_IMAGE_PATH,
+        validate_first_context_direct_renderer_capture,
+    )
     from v5_1_first_context_translation_test_build import (
         PUBLISH_RELATIVE_PATH as TRANSLATION_TEST_BUILD_PATH,
         validate_first_context_translation_test_build,
@@ -109,6 +119,7 @@ LOOKUP_INDEX_STAGE = "active-rom-lookup-index-producer"
 PATH_SCOPE_STAGE = "active-rom-path-scope"
 TRANSLATED_VRAM_DIFF_STAGE = "first-context-translated-vram-diff"
 TRANSLATED_GLYPH_ROUTE_STAGE = "first-context-translated-glyph-route"
+DIRECT_RENDERER_CAPTURE_STAGE = "first-context-direct-renderer-capture"
 CURSOR_RESET_STAGE = "active-rom-cursor-reset"
 FALLBACK_STAGE = "continue"
 STAGE_POLICIES = {
@@ -163,6 +174,14 @@ STAGE_POLICIES = {
             "current-translated-vram-ready-current-glyph-slot-route-missing"
         ),
         "next_checkpoint": "join-translated-vram-tiles-to-private-font-assignments",
+    },
+    DIRECT_RENDERER_CAPTURE_STAGE: {
+        "confirmed_boundary": "translated-custom-glyph-observed-font-page",
+        "blocked_boundary": "observed-font-page-to-correct-first-dialogue-screen",
+        "selection_reason": (
+            "single-observed-font-page-ready-direct-renderer-screen-missing"
+        ),
+        "next_checkpoint": "rebuild-first-dialogue-without-inline-page-select",
     },
     CURSOR_RESET_STAGE: {
         "confirmed_boundary": "active-vram-to-incremental-rom-cursor",
@@ -420,6 +439,33 @@ def _translated_glyph_route_current(
     )
 
 
+def _direct_renderer_capture_current(
+    root: Path,
+    *,
+    target_sha256: str,
+) -> bool:
+    path = root / DIRECT_RENDERER_CAPTURE_PATH
+    image_path = root / DIRECT_RENDERER_CAPTURE_IMAGE_PATH
+    build_path = root / TRANSLATION_TEST_BUILD_PATH
+    if not path.is_file() or not image_path.is_file() or not build_path.is_file():
+        return False
+    try:
+        value = _load_object(path)
+        build = _load_object(build_path)
+        validate_first_context_direct_renderer_capture(value)
+        validate_first_context_translation_test_build(build)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    return (
+        value.get("baseline_target_sha256") == target_sha256
+        and build.get("baseline_target_sha256") == target_sha256
+        and value.get("test_target_sha256") == build.get("test_target_sha256")
+        and value.get("first_context_translation_test_build_sha256")
+        == sha256_file(build_path)
+        and value.get("capture_png_sha256") == sha256_file(image_path)
+    )
+
+
 def _build_selection(
     *,
     target_sha256: str,
@@ -550,6 +596,22 @@ def select_critical_path(root: Path, rom_path: Path) -> dict[str, object] | None
                             target_sha256=target_sha256,
                             trace_sha256=trace_sha256,
                             stage=TRANSLATED_GLYPH_ROUTE_STAGE,
+                        )
+                    glyph_route_path = root / TRANSLATED_GLYPH_ROUTE_PATH
+                    glyph_route = _load_object(glyph_route_path)
+                    validate_first_context_translated_glyph_route(glyph_route)
+                    if (
+                        glyph_route.get("single_font_page_candidate_confirmed")
+                        is True
+                        and not _direct_renderer_capture_current(
+                            root,
+                            target_sha256=target_sha256,
+                        )
+                    ):
+                        return _build_selection(
+                            target_sha256=target_sha256,
+                            trace_sha256=trace_sha256,
+                            stage=DIRECT_RENDERER_CAPTURE_STAGE,
                         )
                     return None
                 if not _cursor_reset_current(

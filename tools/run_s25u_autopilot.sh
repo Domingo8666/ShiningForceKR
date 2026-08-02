@@ -4,7 +4,7 @@ set -uo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_rom="${SFKR_SOURCE_ROM:-/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg}"
 interval="${SFKR_AUTOPILOT_INTERVAL:-30}"
-runtime_timeout="${SFKR_RUNTIME_TIMEOUT:-300}"
+runtime_timeout="${SFKR_RUNTIME_TIMEOUT:-480}"
 nice_level="${SFKR_AUTOPILOT_NICE:-15}"
 state_dir="${SFKR_AUTOPILOT_STATE_DIR:-$HOME/.local/state/shiningforcekr}"
 once=0
@@ -18,7 +18,7 @@ Options:
   --source-rom PATH  S25U-local original ROM path
   --interval SEC     GitHub poll interval (minimum/default 30)
   --runtime-timeout SEC
-                      Runtime-stage wall limit (minimum/default 300)
+                      Runtime-stage wall limit (minimum/default 480)
   --state-dir PATH   Termux-private state directory
   --force            Run once even if the current commit was already processed
   --once             Exit after one synchronization/run decision
@@ -251,6 +251,8 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_active_rom_path_scope.json|\
     analysis/device/v5_1_latest_first_context_translated_vram_diff.json|\
     analysis/device/v5_1_latest_first_context_translated_glyph_route.json|\
+    analysis/device/v5_1_latest_first_context_direct_renderer_capture.json|\
+    analysis/device/v5_1_latest_first_context_direct_renderer_capture.png|\
     analysis/device/v5_1_latest_active_rom_cursor_reset.json|\
     analysis/device/v5_1_latest_critical_path.json|\
     analysis/device/v5_1_latest_visible_unicode_mapping.json|\

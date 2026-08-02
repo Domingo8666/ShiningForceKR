@@ -184,6 +184,12 @@ DIRECT_RENDERER_GLYPH_LAST_SYMBOL = 0x5F
 # dialogue ordinal sequence.
 DIRECT_RENDERER_EXTRA_SYMBOL_COUNT = 0
 DIRECT_RENDERER_SEARCH_NODE_LIMIT = 50_000
+TRANSLATED_GLYPH_ROUTE_PATH = Path(
+    "analysis/device/v5_1_latest_first_context_translated_glyph_route.json"
+)
+TRANSLATED_GLYPH_ROUTE_LOCAL_PATH = Path(
+    "reports/local/v5_1_first_context_translated_glyph_route.json"
+)
 LOCAL_VISIBLE_UNICODE_MAPPING_PATH = Path(
     "reports/local/v5_1_visible_unicode_mapping.json"
 )
@@ -4640,7 +4646,14 @@ def _main() -> int:
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--if-ready", action="store_true")
+    parser.add_argument("--direct-renderer-page", type=int)
+    parser.add_argument("--direct-renderer-observed-page", action="store_true")
     args = parser.parse_args()
+    if (
+        args.direct_renderer_page is not None
+        and args.direct_renderer_observed_page
+    ):
+        raise ValueError("direct renderer page selectors are mutually exclusive")
     paths = {
         "capacity": root / CAPACITY_PATH,
         "local_capacity": root / LOCAL_CAPACITY_PATH,
@@ -4679,7 +4692,70 @@ def _main() -> int:
     validate_runtime_context_glyph_preservation(preservation)
     validate_visible_entry_proof(visible_entry_proof)
     validate_active_vram_route(active_vram_route)
-    if active_vram_route["translation_build_eligible"] is not True:
+    direct_renderer_pages: tuple[int, ...] = (DIRECT_RENDERER_PROOF_PAGE,)
+    direct_renderer_first_row = (
+        args.direct_renderer_page is not None
+        or args.direct_renderer_observed_page
+    )
+    direct_route_confirmed = False
+    if direct_renderer_first_row:
+        route_path = root / TRANSLATED_GLYPH_ROUTE_PATH
+        local_route_path = root / TRANSLATED_GLYPH_ROUTE_LOCAL_PATH
+        if not route_path.is_file() or not local_route_path.is_file():
+            raise ValueError("direct renderer observed page evidence is missing")
+        route = _load_json_object(route_path)
+        local_route = _load_json_object(local_route_path)
+        route_counts = route.get("analysis")
+        local_route_analysis = local_route.get("analysis")
+        if (
+            route.get("artifact_kind")
+            != "sanitized-v5-1-first-context-translated-glyph-route"
+            or route.get("schema_version") != 2
+            or route.get("single_font_page_candidate_confirmed") is not True
+            or route.get("baseline_target_sha256") != capacity["target_sha256"]
+            or not isinstance(route_counts, dict)
+            or not isinstance(local_route_analysis, dict)
+        ):
+            raise ValueError("direct renderer observed page evidence is invalid")
+        if route.get("direct_glyph_slot_alignment_confirmed") is True:
+            candidate_pages = local_route_analysis.get("aligned_pages")
+        else:
+            page_hashes = local_route_analysis.get("assignment_candidate_pages")
+            expected_hash_count = int(
+                route_counts["matched_hash_with_assignment_count"]
+            )
+            candidate_pages = (
+                [
+                    int(page)
+                    for page, hashes in page_hashes.items()
+                    if isinstance(hashes, list)
+                    and len(set(hashes)) == expected_hash_count
+                ]
+                if isinstance(page_hashes, dict)
+                else []
+            )
+        if (
+            not isinstance(candidate_pages, list)
+            or len(candidate_pages) != 1
+            or not isinstance(candidate_pages[0], int)
+        ):
+            raise ValueError("direct renderer observed page is not unique")
+        observed_page = int(candidate_pages[0])
+        requested_page = (
+            int(args.direct_renderer_page)
+            if args.direct_renderer_page is not None
+            else observed_page
+        )
+        if not 0 <= requested_page < FONT_PAGE_COUNT:
+            raise ValueError("direct renderer observed page is out of range")
+        if requested_page != observed_page:
+            raise ValueError("direct renderer page does not match observed route")
+        direct_renderer_pages = (requested_page,)
+        direct_route_confirmed = True
+    if (
+        active_vram_route["translation_build_eligible"] is not True
+        and not direct_route_confirmed
+    ):
         if args.if_ready:
             print(
                 "First context translation encoding waits for a measured "
@@ -4807,7 +4883,8 @@ def _main() -> int:
         target_rows=target_rows,
         preserved_by_row=rendered_preserved_by_row,
         runtime_constraints=runtime_constraints,
-        direct_renderer_first_row=False,
+        direct_renderer_first_row=direct_renderer_first_row,
+        direct_renderer_pages=direct_renderer_pages,
     )
     ACTIVE_FAILURE_STEP = "build-symbol-rows"
     (
@@ -4820,7 +4897,8 @@ def _main() -> int:
         preserved_by_row=rendered_preserved_by_row,
         runtime_constraints=runtime_constraints,
         pages=selected_row_font_pages,
-        direct_renderer_first_row=False,
+        direct_renderer_first_row=direct_renderer_first_row,
+        direct_renderer_pages=direct_renderer_pages,
     )
     symbol_counts["preserved_non_text_glyph_occurrence_count"] = sum(
         len(row) for row in preserved_by_row

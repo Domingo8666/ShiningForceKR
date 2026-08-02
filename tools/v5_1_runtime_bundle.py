@@ -183,6 +183,11 @@ try:
         PUBLISH_RELATIVE_PATH as TRANSLATED_GLYPH_ROUTE_RELATIVE_PATH,
         validate_first_context_translated_glyph_route,
     )
+    from .v5_1_first_context_direct_renderer_capture import (
+        PUBLISH_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_RELATIVE_PATH,
+        PUBLISH_IMAGE_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_IMAGE_RELATIVE_PATH,
+        validate_first_context_direct_renderer_capture,
+    )
     from .v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ACTIVE_ROM_CURSOR_RESET_RELATIVE_PATH,
         validate_active_rom_cursor_reset,
@@ -462,6 +467,11 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as TRANSLATED_GLYPH_ROUTE_RELATIVE_PATH,
         validate_first_context_translated_glyph_route,
     )
+    from v5_1_first_context_direct_renderer_capture import (
+        PUBLISH_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_RELATIVE_PATH,
+        PUBLISH_IMAGE_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_IMAGE_RELATIVE_PATH,
+        validate_first_context_direct_renderer_capture,
+    )
     from v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ACTIVE_ROM_CURSOR_RESET_RELATIVE_PATH,
         validate_active_rom_cursor_reset,
@@ -673,6 +683,8 @@ SAFE_ARTIFACTS = {
         validate_first_context_translated_vram_diff,
     TRANSLATED_GLYPH_ROUTE_RELATIVE_PATH:
         validate_first_context_translated_glyph_route,
+    DIRECT_RENDERER_CAPTURE_RELATIVE_PATH:
+        validate_first_context_direct_renderer_capture,
     ACTIVE_ROM_CURSOR_RESET_RELATIVE_PATH:
         validate_active_rom_cursor_reset,
     CRITICAL_PATH_RELATIVE_PATH:
@@ -717,6 +729,8 @@ SAFE_ARTIFACTS = {
 }
 SAFE_BINARY_ARTIFACTS = {
     PUBLISH_IMAGE_RELATIVE_PATH: PUBLISH_RECEIPT_RELATIVE_PATH,
+    DIRECT_RENDERER_CAPTURE_IMAGE_RELATIVE_PATH:
+        DIRECT_RENDERER_CAPTURE_RELATIVE_PATH,
 }
 
 
@@ -1783,7 +1797,19 @@ def _load_validated_binary_artifacts(
         if receipt is None:
             continue
         try:
-            load_validated_progress_image(root, receipt)
+            if relative == DIRECT_RENDERER_CAPTURE_IMAGE_RELATIVE_PATH:
+                image_path = (root / relative).resolve()
+                image_path.relative_to(root.resolve())
+                data = image_path.read_bytes()
+                if (
+                    not data.startswith(b"\x89PNG\r\n\x1a\n")
+                    or sha256_file(image_path) != receipt["capture_png_sha256"]
+                ):
+                    raise ValueError(
+                        "direct renderer capture PNG and receipt disagree"
+                    )
+            else:
+                load_validated_progress_image(root, receipt)
         except (OSError, ValueError):
             continue
         binaries.add(relative)
