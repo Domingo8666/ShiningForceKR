@@ -1403,12 +1403,10 @@ def solve_direct_renderer_proof_symbols(
         visual = visuals[len(assignments)]
         for symbol, code_length in lengths.get(previous, {}).items():
             assigned_visual = visual_by_symbol.get(symbol)
-            physical_symbol = physical_symbols.get(symbol)
-            physical_visual = (
-                visual_by_physical_symbol.get(physical_symbol)
-                if physical_symbol is not None
-                else None
+            physical_symbol = physical_symbols.get(
+                symbol, symbol + font_slot_shift
             )
+            physical_visual = visual_by_physical_symbol.get(physical_symbol)
             if (
                 symbol not in glyph_symbols
                 or assigned_visual is not None and assigned_visual != visual
@@ -1430,15 +1428,15 @@ def solve_direct_renderer_proof_symbols(
             )
         for code_length, _, symbol in sorted(candidates):
             was_unassigned = symbol not in visual_by_symbol
-            physical_symbol = physical_symbols.get(symbol)
+            physical_symbol = physical_symbols.get(
+                symbol, symbol + font_slot_shift
+            )
             was_physical_unassigned = (
-                physical_symbol is not None
-                and physical_symbol not in visual_by_physical_symbol
+                physical_symbol not in visual_by_physical_symbol
             )
             assignments.append(symbol)
             visual_by_symbol.setdefault(symbol, visual)
-            if physical_symbol is not None:
-                visual_by_physical_symbol.setdefault(physical_symbol, visual)
+            visual_by_physical_symbol.setdefault(physical_symbol, visual)
             if search(symbol, bits + code_length):
                 return True
             if was_physical_unassigned:

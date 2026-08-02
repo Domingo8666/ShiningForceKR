@@ -268,9 +268,9 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
     def test_direct_renderer_rejects_known_physical_slot_collision(self) -> None:
         trees = {
             0xC9: tree(0xC9, 0x04, 0x05),
-            0x04: tree(0x04, 0x03, 0x06),
+            0x04: tree(0x04, 0x03, 0x07),
             0x03: tree(0x03, 0xC9, 0xFE),
-            0x06: tree(0x06, 0xC9, 0xFE),
+            0x07: tree(0x07, 0xC9, 0xFE),
         }
         symbols, assignments = solve_direct_renderer_proof_symbols(
             trees=trees,
@@ -279,8 +279,8 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             visuals=["text:라", "text:!"],
             physical_symbol_by_decoded={0x04: 0x06, 0x03: 0x06},
         )
-        self.assertEqual(symbols, [0x04, 0x06, 0xC9])
-        self.assertEqual(assignments, [0x04, 0x06])
+        self.assertEqual(symbols, [0x04, 0x07, 0xC9])
+        self.assertEqual(assignments, [0x04, 0x07])
 
     def test_infers_nonconstant_direct_renderer_physical_slots(self) -> None:
         capture = {
