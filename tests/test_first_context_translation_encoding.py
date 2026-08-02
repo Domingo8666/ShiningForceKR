@@ -1,4 +1,5 @@
 from copy import deepcopy
+import ast
 from pathlib import Path
 import sys
 import unittest
@@ -69,6 +70,32 @@ def tree(previous: int, left: int, right: int) -> ParsedTree:
 
 
 class FirstContextTranslationEncodingTests(unittest.TestCase):
+    def test_cli_wires_renderer_slot_shift_to_symbol_builder_only(self) -> None:
+        source = (
+            ROOT / "tools" / "v5_1_first_context_translation_encoding.py"
+        ).read_text(encoding="utf-8")
+        calls = [
+            node
+            for node in ast.walk(ast.parse(source))
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+        ]
+        by_name = {
+            node.func.id: {keyword.arg for keyword in node.keywords}
+            for node in calls
+            if node.func.id in {
+                "select_row_font_pages",
+                "build_single_page_symbol_rows",
+            }
+        }
+        self.assertNotIn(
+            "direct_renderer_slot_shift",
+            by_name["select_row_font_pages"],
+        )
+        self.assertIn(
+            "direct_renderer_slot_shift",
+            by_name["build_single_page_symbol_rows"],
+        )
+
     def test_resolves_consecutive_runtime_records_from_visible_anchor(self) -> None:
         target = b"\x00\x03abc\x02de\x01f"
         records = resolve_runtime_records_from_visible_anchor(

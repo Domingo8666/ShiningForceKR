@@ -5285,7 +5285,6 @@ def _main() -> int:
         runtime_constraints=runtime_constraints,
         direct_renderer_first_row=direct_renderer_first_row,
         direct_renderer_pages=direct_renderer_pages,
-        direct_renderer_slot_shift=direct_renderer_slot_shift,
         proven_first_row_page=proven_first_row_page,
     )
     ACTIVE_FAILURE_STEP = "build-symbol-rows"
@@ -5301,6 +5300,7 @@ def _main() -> int:
         pages=selected_row_font_pages,
         direct_renderer_first_row=direct_renderer_first_row,
         direct_renderer_pages=direct_renderer_pages,
+        direct_renderer_slot_shift=direct_renderer_slot_shift,
         proven_first_row_page=proven_first_row_page,
     )
     symbol_counts["preserved_non_text_glyph_occurrence_count"] = sum(
