@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import datetime, timezone
+from pathlib import Path
 import unittest
 
 from tools.sfgfc_huffman import CANDIDATE_END_SYMBOL
@@ -22,9 +23,22 @@ SHA_C = "c" * 64
 SHA_D = "d" * 64
 SHA_E = "e" * 64
 SHA_F = "f" * 64
+TRACE_SOURCE = (
+    Path(__file__).resolve().parents[1]
+    / "tools"
+    / "v5_1_first_context_consumer_trace.py"
+).read_text(encoding="utf-8")
 
 
 class FirstContextConsumerTraceTests(unittest.TestCase):
+    def test_vector_breakpoints_stay_armed_across_samples(self) -> None:
+        capture_source = TRACE_SOURCE.split("def _capture_contexts(", 1)[1]
+        capture_source = capture_source.split("def _main()", 1)[0]
+        capture_lines = [line.strip() for line in capture_source.splitlines()]
+        self.assertEqual(capture_lines.count("arm_vectors()"), 1)
+        self.assertEqual(capture_lines.count("disarm_vectors()"), 1)
+        self.assertIn("MAX_VECTOR_READ_HITS = 20", TRACE_SOURCE)
+
     def test_maps_either_vector_byte_to_its_context(self) -> None:
         self.assertEqual(vector_context_from_physical(HUFFMAN_VECTOR_START), 0)
         self.assertEqual(vector_context_from_physical(HUFFMAN_VECTOR_START + 1), 0)

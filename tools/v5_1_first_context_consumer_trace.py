@@ -128,7 +128,7 @@ PUBLISH_RELATIVE_PATH = Path(
 LOCAL_REPORT_PATH = Path(
     "reports/local/v5_1_first_context_consumer_trace.json"
 )
-MAX_VECTOR_READ_HITS = 32
+MAX_VECTOR_READ_HITS = 20
 MAX_NONVECTOR_HITS_PER_CONTEXT = 64
 FIRST_VECTOR_TIMEOUT_SECONDS = 4.0
 NEXT_VECTOR_TIMEOUT_SECONDS = 0.75
@@ -768,6 +768,11 @@ def _capture_contexts(
             },
         )
         diagnostic_lines: list[str] = []
+        # Read breakpoints fire after the matching instruction has completed,
+        # so continuing with the same ranges armed advances to the next lookup.
+        # Recreating both 512-byte ranges for every sample costs four MCP calls
+        # per decoded symbol on the phone and can exceed the autopilot wall time.
+        arm_vectors()
         for planned_index in range(MAX_VECTOR_READ_HITS):
             planned_context = (
                 planned_contexts[planned_index]
@@ -777,7 +782,6 @@ def _capture_contexts(
             accepted = False
             observed_context: int | None = None
             for false_hit_index in range(MAX_NONVECTOR_HITS_PER_CONTEXT):
-                arm_vectors()
                 status = _continue_until_breakpoint(
                     client,
                     FIRST_VECTOR_TIMEOUT_SECONDS
@@ -785,7 +789,6 @@ def _capture_contexts(
                     else NEXT_VECTOR_TIMEOUT_SECONDS,
                 )
                 if status.get("at_breakpoint") is not True:
-                    disarm_vectors()
                     break
                 state, evidence = _capture_state(client)
                 trace = evidence.get("trace")
@@ -822,7 +825,6 @@ def _capture_contexts(
                     "accepted": accepted,
                 }
                 local["vector_events"].append(event)
-                disarm_vectors()
                 if accepted:
                     assert observed_context is not None
                     contexts.append(observed_context)
