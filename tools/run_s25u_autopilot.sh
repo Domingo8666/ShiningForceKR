@@ -309,6 +309,45 @@ EOF
 
   log "publishing validated pending safe artifacts"
   python tools/v5_1_runtime_bundle.py --publish --no-push
+  publish_status=$?
+  if [ "$publish_status" -ne 0 ]; then
+    return "$publish_status"
+  fi
+
+  residual="$(git status --porcelain --untracked-files=all)"
+  if [ -z "$residual" ]; then
+    return 0
+  fi
+
+  residual_paths=()
+  while IFS= read -r entry; do
+    path="${entry:3}"
+    case "$path" in
+      *" -> "*)
+        path="${path##* -> }"
+        ;;
+    esac
+    if ! is_safe_artifact "$path"; then
+      log "refusing to quarantine a residual change outside the safe artifact set"
+      return 6
+    fi
+    residual_paths+=("$path")
+  done <<EOF
+$residual
+EOF
+
+  log "quarantining residual unvalidated safe artifacts locally"
+  if ! git stash push -u \
+    -m "SFKR unvalidated safe artifacts $(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    -- "${residual_paths[@]}" >/dev/null; then
+    log "residual safe artifacts could not be quarantined"
+    return 6
+  fi
+  if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+    log "repository is still dirty after safe artifact quarantine"
+    return 6
+  fi
+  log "residual unvalidated safe artifacts quarantined in local git stash"
 }
 
 safe_local_commits_only() {

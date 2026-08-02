@@ -271,6 +271,24 @@ class S25UAutopilotTests(unittest.TestCase):
             SCRIPT.index("git fetch origin main"),
         )
 
+    def test_autopilot_quarantines_only_residual_safe_artifacts(self) -> None:
+        publish = SCRIPT.index(
+            "python tools/v5_1_runtime_bundle.py --publish --no-push"
+        )
+        quarantine = SCRIPT.index("git stash push -u", publish)
+        fetch = SCRIPT.index("git fetch origin main", quarantine)
+        self.assertLess(publish, quarantine)
+        self.assertLess(quarantine, fetch)
+        self.assertIn(
+            "refusing to quarantine a residual change outside the safe artifact set",
+            SCRIPT,
+        )
+        self.assertIn(
+            "residual unvalidated safe artifacts quarantined in local git stash",
+            SCRIPT,
+        )
+        self.assertNotIn("git stash pop", SCRIPT)
+
     def test_runtime_stage_publishes_progress_then_continues_comparison(
         self,
     ) -> None:
