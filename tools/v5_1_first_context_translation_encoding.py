@@ -3833,6 +3833,23 @@ def select_row_font_pages(
             pages.append(direct_renderer_pages[0])
             used_pages.update(direct_renderer_pages)
             continue
+        route_visuals = visuals
+        if (
+            row_index == 0
+            and proven_first_row_page is not None
+            and constraint is not None
+            and "original_symbol_count" in constraint
+        ):
+            renderer_glyph_count = int(constraint["original_symbol_count"]) - 4
+            if len(visuals) > renderer_glyph_count:
+                raise ValueError("proven visible page has insufficient glyph slots")
+            route_visuals = [
+                *visuals,
+                *(
+                    "technical-blank"
+                    for _ in range(renderer_glyph_count - len(visuals))
+                ),
+            ]
         ACTIVE_FAILURE_DETAIL = (
             "solve-proven-exact-row"
             if row_index < len(PROVEN_ROW_FONT_PAGES)
@@ -3866,7 +3883,7 @@ def select_row_font_pages(
                 )
                 suffix_depths = sum(
                     can_reach_terminator(token[-1], remaining)
-                    for remaining in range(1, len(visuals))
+                    for remaining in range(1, len(route_visuals))
                 )
                 if not incoming or not suffix_depths:
                     continue
@@ -3913,7 +3930,7 @@ def select_row_font_pages(
                     if "original_symbol_count" in constraint:
                         fixed_control_symbols = (
                             int(constraint["original_symbol_count"])
-                            - len(visuals)
+                            - len(route_visuals)
                             - 1
                         )
                         fixed_page_token_count = (
@@ -3937,7 +3954,7 @@ def select_row_font_pages(
                                 constraint["original_symbol_count"]
                             ),
                             page=page,
-                            visuals=visuals,
+                            visuals=route_visuals,
                         )
                     else:
                         solve_bounded_length_row_visual_symbols(
@@ -3948,14 +3965,14 @@ def select_row_font_pages(
                                 * 8
                             ),
                             page=page,
-                            visuals=visuals,
+                            visuals=route_visuals,
                         )
             except ValueError:
                 if constraint is not None:
                     if "original_symbol_count" in constraint:
                         required_page_tokens = (
                             int(constraint["original_symbol_count"])
-                            - len(visuals)
+                            - len(route_visuals)
                             - 1
                         )
                         required_page_tokens = (
@@ -4004,7 +4021,7 @@ def select_row_font_pages(
                                         constraint["original_symbol_count"]
                                     ),
                                     pages=page_group,
-                                    visuals=visuals,
+                                visuals=route_visuals,
                                 )
                             else:
                                 solve_bounded_length_row_multi_page_visual_symbols(
@@ -4021,7 +4038,7 @@ def select_row_font_pages(
                                         * 8
                                     ),
                                     pages=page_group,
-                                    visuals=visuals,
+                                visuals=route_visuals,
                                 )
                         except ValueError:
                             continue
@@ -4046,7 +4063,7 @@ def select_row_font_pages(
             fixed_page_token_count = (
                 (
                     int(constraint["original_symbol_count"])
-                    - len(visuals)
+                    - len(route_visuals)
                     - 1
                 )
                 // 3
@@ -4054,13 +4071,13 @@ def select_row_font_pages(
                 and "original_symbol_count" in constraint
                 and (
                     int(constraint["original_symbol_count"])
-                    - len(visuals)
+                    - len(route_visuals)
                     - 1
                 )
                 >= 0
                 and (
                     int(constraint["original_symbol_count"])
-                    - len(visuals)
+                    - len(route_visuals)
                     - 1
                 )
                 % 3
@@ -4073,13 +4090,13 @@ def select_row_font_pages(
                     initial_context=int(constraint["initial_context"]),
                     target_bits=target_bits,
                     pages=tuple(failed_pages),
-                    visuals=visuals,
+                    visuals=route_visuals,
                 )
                 if constraint is not None and fixed_page_token_count < 3
                 else 0
             )
             raise RowRouteError(
-                len(visuals),
+                len(route_visuals),
                 0,
                 target_bits=target_bits,
                 candidate_bits=candidate_bits,
@@ -4144,6 +4161,23 @@ def build_single_page_symbol_rows(
             raise ValueError("first context row font page group is invalid")
         renderer_visuals = visuals
         direct_renderer_page = False
+        if (
+            expected_index == 1
+            and proven_first_row_page is not None
+            and not direct_renderer_first_row
+            and constraint is not None
+            and "original_symbol_count" in constraint
+        ):
+            renderer_glyph_count = int(constraint["original_symbol_count"]) - 4
+            if len(visuals) > renderer_glyph_count:
+                raise ValueError("proven visible page has insufficient glyph slots")
+            renderer_visuals = [
+                *visuals,
+                *(
+                    "technical-blank"
+                    for _ in range(renderer_glyph_count - len(visuals))
+                ),
+            ]
         if direct_renderer_first_row and expected_index == 1:
             if constraint is None:
                 raise ValueError("direct renderer proof requires a runtime row")
@@ -4229,7 +4263,7 @@ def build_single_page_symbol_rows(
                                 constraint["original_symbol_count"]
                             ),
                             page=page,
-                            visuals=visuals,
+                            visuals=renderer_visuals,
                         )
                     else:
                         (
@@ -4241,7 +4275,7 @@ def build_single_page_symbol_rows(
                             initial_context=initial_context,
                             maximum_bits=target_bits,
                             page=page,
-                            visuals=visuals,
+                            visuals=renderer_visuals,
                         )
                 except ValueError:
                     ACTIVE_FAILURE_DETAIL = (
@@ -4254,7 +4288,7 @@ def build_single_page_symbol_rows(
                         initial_context=initial_context,
                         target_bits=target_bits,
                         pages=(page,),
-                        visuals=visuals,
+                        visuals=renderer_visuals,
                     )
                     raise RowRouteError(
                         required=len(visuals),
@@ -4280,7 +4314,7 @@ def build_single_page_symbol_rows(
                                 constraint["original_symbol_count"]
                             ),
                             pages=row_pages,
-                            visuals=visuals,
+                            visuals=renderer_visuals,
                         )
                     else:
                         (
@@ -4293,7 +4327,7 @@ def build_single_page_symbol_rows(
                             initial_context=initial_context,
                             maximum_bits=target_bits,
                             pages=row_pages,
-                            visuals=visuals,
+                            visuals=renderer_visuals,
                         )
                 except ValueError:
                     ACTIVE_FAILURE_DETAIL = (
@@ -4306,7 +4340,7 @@ def build_single_page_symbol_rows(
                         initial_context=initial_context,
                         target_bits=target_bits,
                         pages=tuple(row_pages),
-                        visuals=visuals,
+                        visuals=renderer_visuals,
                     )
                     raise RowRouteError(
                         required=len(visuals),
@@ -4326,7 +4360,7 @@ def build_single_page_symbol_rows(
             fixed_count_padding_symbol_count = max(
                 0,
                 len(symbols)
-                - len(visuals)
+                - len(renderer_visuals)
                 - 1
                 - visible_page_select_count * 3,
             )
@@ -4822,12 +4856,6 @@ def _main() -> int:
             raise ValueError("proven visible page evidence is not current")
         proven_first_row_page = EXPANSION_PAGE
         proven_visible_route_confirmed = True
-        # The expanded PoC proved that page 89 is the visible renderer page,
-        # but the first fixed-count translation showed that extra inline page
-        # tokens leak into the dialogue as visible garbage.  Use the implicit
-        # renderer-page path and map every remaining fixed slot to a blank tile.
-        direct_renderer_first_row = True
-        direct_renderer_pages = (EXPANSION_PAGE,)
     if (
         active_vram_route["translation_build_eligible"] is not True
         and not direct_route_confirmed

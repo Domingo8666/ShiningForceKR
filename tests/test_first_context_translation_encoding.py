@@ -268,6 +268,35 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             )
         self.assertTrue(rows[0]["proven_visible_page_route"])
 
+    def test_proven_page_select_route_fills_fixed_slots_with_blank_tiles(self) -> None:
+        symbols = [0x5F, 0x11, 0x02, 0x03, 0x04, 0x05, 0xC9]
+        with patch(
+            "tools.v5_1_first_context_translation_encoding."
+            "solve_fixed_count_row_visual_symbols",
+            return_value=(symbols, 0, [0x03, 0x04, 0x05]),
+        ):
+            counts, rows, assignments = build_single_page_symbol_rows(
+                trees={},
+                target_rows=[{"review_index": 1, "target_text": "가"}],
+                preserved_by_row=[[]],
+                runtime_constraints=[{
+                    "initial_context": 0xC9,
+                    "original_record_length_bytes": 16,
+                    "original_symbol_count": 7,
+                }],
+                pages=(89,),
+                proven_first_row_page=89,
+            )
+        self.assertEqual(rows[0]["symbols"], symbols)
+        self.assertEqual(rows[0]["page_select_count"], 1)
+        self.assertEqual(rows[0]["fixed_count_padding_symbol_count"], 0)
+        self.assertEqual(counts["planned_page_select_count"], 1)
+        self.assertEqual(
+            [item["visual"] for item in assignments[0]],
+            ["text:가", "technical-blank", "technical-blank"],
+        )
+        self.assertEqual({item["page"] for item in assignments[0]}, {89})
+
     def test_proven_visible_page_can_use_implicit_renderer_blank_slots(self) -> None:
         direct_symbols = [*range(0x02, 0x0A), 0xC9]
         with patch(
