@@ -309,6 +309,8 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
         self.assertFalse(first_post)
         self.assertFalse(direct)
         self.assertEqual(counts["post_terminator_context_count"], 0)
+        self.assertEqual(counts["record_restart_context_count"], 0)
+        self.assertEqual(counts["consumer_record_span_count"], 1)
 
     def test_terminator_context_after_full_prefix_proves_overread(self) -> None:
         symbols = [0x5F, 0x12, 0x34, CANDIDATE_END_SYMBOL]
@@ -327,6 +329,8 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
         self.assertTrue(first_post)
         self.assertTrue(direct)
         self.assertEqual(counts["post_terminator_context_count"], 1)
+        self.assertEqual(counts["record_restart_context_count"], 1)
+        self.assertEqual(counts["consumer_record_span_count"], 2)
 
     def test_mismatch_is_inconclusive(self) -> None:
         symbols = [0x5F, 0x12, CANDIDATE_END_SYMBOL]
@@ -339,6 +343,7 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
         self.assertFalse(first_post)
         self.assertFalse(direct)
         self.assertEqual(counts["expected_context_prefix_match_count"], 1)
+        self.assertEqual(counts["consumer_record_span_count"], 0)
 
     def _receipt(self) -> dict[str, object]:
         symbols = [0x5F, 0x12, CANDIDATE_END_SYMBOL]
@@ -376,6 +381,7 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
         self.assertEqual(
             receipt["next_checkpoint"], "resolve-record-consumer-boundary"
         )
+        self.assertTrue(receipt["consumer_span_complete"])
         validate_first_context_consumer_trace(receipt)
 
     def test_safe_receipt_rejects_context_value_leak(self) -> None:

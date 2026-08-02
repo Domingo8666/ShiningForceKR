@@ -143,7 +143,7 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-consumer-trace"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_consumer_trace.json"
 )
@@ -159,7 +159,7 @@ FAST_VECTOR_TRACE_LINE_COUNT = 32
 FIRST_VECTOR_TIMEOUT_SECONDS = 4.0
 NEXT_VECTOR_TIMEOUT_SECONDS = 0.75
 VECTOR_LOGICAL_BASES = (0x4100, 0x8100)
-TRACE_COUNT_KEYS = {
+TRACE_COUNT_KEYS_V2 = {
     "planned_decode_count",
     "expected_context_count",
     "observed_context_count",
@@ -174,6 +174,10 @@ TRACE_COUNT_KEYS = {
     "mapper_write_count",
     "logical_vector_window_read_count",
     "mapped_vector_read_count",
+}
+TRACE_COUNT_KEYS = TRACE_COUNT_KEYS_V2 | {
+    "record_restart_context_count",
+    "consumer_record_span_count",
 }
 TRACE_DIAGNOSTIC_COUNT_KEYS = {
     "trace_line_count",
@@ -197,7 +201,7 @@ def vector_context_from_physical(physical: object) -> int | None:
     ):
         return None
     return (physical - HUFFMAN_VECTOR_START) // 2
-SAFE_FIELDS = {
+SAFE_FIELDS_V2 = {
     "artifact_kind",
     "schema_version",
     "status",
@@ -218,6 +222,7 @@ SAFE_FIELDS = {
     "translation_build_eligible",
     "next_checkpoint",
 }
+SAFE_FIELDS = SAFE_FIELDS_V2 | {"consumer_span_complete"}
 
 
 def _is_sha256(value: object) -> bool:
@@ -285,12 +290,20 @@ def summarize_consumer_contexts(
         == CANDIDATE_END_SYMBOL
     )
     direct_overread = prefix_complete and first_post_is_terminator
+    restart_count = sum(
+        context == CANDIDATE_END_SYMBOL
+        for context in observed_contexts[len(expected_contexts):]
+    )
     counts = {
         "planned_decode_count": len(expected_symbols),
         "expected_context_count": len(expected_contexts),
         "observed_context_count": len(observed_contexts),
         "expected_context_prefix_match_count": prefix_matches,
         "post_terminator_context_count": post_count,
+        "record_restart_context_count": restart_count,
+        "consumer_record_span_count": (
+            1 + restart_count if prefix_complete else 0
+        ),
         "initial_context_match_count": int(
             bool(observed_contexts) and observed_contexts[0] == initial_context
         ),
@@ -319,6 +332,7 @@ def build_first_context_consumer_trace(
     expected_context_prefix_complete: bool,
     first_post_terminator_context_is_terminator: bool,
     direct_terminator_overread_confirmed: bool,
+    consumer_span_complete: bool = True,
 ) -> dict[str, object]:
     if direct_terminator_overread_confirmed:
         status = "consumer-terminator-overread-confirmed"
@@ -350,6 +364,7 @@ def build_first_context_consumer_trace(
             first_post_terminator_context_is_terminator,
         "direct_terminator_overread_confirmed":
             direct_terminator_overread_confirmed,
+        "consumer_span_complete": consumer_span_complete,
         "cold_boot": True,
         "source_and_target_text_local_only": True,
         "translation_build_eligible": False,
@@ -360,11 +375,12 @@ def build_first_context_consumer_trace(
 
 
 def validate_first_context_consumer_trace(value: dict[str, object]) -> None:
-    if set(value) != SAFE_FIELDS:
+    schema_version = value.get("schema_version")
+    expected_fields = SAFE_FIELDS_V2 if schema_version == 2 else SAFE_FIELDS
+    if schema_version not in {2, SCHEMA_VERSION} or set(value) != expected_fields:
         raise ValueError("first context consumer trace fields do not match")
     if (
         value["artifact_kind"] != ARTIFACT_KIND
-        or value["schema_version"] != SCHEMA_VERSION
         or not all(
             _is_sha256(value[key])
             for key in (
@@ -381,9 +397,12 @@ def validate_first_context_consumer_trace(value: dict[str, object]) -> None:
     ):
         raise ValueError("first context consumer trace identity is invalid")
     trace = value["trace"]
+    expected_trace_keys = (
+        TRACE_COUNT_KEYS_V2 if schema_version == 2 else TRACE_COUNT_KEYS
+    )
     if (
         not isinstance(trace, dict)
-        or set(trace) != TRACE_COUNT_KEYS
+        or set(trace) != expected_trace_keys
         or any(
             not isinstance(count, int)
             or isinstance(count, bool)
@@ -392,7 +411,7 @@ def validate_first_context_consumer_trace(value: dict[str, object]) -> None:
         )
         or any(
             trace[key] > MAX_VECTOR_READ_HITS
-            for key in TRACE_COUNT_KEYS - TRACE_DIAGNOSTIC_COUNT_KEYS
+            for key in expected_trace_keys - TRACE_DIAGNOSTIC_COUNT_KEYS
         )
         or any(
             trace[key] > 200_000 for key in TRACE_DIAGNOSTIC_COUNT_KEYS
@@ -429,6 +448,14 @@ def validate_first_context_consumer_trace(value: dict[str, object]) -> None:
     direct = value["direct_terminator_overread_confirmed"]
     if not isinstance(first_post, bool) or not isinstance(direct, bool):
         raise ValueError("first context consumer trace result is invalid")
+    if schema_version == SCHEMA_VERSION and (
+        not isinstance(value["consumer_span_complete"], bool)
+        or trace["record_restart_context_count"]
+        > trace["post_terminator_context_count"]
+        or trace["consumer_record_span_count"]
+        != (1 + trace["record_restart_context_count"] if prefix_complete else 0)
+    ):
+        raise ValueError("first context consumer trace span is inconsistent")
     if first_post and trace["post_terminator_context_count"] <= 0:
         raise ValueError("first context consumer trace overread is inconsistent")
     if direct != (prefix_complete and first_post):
@@ -1087,6 +1114,7 @@ def _capture_contexts(
             },
         )
         diagnostic_lines: list[str] = []
+        consumer_span_complete = False
         # The post-skip execution breakpoint stops before decompression, so no
         # vector read can be lost before these ranges are armed.
         # Keep tracing after the first terminator until the renderer becomes
@@ -1168,6 +1196,7 @@ def _capture_contexts(
                 # stepping here would skip a possible next lookup.
             disarm_vectors()
             if not accepted:
+                consumer_span_complete = planned_index >= len(planned_contexts)
                 break
 
         _, trace_diagnostics = analyze_vector_contexts_from_trace(
@@ -1186,6 +1215,7 @@ def _capture_contexts(
         local["trace_diagnostics"] = trace_diagnostics
         local["raw_trace_lines"] = diagnostic_lines
         local["observed_contexts"] = contexts
+        local["consumer_span_complete"] = consumer_span_complete
         return contexts, local
     except Exception as error:
         receipt = _runtime_failure_receipt(
@@ -1378,6 +1408,9 @@ def _main() -> int:
         expected_context_prefix_complete=prefix_complete,
         first_post_terminator_context_is_terminator=first_post,
         direct_terminator_overread_confirmed=direct,
+        consumer_span_complete=(
+            local_capture.get("consumer_span_complete") is True
+        ),
     )
     safe_path = root / PUBLISH_RELATIVE_PATH
     safe_path.parent.mkdir(parents=True, exist_ok=True)
