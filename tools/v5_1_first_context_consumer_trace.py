@@ -150,7 +150,7 @@ PUBLISH_RELATIVE_PATH = Path(
 LOCAL_REPORT_PATH = Path(
     "reports/local/v5_1_first_context_consumer_trace.json"
 )
-MAX_VECTOR_READ_HITS = 20
+MAX_VECTOR_READ_HITS = 64
 MAX_NONVECTOR_HITS_PER_CONTEXT = 64
 MAX_POST_SKIP_ANCHOR_HITS = 32
 POST_SKIP_ANCHOR_TIMEOUT_SECONDS = 90.0
@@ -1089,7 +1089,11 @@ def _capture_contexts(
         diagnostic_lines: list[str] = []
         # The post-skip execution breakpoint stops before decompression, so no
         # vector read can be lost before these ranges are armed.
-        sample_limit = min(MAX_VECTOR_READ_HITS, len(planned_contexts) + 1)
+        # Keep tracing after the first terminator until the renderer becomes
+        # idle.  The outer consumer can span several Huffman records for one
+        # dialogue screen, so a single overread sample is not enough to size
+        # the replacement stream.
+        sample_limit = MAX_VECTOR_READ_HITS
         for planned_index in range(len(contexts), sample_limit):
             planned_context = (
                 planned_contexts[planned_index]
@@ -1097,8 +1101,9 @@ def _capture_contexts(
                 else None
             )
             # Exact two-byte vector ranges reject unrelated table reads before
-            # they cross the MCP boundary.  A full range is needed only once,
-            # after the expected sequence, to observe one boundary overread.
+            # they cross the MCP boundary.  After the expected sequence, use
+            # the complete vector window to follow every record consumed for
+            # the same screen until the next lookup times out.
             arm_vectors(planned_context)
             accepted = False
             observed_context: int | None = None

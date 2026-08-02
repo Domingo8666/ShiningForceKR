@@ -144,9 +144,9 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
         capture_source = TRACE_SOURCE.split("def _capture_contexts(", 1)[1]
         capture_source = capture_source.split("def _main()", 1)[0]
         self.assertIn("arm_vectors(planned_context)", capture_source)
-        self.assertIn("len(planned_contexts) + 1", capture_source)
+        self.assertIn("sample_limit = MAX_VECTOR_READ_HITS", capture_source)
         self.assertIn("observed_context == planned_context", capture_source)
-        self.assertIn("MAX_VECTOR_READ_HITS = 20", TRACE_SOURCE)
+        self.assertIn("MAX_VECTOR_READ_HITS = 64", TRACE_SOURCE)
 
     def test_anchor_uses_confirmed_post_skip_execute_breakpoint(self) -> None:
         capture_source = TRACE_SOURCE.split("def _capture_contexts(", 1)[1]
