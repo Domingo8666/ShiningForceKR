@@ -46,6 +46,7 @@ try:
     )
     from .v5_1_first_context_translation_test_build import (
         PUBLISH_RELATIVE_PATH as TRANSLATION_TEST_BUILD_PATH,
+        validate_first_context_translation_test_build,
     )
     from .v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ROM_CURSOR_RESET_PATH,
@@ -89,6 +90,7 @@ except ImportError:  # pragma: no cover - direct script execution
     )
     from v5_1_first_context_translation_test_build import (
         PUBLISH_RELATIVE_PATH as TRANSLATION_TEST_BUILD_PATH,
+        validate_first_context_translation_test_build,
     )
     from v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ROM_CURSOR_RESET_PATH,
@@ -380,13 +382,15 @@ def _translated_vram_diff_current(
         return False
     try:
         value = _load_object(path)
+        build = _load_object(build_path)
         validate_first_context_translated_vram_diff(value)
+        validate_first_context_translation_test_build(build)
     except (OSError, ValueError, json.JSONDecodeError):
         return False
     return (
         value.get("baseline_target_sha256") == target_sha256
-        and value.get("first_context_translation_test_build_sha256")
-        == sha256_file(build_path)
+        and build.get("baseline_target_sha256") == target_sha256
+        and value.get("test_target_sha256") == build.get("test_target_sha256")
     )
 
 
