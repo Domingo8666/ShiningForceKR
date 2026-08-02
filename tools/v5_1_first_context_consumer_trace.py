@@ -157,7 +157,11 @@ POST_SKIP_ANCHOR_TIMEOUT_SECONDS = 90.0
 NEXT_POST_SKIP_ANCHOR_TIMEOUT_SECONDS = 2.0
 FAST_VECTOR_TRACE_LINE_COUNT = 32
 FIRST_VECTOR_TIMEOUT_SECONDS = 4.0
-NEXT_VECTOR_TIMEOUT_SECONDS = 0.75
+# Android scheduling produced false "idle" boundaries at 49 and 53 reads when
+# the next lookup was allowed only 750 ms to arrive.  A three-second quiet
+# window is still well inside the stage wall limit and separates a real return
+# to the input loop from a transient emulator pause.
+NEXT_VECTOR_TIMEOUT_SECONDS = 3.0
 VECTOR_LOGICAL_BASES = (0x4100, 0x8100)
 TRACE_COUNT_KEYS_V2 = {
     "planned_decode_count",
