@@ -118,6 +118,19 @@ class S25UAutopilotTests(unittest.TestCase):
         )
         self.assertNotIn("eval", RUNTIME_STAGE)
 
+    def test_runtime_stage_request_survives_safe_artifact_rebase_once(self) -> None:
+        self.assertIn(
+            "analysis/control/s25u_runtime_stage_request.json",
+            RUNTIME_STAGE,
+        )
+        self.assertIn("last_runtime_stage_request", RUNTIME_STAGE)
+        self.assertIn('set(value)=={"request_id", "stage"}', RUNTIME_STAGE)
+        self.assertIn('stage in allowed', RUNTIME_STAGE)
+        self.assertIn(
+            'if [ "$stage_request_token" != "$last_stage_request" ]',
+            RUNTIME_STAGE,
+        )
+
     def test_runtime_stage_batches_exact_no_change_rejections(self) -> None:
         self.assertIn("comparison_attempt_limit=8", RUNTIME_STAGE)
         self.assertIn(
