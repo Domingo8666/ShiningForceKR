@@ -35,6 +35,10 @@ try:
         PUBLISH_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_PATH,
         validate_first_context_direct_renderer_capture,
     )
+    from .v5_1_confirmed_group_extract import (
+        PUBLISH_RELATIVE_PATH as GROUP_EXTRACT_PATH,
+        validate_confirmed_group_extract,
+    )
     from .v5_1_first_context_translation_runtime_capture import (
         PUBLISH_RELATIVE_PATH as RUNTIME_CAPTURE_PATH,
         TEST_ROM_PATH,
@@ -88,6 +92,10 @@ except ImportError:  # pragma: no cover - direct script execution
     from v5_1_first_context_direct_renderer_capture import (
         PUBLISH_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_PATH,
         validate_first_context_direct_renderer_capture,
+    )
+    from v5_1_confirmed_group_extract import (
+        PUBLISH_RELATIVE_PATH as GROUP_EXTRACT_PATH,
+        validate_confirmed_group_extract,
     )
     from v5_1_first_context_translation_runtime_capture import (
         PUBLISH_RELATIVE_PATH as RUNTIME_CAPTURE_PATH,
@@ -661,19 +669,57 @@ def _fast_entry_coordinates(
     return _entry_coordinates({"registers": registers})
 
 
+def resolve_record_length_anchor(
+    *,
+    group_extract: dict[str, object],
+    first_row: dict[str, object],
+) -> tuple[int, int]:
+    """Map the confirmed selected record's length byte back to slot 1."""
+
+    validate_confirmed_group_extract(group_extract)
+    group = group_extract.get("group")
+    if not isinstance(group, dict):
+        raise ValueError("consumer trace confirmed group is missing")
+    length_offset = first_row.get("length_offset")
+    if not isinstance(length_offset, int) or isinstance(length_offset, bool):
+        raise ValueError("consumer trace record length offset is invalid")
+    if (
+        first_row.get("target_selector") != group.get("selector")
+        or first_row.get("target_ordinal") != group.get("selected_entry_ordinal")
+    ):
+        raise ValueError("consumer trace record coordinate disagrees")
+    logical_start = int(group["logical_start"])
+    physical_start = int(group["physical_start"])
+    mapped_bank = int(group["mapped_bank"])
+    logical_length = logical_start + length_offset - physical_start
+    if not 0x4000 <= logical_length < 0x8000:
+        raise ValueError("consumer trace length anchor is outside slot 1")
+    return logical_length, mapped_bank
+
+
 def _capture_contexts(
     *,
     rom_path: Path,
     rom_size: int,
     planned_contexts: list[int],
+    target_logical_length_address: int,
+    target_mapped_bank: int,
 ) -> tuple[list[int], dict[str, object]]:
     client = McpStdioClient(_default_command())
     entry_address = f"{DECODER_ENTRY_LOGICAL:04X}"
     entry_armed = False
+    record_anchor_armed = False
     vector_armed = False
     fast_forward_enabled = False
     armed_vector_ranges: list[tuple[str, str]] = []
     local: dict[str, object] = {"anchor_hits": [], "vector_events": []}
+
+    if (
+        not 0x4000 <= target_logical_length_address < 0x8000
+        or not 0 <= target_mapped_bank <= 0xFF
+    ):
+        raise ValueError("consumer trace record anchor is invalid")
+    record_anchor_address = f"{target_logical_length_address:04X}"
 
     def arm_entry() -> None:
         nonlocal entry_armed
@@ -702,6 +748,34 @@ def _capture_contexts(
                 },
             )
             entry_armed = False
+
+    def arm_record_anchor() -> None:
+        nonlocal record_anchor_armed
+        client.call(
+            "set_breakpoint_range",
+            {
+                "start_address": record_anchor_address,
+                "end_address": record_anchor_address,
+                "memory_area": "rom_ram",
+                "execute": False,
+                "read": True,
+                "write": False,
+            },
+        )
+        record_anchor_armed = True
+
+    def disarm_record_anchor() -> None:
+        nonlocal record_anchor_armed
+        if record_anchor_armed:
+            client.call(
+                "remove_breakpoint",
+                {
+                    "address": record_anchor_address,
+                    "end_address": record_anchor_address,
+                    "memory_area": "rom_ram",
+                },
+            )
+            record_anchor_armed = False
 
     def arm_vectors(context: int | None = None) -> None:
         nonlocal vector_armed, armed_vector_ranges
@@ -763,44 +837,60 @@ def _capture_contexts(
         client.call("debug_pause")
         if any(button is not None for _, button in ATTRACT_CAPTURE_SCHEDULE):
             raise RuntimeError("consumer trace attract schedule must be passive")
-        arm_entry()
+        arm_record_anchor()
         _set_unlimited_fast_forward(client, True)
         fast_forward_enabled = True
         anchor_timeout = max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 120.0)
-        anchor_hit_limit = MAX_REJECTED_TARGET_HITS * len(
-            ATTRACT_CAPTURE_SCHEDULE
-        )
         anchor_reached = False
         anchor_state: dict[str, object] | None = None
-        for _ in range(anchor_hit_limit):
-            status = _continue_until_breakpoint(client, anchor_timeout)
+        for false_hit_index in range(MAX_NONVECTOR_HITS_PER_CONTEXT):
+            status = _continue_until_breakpoint(
+                client,
+                anchor_timeout if false_hit_index == 0 else FIRST_VECTOR_TIMEOUT_SECONDS,
+            )
             if status.get("at_breakpoint") is not True:
                 break
-            selector, ordinal = _fast_entry_coordinates(client)
-            disarm_entry()
-            if selector == CONFIRMED_SELECTOR and ordinal == CONFIRMED_ORDINAL:
-                state, evidence = _capture_state(client)
-                local["anchor_hits"].append(
-                    {
-                        "selector": selector,
-                        "ordinal": ordinal,
-                        "accepted": True,
-                        "state": state,
-                        "evidence": evidence,
-                    }
-                )
-                anchor_reached = True
-                anchor_state = state
-                break
+            state, evidence = _capture_state(client)
+            accepted = int(state["slot1_bank"]) == target_mapped_bank
             local["anchor_hits"].append(
                 {
-                    "selector": selector,
-                    "ordinal": ordinal,
-                    "accepted": False,
+                    "false_hit_index": false_hit_index,
+                    "record_length_logical_address": target_logical_length_address,
+                    "expected_slot1_bank": target_mapped_bank,
+                    "accepted": accepted,
+                    "state": state,
+                    "evidence": evidence,
                 }
             )
-            _step_instruction_and_wait(client)
-            arm_entry()
+            if accepted:
+                disarm_record_anchor()
+                arm_entry()
+                entry_status = _continue_until_breakpoint(
+                    client,
+                    FIRST_VECTOR_TIMEOUT_SECONDS,
+                )
+                if entry_status.get("at_breakpoint") is not True:
+                    raise RuntimeError(
+                        "consumer trace decoder entry did not follow record anchor"
+                    )
+                selector, ordinal = _fast_entry_coordinates(client)
+                if (
+                    selector != CONFIRMED_SELECTOR
+                    or ordinal != CONFIRMED_ORDINAL
+                ):
+                    raise RuntimeError(
+                        "consumer trace direct record anchor disagrees"
+                    )
+                disarm_entry()
+                anchor_state, anchor_evidence = _capture_state(client)
+                local["decoder_entry"] = {
+                    "selector": selector,
+                    "ordinal": ordinal,
+                    "state": anchor_state,
+                    "evidence": anchor_evidence,
+                }
+                anchor_reached = True
+                break
         if not anchor_reached or anchor_state is None:
             raise RuntimeError("consumer trace confirmed anchor was not reached")
         _set_unlimited_fast_forward(client, False)
@@ -925,6 +1015,10 @@ def _capture_contexts(
             disarm_entry()
         except RuntimeError:
             pass
+        try:
+            disarm_record_anchor()
+        except RuntimeError:
+            pass
         disarm_vectors()
         try:
             client.call(
@@ -969,6 +1063,7 @@ def _main() -> int:
             else VISUAL_REVIEW_PATH
         ),
         "encoding": root / LOCAL_ENCODING_PATH,
+        "group": root / GROUP_EXTRACT_PATH,
     }
     if any(not path.is_file() for path in paths.values()):
         raise FileNotFoundError("first context consumer trace input is missing")
@@ -976,7 +1071,9 @@ def _main() -> int:
     runtime = _load_json(paths["runtime"])
     review = _load_json(paths["review"])
     encoding = _load_json(paths["encoding"])
+    group_extract = _load_json(paths["group"])
     validate_first_context_translation_test_build(build)
+    validate_confirmed_group_extract(group_extract)
     if args.direct_renderer:
         validate_first_context_direct_renderer_capture(runtime)
     else:
@@ -986,6 +1083,10 @@ def _main() -> int:
     if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
         raise ValueError("first context consumer trace encoding rows are missing")
     first_row = rows[0]
+    target_logical_length_address, target_mapped_bank = resolve_record_length_anchor(
+        group_extract=group_extract,
+        first_row=first_row,
+    )
     expected_symbols = first_row.get("symbols")
     initial_context = first_row.get("initial_context")
     if not isinstance(expected_symbols, list) or not isinstance(initial_context, int):
@@ -1002,6 +1103,8 @@ def _main() -> int:
     )
     if not runtime_identity_ready or not review_identity_ready:
         raise ValueError("first context consumer trace identity disagrees")
+    if group_extract["target_sha256"] != build["baseline_target_sha256"]:
+        raise ValueError("first context consumer trace group identity disagrees")
 
     observed_contexts, local_capture = _capture_contexts(
         rom_path=paths["rom"],
@@ -1011,6 +1114,8 @@ def _main() -> int:
             *expected_symbols[:-1],
             CANDIDATE_END_SYMBOL,
         ],
+        target_logical_length_address=target_logical_length_address,
+        target_mapped_bank=target_mapped_bank,
     )
     counts, prefix_complete, first_post, direct = summarize_consumer_contexts(
         observed_contexts=observed_contexts,

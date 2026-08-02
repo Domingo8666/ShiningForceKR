@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
+import json
 import unittest
 
 from tools.sfgfc_huffman import CANDIDATE_END_SYMBOL
@@ -11,6 +12,7 @@ from tools.v5_1_first_context_consumer_trace import (
     analyze_vector_contexts_from_trace,
     build_first_context_consumer_trace,
     extract_vector_contexts_from_trace,
+    resolve_record_length_anchor,
     summarize_consumer_contexts,
     validate_first_context_consumer_trace,
     vector_context_from_physical,
@@ -56,18 +58,35 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
         self.assertEqual(capture_lines.count("disarm_vectors()"), 1)
         self.assertIn("MAX_VECTOR_READ_HITS = 20", TRACE_SOURCE)
 
-    def test_anchor_uses_bounded_unlimited_fast_forward(self) -> None:
+    def test_anchor_uses_confirmed_record_read_breakpoint(self) -> None:
+        capture_source = TRACE_SOURCE.split("def _capture_contexts(", 1)[1]
+        capture_source = capture_source.split("def _main()", 1)[0]
         self.assertIn("_set_unlimited_fast_forward(client, True)", TRACE_SOURCE)
         self.assertIn("_set_unlimited_fast_forward(client, False)", TRACE_SOURCE)
+        self.assertIn("arm_record_anchor()", capture_source)
+        self.assertIn("disarm_record_anchor()", capture_source)
+        self.assertNotIn("for _ in range(anchor_hit_limit)", capture_source)
         self.assertIn(
             "max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 120.0)",
             TRACE_SOURCE,
         )
-        self.assertIn(
-            "MAX_REJECTED_TARGET_HITS * len(\n"
-            "            ATTRACT_CAPTURE_SCHEDULE\n"
-            "        )",
-            TRACE_SOURCE,
+
+    def test_resolves_confirmed_record_length_anchor(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        group_extract = json.loads(
+            (root / "analysis/device/v5_1_latest_confirmed_group_extract.json")
+            .read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            resolve_record_length_anchor(
+                group_extract=group_extract,
+                first_row={
+                    "length_offset": 133394,
+                    "target_selector": 2,
+                    "target_ordinal": 147,
+                },
+            ),
+            (0x4912, 8),
         )
 
     def test_maps_either_vector_byte_to_its_context(self) -> None:
