@@ -1,19 +1,19 @@
 {
   "artifact_kind": "sanitized-v5-1-first-context-direct-renderer-capture",
-  "schema_version": 6,
+  "schema_version": 7,
   "status": "direct-renderer-first-screen-captured",
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "test_target_sha256": "ae8bf442022d6e1fec4c810bc6e3007fb5a6656ea41da319e6867697c1c99436",
-  "first_context_translation_test_build_sha256": "6c8a6731893104cf6fcb6ce000956411d17c2908bde78795482560ece44dc70d",
-  "local_encoding_sha256": "caeb03d2467cf9efd2ecc39d76b2a0c2330867d6cb77706bc4bf4a51a7269168",
+  "first_context_translation_test_build_sha256": "8fcdb1309036973df66d0f58d257d45b210fd31788b3f98a2ef7e402470d584d",
+  "local_encoding_sha256": "767a448e58ce2ec6d24ea98987734680706b99fe302c552ca49fc6e79b2ee38c",
   "capture_png_sha256": "0198cd23ee06119156a2f94c890f544e6d50598412e644a46e8d9aca40c9d5ee",
-  "captured_utc": "2026-08-02T18:45:13.821140Z",
+  "captured_utc": "2026-08-02T18:56:30.215349Z",
   "runtime_entry": {
     "selector": 2,
     "ordinal": 147
   },
   "renderer_route": "direct-observed-page",
-  "runtime_stage_request_id": "direct-renderer-slot-map-20260802-41",
+  "runtime_stage_request_id": "direct-renderer-slot-map-20260802-42",
   "direct_renderer_first_row_confirmed": true,
   "slot_alignment": {
     "sample_count": 5,
@@ -28,10 +28,20 @@
     "sample_route_candidates": [
       {
         "index": 0,
+        "encoded_symbol": 95,
+        "rendered_tile": 98,
+        "screen_tiles": [
+          98
+        ],
         "routes": []
       },
       {
         "index": 1,
+        "encoded_symbol": 2,
+        "rendered_tile": 97,
+        "screen_tiles": [
+          97
+        ],
         "routes": [
           [
             232,
@@ -42,10 +52,20 @@
       },
       {
         "index": 2,
+        "encoded_symbol": 21,
+        "rendered_tile": 101,
+        "screen_tiles": [
+          101
+        ],
         "routes": []
       },
       {
         "index": 3,
+        "encoded_symbol": 4,
+        "rendered_tile": 100,
+        "screen_tiles": [
+          100
+        ],
         "routes": [
           [
             24,
@@ -61,6 +81,11 @@
       },
       {
         "index": 4,
+        "encoded_symbol": 3,
+        "rendered_tile": 100,
+        "screen_tiles": [
+          100
+        ],
         "routes": []
       }
     ]
