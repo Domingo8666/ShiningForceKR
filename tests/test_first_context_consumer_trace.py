@@ -9,6 +9,7 @@ import unittest
 from tools.sfgfc_huffman import CANDIDATE_END_SYMBOL
 from tools.v5_1_first_context_consumer_trace import (
     _fast_entry_coordinates,
+    _fast_post_skip_hl,
     _fast_slot1_bank,
     _fast_vector_sample,
     _confirmed_decoder_trace_suffix,
@@ -16,6 +17,7 @@ from tools.v5_1_first_context_consumer_trace import (
     build_first_context_consumer_trace,
     extract_vector_contexts_from_trace,
     resolve_record_payload_anchor,
+    resolve_post_skip_anchor,
     summarize_consumer_contexts,
     validate_first_context_consumer_trace,
     vector_context_from_physical,
@@ -85,6 +87,19 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
             ],
         )
 
+    def test_fast_post_skip_hl_reads_only_z80_status(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def call(self, method: str) -> dict[str, str]:
+                self.calls.append(method)
+                return {"HL": "4912"}
+
+        client = FakeClient()
+        self.assertEqual(_fast_post_skip_hl(client), 0x4912)  # type: ignore[arg-type]
+        self.assertEqual(client.calls, ["get_z80_status"])
+
     def test_fast_vector_sample_uses_three_mcp_reads(self) -> None:
         class FakeClient:
             def __init__(self) -> None:
@@ -133,17 +148,19 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
         self.assertEqual(capture_lines.count("disarm_vectors()"), 1)
         self.assertIn("MAX_VECTOR_READ_HITS = 20", TRACE_SOURCE)
 
-    def test_anchor_uses_confirmed_record_read_breakpoint(self) -> None:
+    def test_anchor_uses_confirmed_post_skip_execute_breakpoint(self) -> None:
         capture_source = TRACE_SOURCE.split("def _capture_contexts(", 1)[1]
         capture_source = capture_source.split("def _main()", 1)[0]
         self.assertIn("_set_unlimited_fast_forward(client, True)", TRACE_SOURCE)
         self.assertIn("_set_unlimited_fast_forward(client, False)", TRACE_SOURCE)
-        self.assertIn("arm_record_anchor()", capture_source)
-        self.assertIn("disarm_record_anchor()", capture_source)
+        self.assertIn("arm_post_skip_anchor()", capture_source)
+        self.assertIn("disarm_post_skip_anchor()", capture_source)
+        self.assertIn('"execute": True', capture_source)
+        self.assertIn('"read": False', capture_source)
         self.assertNotIn("for _ in range(anchor_hit_limit)", capture_source)
-        self.assertIn("MAX_DIRECT_RECORD_ANCHOR_HITS = 4", TRACE_SOURCE)
+        self.assertIn("MAX_POST_SKIP_ANCHOR_HITS = 32", TRACE_SOURCE)
         self.assertIn(
-            "DIRECT_RECORD_ANCHOR_TIMEOUT_SECONDS = 90.0",
+            "POST_SKIP_ANCHOR_TIMEOUT_SECONDS = 90.0",
             TRACE_SOURCE,
         )
 
@@ -163,6 +180,29 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
                 },
             ),
             (0x4913, 8),
+        )
+
+    def test_resolves_confirmed_post_skip_anchor(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        decoder_trace = json.loads(
+            (root / "analysis/device/v5_1_latest_decoder_register_trace.json")
+            .read_text(encoding="utf-8")
+        )
+        group_extract = json.loads(
+            (root / "analysis/device/v5_1_latest_confirmed_group_extract.json")
+            .read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            resolve_post_skip_anchor(
+                decoder_trace=decoder_trace,
+                group_extract=group_extract,
+                first_row={
+                    "length_offset": 133394,
+                    "target_selector": 2,
+                    "target_ordinal": 147,
+                },
+            ),
+            (0x340B, 0x4912, 8),
         )
 
     def test_selects_confirmed_decoder_trace_suffix(self) -> None:

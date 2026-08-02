@@ -39,6 +39,10 @@ try:
         PUBLISH_RELATIVE_PATH as GROUP_EXTRACT_PATH,
         validate_confirmed_group_extract,
     )
+    from .v5_1_decoder_register_trace import (
+        PUBLISH_RELATIVE_PATH as DECODER_REGISTER_TRACE_PATH,
+        validate_decoder_register_trace,
+    )
     from .v5_1_first_context_translation_runtime_capture import (
         PUBLISH_RELATIVE_PATH as RUNTIME_CAPTURE_PATH,
         TEST_ROM_PATH,
@@ -72,6 +76,7 @@ try:
     from .v5_1_test_display_capture import (
         _continue_until_breakpoint,
         _set_unlimited_fast_forward,
+        _step_instruction_and_wait,
     )
 except ImportError:  # pragma: no cover - direct script execution
     from patch_io import sha256_file
@@ -95,6 +100,10 @@ except ImportError:  # pragma: no cover - direct script execution
     from v5_1_confirmed_group_extract import (
         PUBLISH_RELATIVE_PATH as GROUP_EXTRACT_PATH,
         validate_confirmed_group_extract,
+    )
+    from v5_1_decoder_register_trace import (
+        PUBLISH_RELATIVE_PATH as DECODER_REGISTER_TRACE_PATH,
+        validate_decoder_register_trace,
     )
     from v5_1_first_context_translation_runtime_capture import (
         PUBLISH_RELATIVE_PATH as RUNTIME_CAPTURE_PATH,
@@ -129,6 +138,7 @@ except ImportError:  # pragma: no cover - direct script execution
     from v5_1_test_display_capture import (
         _continue_until_breakpoint,
         _set_unlimited_fast_forward,
+        _step_instruction_and_wait,
     )
 
 
@@ -142,9 +152,9 @@ LOCAL_REPORT_PATH = Path(
 )
 MAX_VECTOR_READ_HITS = 20
 MAX_NONVECTOR_HITS_PER_CONTEXT = 64
-MAX_DIRECT_RECORD_ANCHOR_HITS = 4
-DIRECT_RECORD_ANCHOR_TIMEOUT_SECONDS = 90.0
-NEXT_RECORD_ANCHOR_TIMEOUT_SECONDS = 2.0
+MAX_POST_SKIP_ANCHOR_HITS = 32
+POST_SKIP_ANCHOR_TIMEOUT_SECONDS = 90.0
+NEXT_POST_SKIP_ANCHOR_TIMEOUT_SECONDS = 2.0
 FAST_VECTOR_TRACE_LINE_COUNT = 32
 FIRST_VECTOR_TIMEOUT_SECONDS = 4.0
 NEXT_VECTOR_TIMEOUT_SECONDS = 0.75
@@ -707,6 +717,31 @@ def _fast_slot_banks(
     return slot1, slot2
 
 
+def _fast_post_skip_hl(client: McpStdioClient) -> int:
+    """Read only HL to classify one fixed post-skip execution hit."""
+
+    payload = client.call("get_z80_status")
+    if not isinstance(payload, dict):
+        raise RuntimeError("consumer trace registers are missing")
+    value = payload.get("HL")
+    if isinstance(value, bool):
+        raise RuntimeError("consumer trace HL register is invalid")
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, str):
+        try:
+            parsed = int(value, 16)
+        except ValueError as error:
+            raise RuntimeError(
+                "consumer trace HL register is invalid"
+            ) from error
+    else:
+        raise RuntimeError("consumer trace HL register is invalid")
+    if not 0 <= parsed <= 0xFFFF:
+        raise RuntimeError("consumer trace HL register is invalid")
+    return parsed
+
+
 def _fast_vector_sample(
     client: McpStdioClient,
     *,
@@ -780,6 +815,50 @@ def resolve_record_payload_anchor(
     return logical_payload, mapped_bank
 
 
+def resolve_post_skip_anchor(
+    *,
+    decoder_trace: dict[str, object],
+    group_extract: dict[str, object],
+    first_row: dict[str, object],
+) -> tuple[int, int, int]:
+    """Resolve the proven pre-decompression execution state for one record."""
+
+    validate_decoder_register_trace(decoder_trace)
+    validate_confirmed_group_extract(group_extract)
+    group = group_extract.get("group")
+    post_skip_state = decoder_trace.get("post_skip_state")
+    if not isinstance(group, dict) or not isinstance(post_skip_state, dict):
+        raise ValueError("consumer trace post-skip evidence is missing")
+    length_offset = first_row.get("length_offset")
+    if not isinstance(length_offset, int) or isinstance(length_offset, bool):
+        raise ValueError("consumer trace record length offset is invalid")
+    if (
+        first_row.get("target_selector") != group.get("selector")
+        or first_row.get("target_ordinal") != group.get("selected_entry_ordinal")
+    ):
+        raise ValueError("consumer trace record coordinate disagrees")
+    expected_hl = (
+        int(group["logical_start"])
+        + length_offset
+        - int(group["physical_start"])
+    )
+    pc = post_skip_state.get("pc")
+    hl = post_skip_state.get("hl")
+    mapped_bank = int(group["mapped_bank"])
+    if (
+        not isinstance(pc, int)
+        or isinstance(pc, bool)
+        or not isinstance(hl, int)
+        or isinstance(hl, bool)
+        or hl != expected_hl
+        or post_skip_state.get("slot1_bank") != mapped_bank
+        or not 0 <= pc <= 0x3FFF
+        or not 0x4000 <= hl < 0x8000
+    ):
+        raise ValueError("consumer trace post-skip evidence disagrees")
+    return pc, hl, mapped_bank
+
+
 def _confirmed_decoder_trace_suffix(lines: object) -> list[str]:
     """Return the trace suffix beginning at the confirmed decoder entry."""
 
@@ -811,55 +890,52 @@ def _capture_contexts(
     rom_path: Path,
     rom_size: int,
     planned_contexts: list[int],
-    target_logical_payload_address: int,
+    target_post_skip_pc: int,
+    target_length_logical_address: int,
     target_mapped_bank: int,
 ) -> tuple[list[int], dict[str, object]]:
     client = McpStdioClient(_default_command())
-    record_anchor_armed = False
+    post_skip_anchor_armed = False
     vector_armed = False
     fast_forward_enabled = False
     armed_vector_ranges: list[tuple[str, str]] = []
     local: dict[str, object] = {"anchor_hits": [], "vector_events": []}
 
     if (
-        not 0x4000 <= target_logical_payload_address < 0x8000
+        not 0 <= target_post_skip_pc <= 0x3FFF
+        or not 0x4000 <= target_length_logical_address < 0x8000
         or not 0 <= target_mapped_bank <= 0xFF
     ):
-        raise ValueError("consumer trace record anchor is invalid")
-    record_anchor_addresses = (
-        f"{target_logical_payload_address:04X}",
-        f"{target_logical_payload_address + 0x4000:04X}",
-    )
+        raise ValueError("consumer trace post-skip anchor is invalid")
+    post_skip_address = f"{target_post_skip_pc:04X}"
 
-    def arm_record_anchor() -> None:
-        nonlocal record_anchor_armed
-        for address in record_anchor_addresses:
+    def arm_post_skip_anchor() -> None:
+        nonlocal post_skip_anchor_armed
+        client.call(
+            "set_breakpoint_range",
+            {
+                "start_address": post_skip_address,
+                "end_address": post_skip_address,
+                "memory_area": "rom_ram",
+                "execute": True,
+                "read": False,
+                "write": False,
+            },
+        )
+        post_skip_anchor_armed = True
+
+    def disarm_post_skip_anchor() -> None:
+        nonlocal post_skip_anchor_armed
+        if post_skip_anchor_armed:
             client.call(
-                "set_breakpoint_range",
+                "remove_breakpoint",
                 {
-                    "start_address": address,
-                    "end_address": address,
+                    "address": post_skip_address,
+                    "end_address": post_skip_address,
                     "memory_area": "rom_ram",
-                    "execute": False,
-                    "read": True,
-                    "write": False,
                 },
             )
-        record_anchor_armed = True
-
-    def disarm_record_anchor() -> None:
-        nonlocal record_anchor_armed
-        if record_anchor_armed:
-            for address in record_anchor_addresses:
-                client.call(
-                    "remove_breakpoint",
-                    {
-                        "address": address,
-                        "end_address": address,
-                        "memory_area": "rom_ram",
-                    },
-                )
-            record_anchor_armed = False
+            post_skip_anchor_armed = False
 
     def arm_vectors(context: int | None = None) -> None:
         nonlocal vector_armed, armed_vector_ranges
@@ -941,6 +1017,62 @@ def _capture_contexts(
         client.call("debug_pause")
         if any(button is not None for _, button in ATTRACT_CAPTURE_SCHEDULE):
             raise RuntimeError("consumer trace attract schedule must be passive")
+        arm_post_skip_anchor()
+        _set_unlimited_fast_forward(client, True)
+        fast_forward_enabled = True
+        anchor_timeout = max(
+            ATTRACT_CAPTURE_TIMEOUT_SECONDS,
+            POST_SKIP_ANCHOR_TIMEOUT_SECONDS,
+        )
+        anchor_reached = False
+        anchor_state: dict[str, object] | None = None
+        for false_hit_index in range(MAX_POST_SKIP_ANCHOR_HITS):
+            status = _continue_until_breakpoint(
+                client,
+                anchor_timeout
+                if false_hit_index == 0
+                else NEXT_POST_SKIP_ANCHOR_TIMEOUT_SECONDS,
+            )
+            if status.get("at_breakpoint") is not True:
+                break
+            observed_hl = _fast_post_skip_hl(client)
+            observed_slot1_bank = _fast_slot1_bank(
+                client,
+                ram_area_id=ram_area_id,
+                mapper_offset=mapper_offset,
+            )
+            accepted = (
+                observed_hl == target_length_logical_address
+                and observed_slot1_bank == target_mapped_bank
+            )
+            local["anchor_hits"].append(
+                {
+                    "false_hit_index": false_hit_index,
+                    "post_skip_pc": target_post_skip_pc,
+                    "expected_hl": target_length_logical_address,
+                    "observed_hl": observed_hl,
+                    "expected_slot1_bank": target_mapped_bank,
+                    "observed_slot1_bank": observed_slot1_bank,
+                    "accepted": accepted,
+                }
+            )
+            if accepted:
+                disarm_post_skip_anchor()
+                anchor_state, anchor_evidence = _capture_state(client)
+                local["post_skip_anchor"] = {
+                    "state": anchor_state,
+                    "evidence": anchor_evidence,
+                }
+                anchor_reached = True
+                break
+            disarm_post_skip_anchor()
+            _step_instruction_and_wait(client)
+            arm_post_skip_anchor()
+        if not anchor_reached or anchor_state is None:
+            raise RuntimeError("consumer trace confirmed anchor was not reached")
+        _set_unlimited_fast_forward(client, False)
+        fast_forward_enabled = False
+
         client.call(
             "set_trace_log",
             {
@@ -954,78 +1086,9 @@ def _capture_contexts(
                 "bank_switch": True,
             },
         )
-        arm_record_anchor()
-        _set_unlimited_fast_forward(client, True)
-        fast_forward_enabled = True
-        anchor_timeout = max(
-            ATTRACT_CAPTURE_TIMEOUT_SECONDS,
-            DIRECT_RECORD_ANCHOR_TIMEOUT_SECONDS,
-        )
-        anchor_reached = False
-        anchor_state: dict[str, object] | None = None
-        for false_hit_index in range(MAX_DIRECT_RECORD_ANCHOR_HITS):
-            status = _continue_until_breakpoint(
-                client,
-                anchor_timeout
-                if false_hit_index == 0
-                else NEXT_RECORD_ANCHOR_TIMEOUT_SECONDS,
-            )
-            if status.get("at_breakpoint") is not True:
-                break
-            observed_slot1_bank, observed_slot2_bank = _fast_slot_banks(
-                client,
-                ram_area_id=ram_area_id,
-                mapper_offset=mapper_offset,
-            )
-            accepted = target_mapped_bank in {
-                observed_slot1_bank,
-                observed_slot2_bank,
-            }
-            local["anchor_hits"].append(
-                {
-                    "false_hit_index": false_hit_index,
-                    "record_payload_logical_address": target_logical_payload_address,
-                    "expected_slot1_bank": target_mapped_bank,
-                    "observed_slot1_bank": observed_slot1_bank,
-                    "observed_slot2_bank": observed_slot2_bank,
-                    "accepted": accepted,
-                }
-            )
-            if accepted:
-                disarm_record_anchor()
-                anchor_state, anchor_evidence = _capture_state(client)
-                anchor_trace = anchor_evidence.get("trace")
-                anchor_lines = (
-                    anchor_trace.get("lines")
-                    if isinstance(anchor_trace, dict)
-                    else None
-                )
-                decoder_lines = _confirmed_decoder_trace_suffix(anchor_lines)
-                local["decoder_entry"] = {
-                    "state": anchor_state,
-                    "evidence": anchor_evidence,
-                }
-                local["decoder_trace_line_count"] = len(decoder_lines)
-                anchor_reached = True
-                break
-        if not anchor_reached or anchor_state is None:
-            raise RuntimeError("consumer trace confirmed anchor was not reached")
-        _set_unlimited_fast_forward(client, False)
-        fast_forward_enabled = False
-
-        initial_trace_contexts = extract_vector_contexts_from_trace(
-            decoder_lines,
-            initial_slot1_bank=int(anchor_state["slot1_bank"]),
-            initial_slot2_bank=int(anchor_state["slot2_bank"]),
-            initial_ix=int(anchor_state["registers"]["ix"]),
-            initial_iy=int(anchor_state["registers"]["iy"]),
-        )
-        contexts.extend(initial_trace_contexts)
-        diagnostic_lines: list[str] = list(decoder_lines)
-        # Read breakpoints fire after the matching instruction has completed,
-        # so continuing with the same ranges armed advances to the next lookup.
-        # Recreating both 512-byte ranges for every sample costs four MCP calls
-        # per decoded symbol on the phone and can exceed the autopilot wall time.
+        diagnostic_lines: list[str] = []
+        # The post-skip execution breakpoint stops before decompression, so no
+        # vector read can be lost before these ranges are armed.
         arm_vectors()
         for planned_index in range(len(contexts), MAX_VECTOR_READ_HITS):
             planned_context = (
@@ -1105,7 +1168,7 @@ def _capture_contexts(
             len(contexts),
         )
         trace_diagnostics["mapped_vector_read_count"] = len(contexts)
-        local["sampling_mode"] = "post-read-breakpoint-no-extra-step"
+        local["sampling_mode"] = "post-skip-exec-then-read-breakpoint"
         local["trace_diagnostics"] = trace_diagnostics
         local["raw_trace_lines"] = diagnostic_lines
         local["observed_contexts"] = contexts
@@ -1128,7 +1191,7 @@ def _capture_contexts(
             except RuntimeError:
                 pass
         try:
-            disarm_record_anchor()
+            disarm_post_skip_anchor()
         except RuntimeError:
             pass
         disarm_vectors()
@@ -1176,6 +1239,7 @@ def _main() -> int:
         ),
         "encoding": root / LOCAL_ENCODING_PATH,
         "group": root / GROUP_EXTRACT_PATH,
+        "decoder": root / DECODER_REGISTER_TRACE_PATH,
     }
     if any(not path.is_file() for path in paths.values()):
         raise FileNotFoundError("first context consumer trace input is missing")
@@ -1184,8 +1248,10 @@ def _main() -> int:
     review = _load_json(paths["review"])
     encoding = _load_json(paths["encoding"])
     group_extract = _load_json(paths["group"])
+    decoder_trace = _load_json(paths["decoder"])
     validate_first_context_translation_test_build(build)
     validate_confirmed_group_extract(group_extract)
+    validate_decoder_register_trace(decoder_trace)
     if args.direct_renderer:
         validate_first_context_direct_renderer_capture(runtime)
     else:
@@ -1195,7 +1261,12 @@ def _main() -> int:
     if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
         raise ValueError("first context consumer trace encoding rows are missing")
     first_row = rows[0]
-    target_logical_payload_address, target_mapped_bank = resolve_record_payload_anchor(
+    (
+        target_post_skip_pc,
+        target_length_logical_address,
+        target_mapped_bank,
+    ) = resolve_post_skip_anchor(
+        decoder_trace=decoder_trace,
         group_extract=group_extract,
         first_row=first_row,
     )
@@ -1217,6 +1288,8 @@ def _main() -> int:
         raise ValueError("first context consumer trace identity disagrees")
     if group_extract["target_sha256"] != build["baseline_target_sha256"]:
         raise ValueError("first context consumer trace group identity disagrees")
+    if decoder_trace["target_sha256"] != build["baseline_target_sha256"]:
+        raise ValueError("first context consumer trace decoder identity disagrees")
 
     observed_contexts, local_capture = _capture_contexts(
         rom_path=paths["rom"],
@@ -1226,7 +1299,8 @@ def _main() -> int:
             *expected_symbols[:-1],
             CANDIDATE_END_SYMBOL,
         ],
-        target_logical_payload_address=target_logical_payload_address,
+        target_post_skip_pc=target_post_skip_pc,
+        target_length_logical_address=target_length_logical_address,
         target_mapped_bank=target_mapped_bank,
     )
     counts, prefix_complete, first_post, direct = summarize_consumer_contexts(
