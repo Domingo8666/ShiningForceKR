@@ -56,6 +56,7 @@ try:
         MAX_REJECTED_TARGET_HITS,
         _continue_until_breakpoint,
         _parse_screenshot,
+        _set_unlimited_fast_forward,
         _write_bytes_atomic,
     )
 except ImportError:  # pragma: no cover - direct script execution
@@ -98,6 +99,7 @@ except ImportError:  # pragma: no cover - direct script execution
         MAX_REJECTED_TARGET_HITS,
         _continue_until_breakpoint,
         _parse_screenshot,
+        _set_unlimited_fast_forward,
         _write_bytes_atomic,
     )
 
@@ -142,6 +144,7 @@ TOP_LEVEL_KEYS = {
     "translation_build_eligible",
     "next_checkpoint",
 }
+FAST_FORWARD_TOOLS = {"set_fast_forward_speed", "toggle_fast_forward"}
 
 
 def _is_sha256(value: object) -> bool:
@@ -363,6 +366,7 @@ def _capture_anchor_vram(
 ) -> dict[str, object]:
     client = McpStdioClient(_default_command())
     breakpoint_armed = False
+    fast_forward_enabled = False
     entry_address = f"{DECODER_ENTRY_LOGICAL:04X}"
 
     def arm() -> None:
@@ -394,7 +398,7 @@ def _capture_anchor_vram(
 
     try:
         tools = client.initialize()
-        missing = sorted(REQUIRED_TOOLS - tools)
+        missing = sorted((REQUIRED_TOOLS | FAST_FORWARD_TOOLS) - tools)
         if missing:
             raise RuntimeError(f"Gearsystem MCP tools missing: {missing}")
         client.call("load_media", {"file_path": str(rom_path)})
@@ -409,6 +413,8 @@ def _capture_anchor_vram(
         client.call("debug_pause")
         if any(button is not None for _, button in ATTRACT_CAPTURE_SCHEDULE):
             raise RuntimeError("translated VRAM comparison schedule must be passive")
+        _set_unlimited_fast_forward(client, True)
+        fast_forward_enabled = True
         arm()
         selected_state: dict[str, object] | None = None
         timeout = max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 240.0)
@@ -426,6 +432,8 @@ def _capture_anchor_vram(
             arm()
         if selected_state is None:
             raise RuntimeError("confirmed dialogue anchor was not reached")
+        _set_unlimited_fast_forward(client, False)
+        fast_forward_enabled = False
         initial_context, _ = _capture_runtime_initial_context(
             client,
             rom_size=rom_path.stat().st_size,
@@ -454,6 +462,11 @@ def _capture_anchor_vram(
             "screenshot": {"file": str(evidence_path), **screen_metadata},
         }
     finally:
+        if fast_forward_enabled:
+            try:
+                _set_unlimited_fast_forward(client, False)
+            except RuntimeError:
+                pass
         if breakpoint_armed:
             try:
                 disarm()
