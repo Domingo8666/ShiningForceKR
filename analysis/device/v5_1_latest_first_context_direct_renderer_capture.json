@@ -1,18 +1,19 @@
 {
   "artifact_kind": "sanitized-v5-1-first-context-direct-renderer-capture",
-  "schema_version": 2,
+  "schema_version": 3,
   "status": "direct-renderer-first-screen-captured",
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "test_target_sha256": "7942926ce737cdc9acd86c3e1ee033cea0fbeb4dafb2dc81f9bed042ab48a568",
-  "first_context_translation_test_build_sha256": "180a2dd1cff542d99327e18162614eb03afbb36a6875fe3022f9ad4516db38d9",
-  "local_encoding_sha256": "bfc7ddb745b8460f469295e488d6fdce7d0411841003093e825d1c676a25f622",
+  "first_context_translation_test_build_sha256": "26f024337c75e9f610eefd373b3c5c3fa3ac9be322c257b6293b745ef5fd99b5",
+  "local_encoding_sha256": "8c6135661942c4d43f2971590a979e4dbaf96eb1c84d9aa039a6b2436b330585",
   "capture_png_sha256": "e4832194848b6fd9a203bc9ffff8e4ec380ea9b203f31783c4a26d90acaea9fd",
-  "captured_utc": "2026-08-02T11:18:02.614565Z",
+  "captured_utc": "2026-08-02T11:27:41.632547Z",
   "runtime_entry": {
     "selector": 2,
     "ordinal": 147
   },
   "renderer_route": "proven-visible-page",
+  "runtime_stage_request_id": "proven-page-select-blank-slots-20260802-02",
   "direct_renderer_first_row_confirmed": true,
   "cold_boot": true,
   "human_visual_review_required": true,
