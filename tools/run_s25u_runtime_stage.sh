@@ -190,7 +190,7 @@ else
     echo "SFKR critical path: comparing baseline and translated dialogue VRAM."
     write_next_step \
       "기준 ROM과 번역 ROM을 같은 대사 지점에서 각각 콜드부팅해 실제 한글 글꼴 VRAM 유입을 비교하고 있습니다."
-    python tools/v5_1_first_context_translated_vram_diff.py --if-ready
+    python tools/v5_1_first_context_translated_vram_diff.py
     translated_vram_diff_status=$?
     if [ "$translated_vram_diff_status" -ne 0 ]; then
       stage_status="$translated_vram_diff_status"
