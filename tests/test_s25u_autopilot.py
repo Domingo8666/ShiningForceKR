@@ -151,6 +151,26 @@ class S25UAutopilotTests(unittest.TestCase):
             RUNTIME_STAGE,
         )
 
+    def test_direct_renderer_stage_requires_current_trace_output(self) -> None:
+        self.assertIn(
+            "validate_first_context_consumer_trace(trace)",
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
+            'trace["test_target_sha256"] == build["test_target_sha256"]',
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
+            'trace["first_context_translation_runtime_capture_sha256"]\n'
+            '    == capture_sha256',
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
+            'trace["first_context_translation_visual_review_sha256"]\n'
+            '    == capture_sha256',
+            RUNTIME_STAGE,
+        )
+
     def test_runtime_stage_batches_exact_no_change_rejections(self) -> None:
         self.assertIn("comparison_attempt_limit=8", RUNTIME_STAGE)
         self.assertIn(

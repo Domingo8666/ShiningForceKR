@@ -350,6 +350,53 @@ PY
       )"
     fi
     direct_renderer_capture_status=$?
+    if [ "$direct_renderer_capture_status" -eq 0 ]; then
+      python - <<'PY'
+from pathlib import Path
+import json
+
+from tools.patch_io import sha256_file
+from tools.v5_1_first_context_consumer_trace import (
+    PUBLISH_RELATIVE_PATH as TRACE_PATH,
+    validate_first_context_consumer_trace,
+)
+from tools.v5_1_first_context_direct_renderer_capture import (
+    PUBLISH_RELATIVE_PATH as CAPTURE_PATH,
+    validate_first_context_direct_renderer_capture,
+)
+from tools.v5_1_first_context_translation_test_build import (
+    PUBLISH_RELATIVE_PATH as BUILD_PATH,
+    validate_first_context_translation_test_build,
+)
+
+paths = {
+    "trace": TRACE_PATH,
+    "capture": CAPTURE_PATH,
+    "build": BUILD_PATH,
+}
+if any(not path.is_file() for path in paths.values()):
+    raise SystemExit(1)
+trace = json.loads(paths["trace"].read_text(encoding="utf-8"))
+capture = json.loads(paths["capture"].read_text(encoding="utf-8"))
+build = json.loads(paths["build"].read_text(encoding="utf-8"))
+validate_first_context_consumer_trace(trace)
+validate_first_context_direct_renderer_capture(capture)
+validate_first_context_translation_test_build(build)
+capture_sha256 = sha256_file(paths["capture"])
+ready = (
+    trace["test_target_sha256"] == build["test_target_sha256"]
+    and capture["test_target_sha256"] == build["test_target_sha256"]
+    and trace["first_context_translation_test_build_sha256"]
+    == sha256_file(paths["build"])
+    and trace["first_context_translation_runtime_capture_sha256"]
+    == capture_sha256
+    and trace["first_context_translation_visual_review_sha256"]
+    == capture_sha256
+)
+raise SystemExit(0 if ready else 1)
+PY
+      direct_renderer_capture_status=$?
+    fi
     printf '%s\n' "$direct_renderer_capture_output"
     if [ "$direct_renderer_capture_status" -ne 0 ]; then
       stage_status="$direct_renderer_capture_status"
