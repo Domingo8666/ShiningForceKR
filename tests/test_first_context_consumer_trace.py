@@ -11,10 +11,11 @@ from tools.v5_1_first_context_consumer_trace import (
     _fast_entry_coordinates,
     _fast_slot1_bank,
     _fast_vector_sample,
+    _confirmed_decoder_trace_suffix,
     analyze_vector_contexts_from_trace,
     build_first_context_consumer_trace,
     extract_vector_contexts_from_trace,
-    resolve_record_length_anchor,
+    resolve_record_payload_anchor,
     summarize_consumer_contexts,
     validate_first_context_consumer_trace,
     vector_context_from_physical,
@@ -146,14 +147,14 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
             TRACE_SOURCE,
         )
 
-    def test_resolves_confirmed_record_length_anchor(self) -> None:
+    def test_resolves_confirmed_record_payload_anchor(self) -> None:
         root = Path(__file__).resolve().parents[1]
         group_extract = json.loads(
             (root / "analysis/device/v5_1_latest_confirmed_group_extract.json")
             .read_text(encoding="utf-8")
         )
         self.assertEqual(
-            resolve_record_length_anchor(
+            resolve_record_payload_anchor(
                 group_extract=group_extract,
                 first_row={
                     "length_offset": 133394,
@@ -161,8 +162,16 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
                     "target_ordinal": 147,
                 },
             ),
-            (0x4912, 8),
+            (0x4913, 8),
         )
+
+    def test_selects_confirmed_decoder_trace_suffix(self) -> None:
+        lines = [
+            "08:5000 A:00 BC:0000 DE:0000 HL:0000 SP:DFF0  00",
+            "08:33FA A:00 BC:9300 DE:0002 HL:0000 SP:DFF0  00",
+            "08:33FB A:00 BC:9300 DE:0002 HL:0000 SP:DFF0  00",
+        ]
+        self.assertEqual(_confirmed_decoder_trace_suffix(lines), lines[1:])
 
     def test_maps_either_vector_byte_to_its_context(self) -> None:
         self.assertEqual(vector_context_from_physical(HUFFMAN_VECTOR_START), 0)

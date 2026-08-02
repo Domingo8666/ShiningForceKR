@@ -25,7 +25,6 @@ try:
         _default_command,
         _parse_mapper,
         _runtime_failure_receipt,
-        _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
     from .v5_1_first_context_translation_encoding import (
@@ -67,7 +66,6 @@ try:
         ATTRACT_CAPTURE_SCHEDULE,
         ATTRACT_CAPTURE_TIMEOUT_SECONDS,
         DECODER_ENTRY_LOGICAL,
-        MAX_REJECTED_TARGET_HITS,
         REQUIRED_TOOLS,
         _entry_coordinates,
     )
@@ -84,7 +82,6 @@ except ImportError:  # pragma: no cover - direct script execution
         _default_command,
         _parse_mapper,
         _runtime_failure_receipt,
-        _step_instruction_and_wait,
         _write_runtime_failure_receipt,
     )
     from v5_1_first_context_translation_encoding import (
@@ -126,7 +123,6 @@ except ImportError:  # pragma: no cover - direct script execution
         ATTRACT_CAPTURE_SCHEDULE,
         ATTRACT_CAPTURE_TIMEOUT_SECONDS,
         DECODER_ENTRY_LOGICAL,
-        MAX_REJECTED_TARGET_HITS,
         REQUIRED_TOOLS,
         _entry_coordinates,
     )
@@ -738,12 +734,12 @@ def _fast_vector_sample(
     return sample, safe_state, evidence
 
 
-def resolve_record_length_anchor(
+def resolve_record_payload_anchor(
     *,
     group_extract: dict[str, object],
     first_row: dict[str, object],
 ) -> tuple[int, int]:
-    """Map the confirmed selected record's length byte back to slot 1."""
+    """Map the confirmed selected record's first payload byte to slot 1."""
 
     validate_confirmed_group_extract(group_extract)
     group = group_extract.get("group")
@@ -760,10 +756,36 @@ def resolve_record_length_anchor(
     logical_start = int(group["logical_start"])
     physical_start = int(group["physical_start"])
     mapped_bank = int(group["mapped_bank"])
-    logical_length = logical_start + length_offset - physical_start
-    if not 0x4000 <= logical_length < 0x8000:
-        raise ValueError("consumer trace length anchor is outside slot 1")
-    return logical_length, mapped_bank
+    logical_payload = logical_start + length_offset + 1 - physical_start
+    if not 0x4000 <= logical_payload < 0x8000:
+        raise ValueError("consumer trace payload anchor is outside slot 1")
+    return logical_payload, mapped_bank
+
+
+def _confirmed_decoder_trace_suffix(lines: object) -> list[str]:
+    """Return the trace suffix beginning at the confirmed decoder entry."""
+
+    if not isinstance(lines, list):
+        raise RuntimeError("consumer trace decoder trace is missing")
+    accepted_index: int | None = None
+    for index, line in enumerate(lines):
+        if not isinstance(line, str):
+            continue
+        parsed = _parse_trace_line(line)
+        if parsed is None or int(parsed["pc"]) != DECODER_ENTRY_LOGICAL:
+            continue
+        selector, ordinal = _entry_coordinates(
+            {"registers": parsed["registers"]}
+        )
+        if selector == CONFIRMED_SELECTOR and ordinal == CONFIRMED_ORDINAL:
+            accepted_index = index
+    if accepted_index is None:
+        raise RuntimeError("consumer trace direct record anchor disagrees")
+    return [
+        line
+        for line in lines[accepted_index:]
+        if isinstance(line, str)
+    ]
 
 
 def _capture_contexts(
@@ -771,12 +793,10 @@ def _capture_contexts(
     rom_path: Path,
     rom_size: int,
     planned_contexts: list[int],
-    target_logical_length_address: int,
+    target_logical_payload_address: int,
     target_mapped_bank: int,
 ) -> tuple[list[int], dict[str, object]]:
     client = McpStdioClient(_default_command())
-    entry_address = f"{DECODER_ENTRY_LOGICAL:04X}"
-    entry_armed = False
     record_anchor_armed = False
     vector_armed = False
     fast_forward_enabled = False
@@ -784,39 +804,11 @@ def _capture_contexts(
     local: dict[str, object] = {"anchor_hits": [], "vector_events": []}
 
     if (
-        not 0x4000 <= target_logical_length_address < 0x8000
+        not 0x4000 <= target_logical_payload_address < 0x8000
         or not 0 <= target_mapped_bank <= 0xFF
     ):
         raise ValueError("consumer trace record anchor is invalid")
-    record_anchor_address = f"{target_logical_length_address:04X}"
-
-    def arm_entry() -> None:
-        nonlocal entry_armed
-        client.call(
-            "set_breakpoint_range",
-            {
-                "start_address": entry_address,
-                "end_address": entry_address,
-                "memory_area": "rom_ram",
-                "execute": True,
-                "read": False,
-                "write": False,
-            },
-        )
-        entry_armed = True
-
-    def disarm_entry() -> None:
-        nonlocal entry_armed
-        if entry_armed:
-            client.call(
-                "remove_breakpoint",
-                {
-                    "address": entry_address,
-                    "end_address": entry_address,
-                    "memory_area": "rom_ram",
-                },
-            )
-            entry_armed = False
+    record_anchor_address = f"{target_logical_payload_address:04X}"
 
     def arm_record_anchor() -> None:
         nonlocal record_anchor_armed
@@ -926,6 +918,19 @@ def _capture_contexts(
         client.call("debug_pause")
         if any(button is not None for _, button in ATTRACT_CAPTURE_SCHEDULE):
             raise RuntimeError("consumer trace attract schedule must be passive")
+        client.call(
+            "set_trace_log",
+            {
+                "enabled": True,
+                "cpu_irq": False,
+                "vdp_write": False,
+                "vdp_status": False,
+                "psg": False,
+                "ym2413": False,
+                "io_port": False,
+                "bank_switch": True,
+            },
+        )
         arm_record_anchor()
         _set_unlimited_fast_forward(client, True)
         fast_forward_enabled = True
@@ -948,7 +953,7 @@ def _capture_contexts(
             local["anchor_hits"].append(
                 {
                     "false_hit_index": false_hit_index,
-                    "record_length_logical_address": target_logical_length_address,
+                    "record_payload_logical_address": target_logical_payload_address,
                     "expected_slot1_bank": target_mapped_bank,
                     "observed_slot1_bank": observed_slot1_bank,
                     "accepted": accepted,
@@ -956,31 +961,19 @@ def _capture_contexts(
             )
             if accepted:
                 disarm_record_anchor()
-                arm_entry()
-                entry_status = _continue_until_breakpoint(
-                    client,
-                    FIRST_VECTOR_TIMEOUT_SECONDS,
-                )
-                if entry_status.get("at_breakpoint") is not True:
-                    raise RuntimeError(
-                        "consumer trace decoder entry did not follow record anchor"
-                    )
-                selector, ordinal = _fast_entry_coordinates(client)
-                if (
-                    selector != CONFIRMED_SELECTOR
-                    or ordinal != CONFIRMED_ORDINAL
-                ):
-                    raise RuntimeError(
-                        "consumer trace direct record anchor disagrees"
-                    )
-                disarm_entry()
                 anchor_state, anchor_evidence = _capture_state(client)
+                anchor_trace = anchor_evidence.get("trace")
+                anchor_lines = (
+                    anchor_trace.get("lines")
+                    if isinstance(anchor_trace, dict)
+                    else None
+                )
+                decoder_lines = _confirmed_decoder_trace_suffix(anchor_lines)
                 local["decoder_entry"] = {
-                    "selector": selector,
-                    "ordinal": ordinal,
                     "state": anchor_state,
                     "evidence": anchor_evidence,
                 }
+                local["decoder_trace_line_count"] = len(decoder_lines)
                 anchor_reached = True
                 break
         if not anchor_reached or anchor_state is None:
@@ -988,26 +981,21 @@ def _capture_contexts(
         _set_unlimited_fast_forward(client, False)
         fast_forward_enabled = False
 
-        client.call(
-            "set_trace_log",
-            {
-                "enabled": True,
-                "cpu_irq": False,
-                "vdp_write": False,
-                "vdp_status": False,
-                "psg": False,
-                "ym2413": False,
-                "io_port": False,
-                "bank_switch": True,
-            },
+        initial_trace_contexts = extract_vector_contexts_from_trace(
+            decoder_lines,
+            initial_slot1_bank=int(anchor_state["slot1_bank"]),
+            initial_slot2_bank=int(anchor_state["slot2_bank"]),
+            initial_ix=int(anchor_state["registers"]["ix"]),
+            initial_iy=int(anchor_state["registers"]["iy"]),
         )
-        diagnostic_lines: list[str] = []
+        contexts.extend(initial_trace_contexts)
+        diagnostic_lines: list[str] = list(decoder_lines)
         # Read breakpoints fire after the matching instruction has completed,
         # so continuing with the same ranges armed advances to the next lookup.
         # Recreating both 512-byte ranges for every sample costs four MCP calls
         # per decoded symbol on the phone and can exceed the autopilot wall time.
         arm_vectors()
-        for planned_index in range(MAX_VECTOR_READ_HITS):
+        for planned_index in range(len(contexts), MAX_VECTOR_READ_HITS):
             planned_context = (
                 planned_contexts[planned_index]
                 if planned_index < len(planned_contexts)
@@ -1108,10 +1096,6 @@ def _capture_contexts(
             except RuntimeError:
                 pass
         try:
-            disarm_entry()
-        except RuntimeError:
-            pass
-        try:
             disarm_record_anchor()
         except RuntimeError:
             pass
@@ -1179,7 +1163,7 @@ def _main() -> int:
     if not isinstance(rows, list) or not rows or not isinstance(rows[0], dict):
         raise ValueError("first context consumer trace encoding rows are missing")
     first_row = rows[0]
-    target_logical_length_address, target_mapped_bank = resolve_record_length_anchor(
+    target_logical_payload_address, target_mapped_bank = resolve_record_payload_anchor(
         group_extract=group_extract,
         first_row=first_row,
     )
@@ -1210,7 +1194,7 @@ def _main() -> int:
             *expected_symbols[:-1],
             CANDIDATE_END_SYMBOL,
         ],
-        target_logical_length_address=target_logical_length_address,
+        target_logical_payload_address=target_logical_payload_address,
         target_mapped_bank=target_mapped_bank,
     )
     counts, prefix_complete, first_post, direct = summarize_consumer_contexts(
