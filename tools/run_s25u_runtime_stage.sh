@@ -321,10 +321,13 @@ PY
     run_direct_renderer_capture_with_retry() {
       local attempt=1
       local capture_status=1
+      local local_failure_stage="reports/local/v5_1_first_context_direct_renderer_capture_failure_stage.txt"
+      local safe_failure_stage="analysis/device/v5_1_latest_first_context_direct_renderer_capture_failure_stage.txt"
       while [ "$attempt" -le 3 ]; do
         python tools/v5_1_first_context_direct_renderer_capture.py
         capture_status=$?
         if [ "$capture_status" -eq 0 ]; then
+          rm -f "$safe_failure_stage"
           return 0
         fi
         echo "SFKR direct renderer capture attempt $attempt/3 failed; retrying." >&2
@@ -333,6 +336,24 @@ PY
           sleep 2
         fi
       done
+      local failure_stage="unavailable"
+      if [ -f "$local_failure_stage" ]; then
+        failure_stage="$(tr -d '\r\n' < "$local_failure_stage")"
+      fi
+      case "$failure_stage" in
+        first-context-direct-renderer-initialize|\
+        first-context-direct-renderer-media|\
+        first-context-direct-renderer-anchor|\
+        first-context-direct-renderer-context|\
+        first-context-direct-renderer-vram|\
+        first-context-direct-renderer-screenshot)
+          ;;
+        *)
+          failure_stage=unavailable
+          ;;
+      esac
+      mkdir -p "$(dirname "$safe_failure_stage")"
+      printf '%s\n' "$failure_stage" > "$safe_failure_stage"
       return "$capture_status"
     }
     if python - "$critical_path_request_id" <<'PY'
