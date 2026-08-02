@@ -1,15 +1,15 @@
 {
   "artifact_kind": "sanitized-s25u-critical-path",
-  "schema_version": 4,
+  "schema_version": 5,
   "status": "one-unresolved-boundary-selected",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "source_register_trace_sha256": "0f172e70a48edac1ac849469ea5709d94ccc350bb3cc6d365aefe9d4d1d70040",
-  "selected_stage": "active-rom-lookup-index-producer",
-  "confirmed_boundary": "active-vram-to-scattered-rom-lookup-candidate",
-  "blocked_boundary": "lookup-candidate-to-address-index-producer",
-  "selection_reason": "current-rom-lookup-candidate-ready-current-index-producer-missing",
-  "generated_utc": "2026-08-01T22:38:12.288782Z",
+  "selected_stage": "active-rom-path-scope",
+  "confirmed_boundary": "active-vram-to-incremental-rom-source-path",
+  "blocked_boundary": "incremental-rom-source-path-to-translation-relevance",
+  "selection_reason": "current-incremental-source-ready-current-path-scope-missing",
+  "generated_utc": "2026-08-02T02:17:49.018347Z",
   "baseline_script_bytes_unchanged": true,
   "translation_build_eligible": false,
-  "next_checkpoint": "trace-active-rom-lookup-index-producer"
+  "next_checkpoint": "classify-active-rom-path-scope"
 }
