@@ -19,6 +19,14 @@ from tools.v5_1_first_context_direct_renderer_capture import (
 from tools.v5_1_first_context_translation_encoding import (
     direct_renderer_font_tile_offset,
 )
+from tools.v5_1_first_context_translation_capacity import (
+    tile_bytes_from_ink_mask,
+)
+from tools.v5_1_png_pixels import (
+    DEFAULT_TEXT_INK_RGBA,
+    PixelImage,
+)
+from unittest.mock import patch
 
 
 class FirstContextDirectRendererCaptureTests(unittest.TestCase):
@@ -115,6 +123,59 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
         self.assertEqual(safe["constant_loader_base"], loader_base)
         self.assertEqual(safe["constant_write_slot_shift"], 0)
         self.assertTrue(all(sample["rom_route_candidates"] for sample in local["samples"]))
+
+    def test_resolves_rom_page_from_cropped_screenshot_tiles(self) -> None:
+        vram = bytearray(0x4000)
+        symbols = (0x10, 0x11, 0x12)
+        masks = (
+            (0x18, 0x24, 0x42, 0x7E, 0x42, 0x42, 0x42, 0x00),
+            (0x7C, 0x42, 0x42, 0x7C, 0x42, 0x42, 0x7C, 0x00),
+            (0x3C, 0x42, 0x40, 0x40, 0x40, 0x42, 0x3C, 0x00),
+        )
+        page = 7
+        loader_base = 0x100
+        rom_size = direct_renderer_font_tile_offset(page, symbols[-1]) + 32
+        rom = bytearray(rom_size)
+        rgba = bytearray(bytes((0x00, 0x00, 0xAA, 0xFF)) * (160 * 144))
+        for index, (symbol, mask) in enumerate(zip(symbols, masks)):
+            tile = tile_bytes_from_ink_mask(mask)
+            rendered_tile = loader_base + symbol
+            vram_start = rendered_tile * 32
+            vram[vram_start:vram_start + 32] = tile
+            font_start = direct_renderer_font_tile_offset(page, symbol)
+            rom[font_start:font_start + 32] = tile
+            left = (FIRST_DIALOGUE_VIEWPORT_TEXT_COLUMN + index) * 8
+            top = FIRST_DIALOGUE_VIEWPORT_TEXT_ROW * 8
+            for row, bits in enumerate(mask):
+                for column in range(8):
+                    if bits & (1 << (7 - column)):
+                        pixel = (top + row) * 160 + left + column
+                        rgba[pixel * 4:pixel * 4 + 4] = DEFAULT_TEXT_INK_RGBA
+        encoding = {
+            "rows": [{"direct_renderer_proof": True, "visible_symbol_count": 3}],
+            "character_assignments": [
+                {
+                    "row_index": 1,
+                    "visual_kind": "approved-target-character",
+                    "page": 21,
+                    "symbol": symbol,
+                    "tile_sha256": "f" * 64,
+                }
+                for symbol in symbols
+            ],
+        }
+        with patch(
+            "tools.v5_1_first_context_direct_renderer_capture.decode_png_rgba",
+            return_value=PixelImage(width=160, height=144, rgba=bytes(rgba)),
+        ):
+            safe, local = analyze_direct_renderer_slot_alignment(
+                bytes(vram), encoding, bytes(rom), b"screen"
+            )
+        self.assertTrue(safe["mapping_confirmed"])
+        self.assertEqual(safe["observed_assignment_page"], page)
+        self.assertEqual(safe["constant_loader_base"], loader_base)
+        self.assertEqual(safe["constant_write_slot_shift"], 0)
+        self.assertTrue(all(sample["screenshot_tile_candidates"] for sample in local["samples"]))
 
     def test_keeps_partial_slot_alignment_out_of_safe_receipt(self) -> None:
         vram = bytearray(0x4000)

@@ -12,6 +12,8 @@ import argparse
 
 try:
     from .patch_io import sha256_file
+    from .v5_1_font_catalog import tile_ink_mask
+    from .v5_1_png_pixels import DEFAULT_TEXT_INK_RGBA, decode_png_rgba
     from .v5_1_first_context_translated_vram_diff import _capture_anchor_vram
     from .v5_1_first_context_translation_encoding import (
         FONT_PAGE_COUNT,
@@ -24,6 +26,8 @@ try:
     )
 except ImportError:  # pragma: no cover - direct script execution
     from patch_io import sha256_file
+    from v5_1_font_catalog import tile_ink_mask
+    from v5_1_png_pixels import DEFAULT_TEXT_INK_RGBA, decode_png_rgba
     from v5_1_first_context_translated_vram_diff import _capture_anchor_vram
     from v5_1_first_context_translation_encoding import (
         FONT_PAGE_COUNT,
@@ -114,10 +118,49 @@ SLOT_ALIGNMENT_KEYS = SLOT_ALIGNMENT_KEYS_V5 | {
 }
 
 
+def _screenshot_dialogue_tile_candidates(
+    vram: bytes,
+    screenshot_png: bytes,
+    visible_count: int,
+) -> list[list[int]]:
+    """Match each visible 8x8 screenshot cell to its resident VRAM tile."""
+
+    image = decode_png_rgba(screenshot_png)
+    left = FIRST_DIALOGUE_VIEWPORT_TEXT_COLUMN * 8
+    top = FIRST_DIALOGUE_VIEWPORT_TEXT_ROW * 8
+    if (
+        image.width != 160
+        or image.height != 144
+        or left + visible_count * 8 > image.width
+        or top + 8 > image.height
+    ):
+        raise ValueError("direct renderer screenshot viewport is invalid")
+    tiles_by_mask: dict[tuple[int, ...], list[int]] = {}
+    for tile_index in range(len(vram) // VRAM_TILE_BYTES):
+        start = tile_index * VRAM_TILE_BYTES
+        mask = tile_ink_mask(vram[start:start + VRAM_TILE_BYTES])
+        tiles_by_mask.setdefault(mask, []).append(tile_index)
+    result = []
+    for glyph_index in range(visible_count):
+        glyph_left = left + glyph_index * 8
+        mask_rows = []
+        for row in range(8):
+            bits = 0
+            for column in range(8):
+                pixel = (top + row) * image.width + glyph_left + column
+                offset = pixel * 4
+                if image.rgba[offset:offset + 4] == DEFAULT_TEXT_INK_RGBA:
+                    bits |= 1 << (7 - column)
+            mask_rows.append(bits)
+        result.append(tiles_by_mask.get(tuple(mask_rows), []))
+    return result
+
+
 def analyze_direct_renderer_slot_alignment(
     vram: bytes,
     encoding: dict[str, object],
     rom: bytes | None = None,
+    screenshot_png: bytes | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     """Join rendered name-table slots to the intended first-row glyph tiles."""
 
@@ -144,6 +187,11 @@ def analyze_direct_renderer_slot_alignment(
     ]
     if len(first_row) != visible_count:
         raise ValueError("direct renderer first-row assignments are incomplete")
+    screenshot_tile_candidates = (
+        _screenshot_dialogue_tile_candidates(vram, screenshot_png, visible_count)
+        if isinstance(screenshot_png, bytes)
+        else [[] for _ in range(visible_count)]
+    )
 
     hashes: dict[str, list[int]] = {}
     for tile_index in range(len(vram) // VRAM_TILE_BYTES):
@@ -201,33 +249,42 @@ def analyze_direct_renderer_slot_alignment(
         rendered_tile = name_word & 0x01FF
         desired_tiles = hashes.get(tile_sha256, [])
         unique_matches += int(len(desired_tiles) == 1)
-        rendered_start = rendered_tile * VRAM_TILE_BYTES
-        rendered_digest = sha256(
-            vram[rendered_start:rendered_start + VRAM_TILE_BYTES]
-        ).hexdigest()
-        rendered_assignments = assignments_by_hash.get(rendered_digest, [])
-        routes = {
-            (
-                candidate["page"],
-                rendered_tile - candidate["physical_symbol"],
-                candidate["physical_symbol"] - symbol,
+        screen_tiles = screenshot_tile_candidates[index]
+        route_tiles = screen_tiles or [rendered_tile]
+        rendered_assignments = []
+        routes: set[tuple[int, int, int]] = set()
+        rom_route_candidates: list[tuple[int, int, int]] = []
+        route_tile_digests = []
+        for route_tile in route_tiles:
+            route_start = route_tile * VRAM_TILE_BYTES
+            route_digest = sha256(
+                vram[route_start:route_start + VRAM_TILE_BYTES]
+            ).hexdigest()
+            route_tile_digests.append(route_digest)
+            tile_assignments = assignments_by_hash.get(route_digest, [])
+            rendered_assignments.extend(tile_assignments)
+            routes.update(
+                (
+                    candidate["page"],
+                    route_tile - candidate["physical_symbol"],
+                    candidate["physical_symbol"] - symbol,
+                )
+                for candidate in tile_assignments
             )
-            for candidate in rendered_assignments
-        }
         # A garbled screen can legitimately contain glyphs that are not part of
         # the translated assignment set.  Compare the rendered tile against the
         # same decoded symbol on every complete ROM font page.  A page/base pair
         # that survives several different symbols identifies the page actually
         # loaded by the renderer without exposing ROM bytes or glyph identities.
-        rom_route_candidates = []
         if isinstance(rom, bytes):
-            for page in range(FONT_PAGE_COUNT):
-                font_offset = direct_renderer_font_tile_offset(page, symbol)
-                font_end = font_offset + VRAM_TILE_BYTES
-                if font_end > len(rom):
-                    continue
-                if sha256(rom[font_offset:font_end]).hexdigest() == rendered_digest:
-                    rom_route_candidates.append((page, rendered_tile - symbol, 0))
+            for route_tile, route_digest in zip(route_tiles, route_tile_digests):
+                for page in range(FONT_PAGE_COUNT):
+                    font_offset = direct_renderer_font_tile_offset(page, symbol)
+                    font_end = font_offset + VRAM_TILE_BYTES
+                    if font_end > len(rom):
+                        continue
+                    if sha256(rom[font_offset:font_end]).hexdigest() == route_digest:
+                        rom_route_candidates.append((page, route_tile - symbol, 0))
             routes.update(rom_route_candidates)
         if routes:
             rendered_assignment_matches += 1
@@ -248,6 +305,10 @@ def analyze_direct_renderer_slot_alignment(
                     )
                     for tile in desired_tiles
                 }
+        rendered_start = rendered_tile * VRAM_TILE_BYTES
+        rendered_digest = sha256(
+            vram[rendered_start:rendered_start + VRAM_TILE_BYTES]
+        ).hexdigest()
         # Punctuation and repeated blank tiles are not always unique in VRAM.
         # Do not let an unmatched sample erase a route established by several
         # independent Hangul glyphs; intersect only samples that actually
@@ -263,6 +324,7 @@ def analyze_direct_renderer_slot_alignment(
                 "encoded_symbol": symbol,
                 "rendered_tile": rendered_tile,
                 "rendered_tile_sha256": rendered_digest,
+                "screenshot_tile_candidates": screen_tiles,
                 "desired_tiles": desired_tiles,
                 "rendered_assignments": rendered_assignments,
                 "rom_route_candidates": [
@@ -524,6 +586,7 @@ def main() -> int:
             vram,
             encoding,
             paths["rom"].read_bytes(),
+            local_image.read_bytes(),
         )
     )
     local_slot_path = root / LOCAL_SLOT_ALIGNMENT_PATH
