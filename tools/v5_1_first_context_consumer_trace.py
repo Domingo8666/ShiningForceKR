@@ -1089,13 +1089,17 @@ def _capture_contexts(
         diagnostic_lines: list[str] = []
         # The post-skip execution breakpoint stops before decompression, so no
         # vector read can be lost before these ranges are armed.
-        arm_vectors()
-        for planned_index in range(len(contexts), MAX_VECTOR_READ_HITS):
+        sample_limit = min(MAX_VECTOR_READ_HITS, len(planned_contexts) + 1)
+        for planned_index in range(len(contexts), sample_limit):
             planned_context = (
                 planned_contexts[planned_index]
                 if planned_index < len(planned_contexts)
                 else None
             )
+            # Exact two-byte vector ranges reject unrelated table reads before
+            # they cross the MCP boundary.  A full range is needed only once,
+            # after the expected sequence, to observe one boundary overread.
+            arm_vectors(planned_context)
             accepted = False
             observed_context: int | None = None
             for false_hit_index in range(MAX_NONVECTOR_HITS_PER_CONTEXT):
@@ -1135,6 +1139,10 @@ def _capture_contexts(
                     and sample.get("classification")
                     == "korean-huffman-vector"
                     and observed_context is not None
+                    and (
+                        planned_context is None
+                        or observed_context == planned_context
+                    )
                 )
                 event: dict[str, object] = {
                     "planned_index": planned_index,
@@ -1153,6 +1161,7 @@ def _capture_contexts(
                 # Read breakpoints are reported after the memory instruction
                 # has completed. Re-arming resumes at the next instruction;
                 # stepping here would skip a possible next lookup.
+            disarm_vectors()
             if not accepted:
                 break
 

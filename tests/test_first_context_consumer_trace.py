@@ -140,12 +140,12 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
             ["read_memory", "get_z80_status", "get_trace_log"],
         )
 
-    def test_vector_breakpoints_stay_armed_across_samples(self) -> None:
+    def test_vector_breakpoints_are_narrowed_per_expected_context(self) -> None:
         capture_source = TRACE_SOURCE.split("def _capture_contexts(", 1)[1]
         capture_source = capture_source.split("def _main()", 1)[0]
-        capture_lines = [line.strip() for line in capture_source.splitlines()]
-        self.assertEqual(capture_lines.count("arm_vectors()"), 1)
-        self.assertEqual(capture_lines.count("disarm_vectors()"), 1)
+        self.assertIn("arm_vectors(planned_context)", capture_source)
+        self.assertIn("len(planned_contexts) + 1", capture_source)
+        self.assertIn("observed_context == planned_context", capture_source)
         self.assertIn("MAX_VECTOR_READ_HITS = 20", TRACE_SOURCE)
 
     def test_anchor_uses_confirmed_post_skip_execute_breakpoint(self) -> None:
