@@ -9,6 +9,7 @@ import unittest
 from tools.sfgfc_huffman import CANDIDATE_END_SYMBOL
 from tools.v5_1_first_context_consumer_trace import (
     _fast_entry_coordinates,
+    _fast_slot1_bank,
     analyze_vector_contexts_from_trace,
     build_first_context_consumer_trace,
     extract_vector_contexts_from_trace,
@@ -50,6 +51,38 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
         )
         self.assertEqual(client.calls, ["get_z80_status"])
 
+    def test_fast_slot1_bank_reads_only_mapper_bytes(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls: list[tuple[str, dict[str, object]]] = []
+
+            def call(
+                self,
+                method: str,
+                payload: dict[str, object],
+            ) -> dict[str, str]:
+                self.calls.append((method, payload))
+                return {"data": "00 02 08 06"}
+
+        client = FakeClient()
+        self.assertEqual(
+            _fast_slot1_bank(  # type: ignore[arg-type]
+                client,
+                ram_area_id=3,
+                mapper_offset=0x1FFC,
+            ),
+            8,
+        )
+        self.assertEqual(
+            client.calls,
+            [
+                (
+                    "read_memory",
+                    {"area": 3, "offset": "1FFC", "size": 4},
+                )
+            ],
+        )
+
     def test_vector_breakpoints_stay_armed_across_samples(self) -> None:
         capture_source = TRACE_SOURCE.split("def _capture_contexts(", 1)[1]
         capture_source = capture_source.split("def _main()", 1)[0]
@@ -66,6 +99,7 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
         self.assertIn("arm_record_anchor()", capture_source)
         self.assertIn("disarm_record_anchor()", capture_source)
         self.assertNotIn("for _ in range(anchor_hit_limit)", capture_source)
+        self.assertIn("MAX_DIRECT_RECORD_ANCHOR_HITS = 16", TRACE_SOURCE)
         self.assertIn(
             "max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 120.0)",
             TRACE_SOURCE,

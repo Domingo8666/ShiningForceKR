@@ -23,6 +23,7 @@ try:
         McpStdioClient,
         _capture_state,
         _default_command,
+        _parse_mapper,
         _runtime_failure_receipt,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
@@ -81,6 +82,7 @@ except ImportError:  # pragma: no cover - direct script execution
         McpStdioClient,
         _capture_state,
         _default_command,
+        _parse_mapper,
         _runtime_failure_receipt,
         _step_instruction_and_wait,
         _write_runtime_failure_receipt,
@@ -144,6 +146,7 @@ LOCAL_REPORT_PATH = Path(
 )
 MAX_VECTOR_READ_HITS = 20
 MAX_NONVECTOR_HITS_PER_CONTEXT = 64
+MAX_DIRECT_RECORD_ANCHOR_HITS = 16
 FIRST_VECTOR_TIMEOUT_SECONDS = 4.0
 NEXT_VECTOR_TIMEOUT_SECONDS = 0.75
 VECTOR_LOGICAL_BASES = (0x4100, 0x8100)
@@ -669,6 +672,26 @@ def _fast_entry_coordinates(
     return _entry_coordinates({"registers": registers})
 
 
+def _fast_slot1_bank(
+    client: McpStdioClient,
+    *,
+    ram_area_id: int,
+    mapper_offset: int,
+) -> int:
+    """Read only the four mapper bytes needed to reject a wrong-bank hit."""
+
+    mapper_payload = client.call(
+        "read_memory",
+        {
+            "area": ram_area_id,
+            "offset": f"{mapper_offset:04X}",
+            "size": 4,
+        },
+    )
+    _, _, slot1, _ = _parse_mapper(mapper_payload.get("data"))
+    return slot1
+
+
 def resolve_record_length_anchor(
     *,
     group_extract: dict[str, object],
@@ -833,6 +856,26 @@ def _capture_contexts(
         ):
             raise RuntimeError("Gearsystem did not load the consumer trace ROM")
         local["media"] = media
+        areas = client.call("list_memory_areas")
+        area_list = areas.get("areas")
+        if not isinstance(area_list, list):
+            raise RuntimeError("Gearsystem returned no memory areas")
+        ram = next(
+            (
+                item
+                for item in area_list
+                if isinstance(item, dict)
+                and item.get("name") == "RAM"
+                and isinstance(item.get("id"), int)
+                and isinstance(item.get("size"), int)
+                and item["size"] >= 0x2000
+            ),
+            None,
+        )
+        if ram is None:
+            raise RuntimeError("Gearsystem RAM area was not found")
+        ram_area_id = int(ram["id"])
+        mapper_offset = int(ram["size"]) - 4
         client.call("debug_reset")
         client.call("debug_pause")
         if any(button is not None for _, button in ATTRACT_CAPTURE_SCHEDULE):
@@ -843,23 +886,26 @@ def _capture_contexts(
         anchor_timeout = max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 120.0)
         anchor_reached = False
         anchor_state: dict[str, object] | None = None
-        for false_hit_index in range(MAX_NONVECTOR_HITS_PER_CONTEXT):
+        for false_hit_index in range(MAX_DIRECT_RECORD_ANCHOR_HITS):
             status = _continue_until_breakpoint(
                 client,
                 anchor_timeout if false_hit_index == 0 else FIRST_VECTOR_TIMEOUT_SECONDS,
             )
             if status.get("at_breakpoint") is not True:
                 break
-            state, evidence = _capture_state(client)
-            accepted = int(state["slot1_bank"]) == target_mapped_bank
+            observed_slot1_bank = _fast_slot1_bank(
+                client,
+                ram_area_id=ram_area_id,
+                mapper_offset=mapper_offset,
+            )
+            accepted = observed_slot1_bank == target_mapped_bank
             local["anchor_hits"].append(
                 {
                     "false_hit_index": false_hit_index,
                     "record_length_logical_address": target_logical_length_address,
                     "expected_slot1_bank": target_mapped_bank,
+                    "observed_slot1_bank": observed_slot1_bank,
                     "accepted": accepted,
-                    "state": state,
-                    "evidence": evidence,
                 }
             )
             if accepted:
