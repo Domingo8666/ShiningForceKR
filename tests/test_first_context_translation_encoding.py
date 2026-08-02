@@ -268,6 +268,37 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             )
         self.assertTrue(rows[0]["proven_visible_page_route"])
 
+    def test_proven_visible_page_can_use_implicit_renderer_blank_slots(self) -> None:
+        direct_symbols = [*range(0x02, 0x0A), 0xC9]
+        with patch(
+            "tools.v5_1_first_context_translation_encoding."
+            "solve_direct_renderer_proof_symbols",
+            return_value=(direct_symbols, direct_symbols[:-1]),
+        ):
+            counts, rows, assignments = build_single_page_symbol_rows(
+                trees={},
+                target_rows=[{"review_index": 1, "target_text": "가"}],
+                preserved_by_row=[[]],
+                runtime_constraints=[{
+                    "initial_context": 0xC9,
+                    "original_record_length_bytes": 16,
+                    "original_symbol_count": 9,
+                }],
+                pages=(89,),
+                direct_renderer_first_row=True,
+                direct_renderer_pages=(89,),
+                proven_first_row_page=89,
+            )
+        self.assertTrue(rows[0]["proven_visible_page_route"])
+        self.assertTrue(rows[0]["direct_renderer_proof"])
+        self.assertEqual(rows[0]["page_select_count"], 0)
+        self.assertEqual(counts["planned_page_select_count"], 0)
+        self.assertEqual({item["page"] for item in assignments[0]}, {89})
+        self.assertTrue(all(
+            item["visual"] == "technical-blank"
+            for item in assignments[0][1:]
+        ))
+
     def test_accepts_direct_renderer_failure_diagnostics(self) -> None:
         failure = build_first_context_translation_encoding_failure(
             category="row-route",

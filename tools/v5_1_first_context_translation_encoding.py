@@ -3784,8 +3784,11 @@ def select_row_font_pages(
     ):
         raise ValueError("direct renderer proof page candidates are invalid")
     if proven_first_row_page is not None and (
-        direct_renderer_first_row
-        or not 0 <= proven_first_row_page < FONT_PAGE_COUNT
+        not 0 <= proven_first_row_page < FONT_PAGE_COUNT
+        or (
+            direct_renderer_first_row
+            and direct_renderer_pages != (proven_first_row_page,)
+        )
     ):
         raise ValueError("proven first-row page is invalid")
     pages: list[int | tuple[int, ...]] = []
@@ -4113,8 +4116,11 @@ def build_single_page_symbol_rows(
     ):
         raise ValueError("direct renderer proof page candidates are invalid")
     if proven_first_row_page is not None and (
-        direct_renderer_first_row
-        or not 0 <= proven_first_row_page < FONT_PAGE_COUNT
+        not 0 <= proven_first_row_page < FONT_PAGE_COUNT
+        or (
+            direct_renderer_first_row
+            and direct_renderer_pages != (proven_first_row_page,)
+        )
     ):
         raise ValueError("proven first-row page is invalid")
     if runtime_constraints is not None and len(runtime_constraints) != len(
@@ -4816,6 +4822,12 @@ def _main() -> int:
             raise ValueError("proven visible page evidence is not current")
         proven_first_row_page = EXPANSION_PAGE
         proven_visible_route_confirmed = True
+        # The expanded PoC proved that page 89 is the visible renderer page,
+        # but the first fixed-count translation showed that extra inline page
+        # tokens leak into the dialogue as visible garbage.  Use the implicit
+        # renderer-page path and map every remaining fixed slot to a blank tile.
+        direct_renderer_first_row = True
+        direct_renderer_pages = (EXPANSION_PAGE,)
     if (
         active_vram_route["translation_build_eligible"] is not True
         and not direct_route_confirmed
