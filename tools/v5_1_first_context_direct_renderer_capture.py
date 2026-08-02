@@ -33,7 +33,7 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-direct-renderer-capture"
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 NAME_TABLE_BASE = 0x3800
 NAME_TABLE_WIDTH = 32
 FIRST_DIALOGUE_TEXT_COLUMN = 1
@@ -88,9 +88,14 @@ SLOT_ALIGNMENT_KEYS_V4 = {
     "constant_write_slot_shift",
     "mapping_confirmed",
 }
-SLOT_ALIGNMENT_KEYS = SLOT_ALIGNMENT_KEYS_V4 | {
+SLOT_ALIGNMENT_KEYS_V5 = SLOT_ALIGNMENT_KEYS_V4 | {
     "rendered_assignment_match_count",
     "observed_assignment_page",
+}
+SLOT_ALIGNMENT_KEYS = SLOT_ALIGNMENT_KEYS_V5 | {
+    "route_evidence_count",
+    "common_route_candidate_count",
+    "sample_route_candidates",
 }
 
 
@@ -252,6 +257,15 @@ def analyze_direct_renderer_slot_alignment(
         "constant_loader_base": loader_base,
         "constant_write_slot_shift": write_slot_shift,
         "mapping_confirmed": confirmed,
+        "route_evidence_count": route_evidence_count,
+        "common_route_candidate_count": len(routes),
+        "sample_route_candidates": [
+            {
+                "index": int(sample["index"]),
+                "routes": sample["route_candidates"],
+            }
+            for sample in samples
+        ],
     }
     local = {
         "name_table_base": NAME_TABLE_BASE,
@@ -275,13 +289,16 @@ def validate_first_context_direct_renderer_capture(
     if not (
         (schema_version == 2 and set(value) == TOP_LEVEL_KEYS_V2)
         or (schema_version == 3 and set(value) == TOP_LEVEL_KEYS)
-        or (schema_version in {4, SCHEMA_VERSION} and set(value) == TOP_LEVEL_KEYS_V4)
+        or (
+            schema_version in {4, 5, SCHEMA_VERSION}
+            and set(value) == TOP_LEVEL_KEYS_V4
+        )
     ):
         raise ValueError("direct renderer capture fields do not match")
     runtime_entry = value.get("runtime_entry")
     if (
         value.get("artifact_kind") != ARTIFACT_KIND
-        or schema_version not in {2, 3, 4, SCHEMA_VERSION}
+        or schema_version not in {2, 3, 4, 5, SCHEMA_VERSION}
         or value.get("status") != "direct-renderer-first-screen-captured"
         or value.get("renderer_route")
         not in {"direct-observed-page", "proven-visible-page"}
@@ -325,7 +342,11 @@ def validate_first_context_direct_renderer_capture(
         return
     alignment = value.get("slot_alignment")
     expected_alignment_keys = (
-        SLOT_ALIGNMENT_KEYS_V4 if schema_version == 4 else SLOT_ALIGNMENT_KEYS
+        SLOT_ALIGNMENT_KEYS_V4
+        if schema_version == 4
+        else SLOT_ALIGNMENT_KEYS_V5
+        if schema_version == 5
+        else SLOT_ALIGNMENT_KEYS
     )
     if not isinstance(alignment, dict) or set(alignment) != expected_alignment_keys:
         raise ValueError("direct renderer slot alignment fields do not match")
@@ -343,6 +364,17 @@ def validate_first_context_direct_renderer_capture(
                 or not 0
                 <= alignment["rendered_assignment_match_count"]
                 <= alignment["sample_count"]
+                or not isinstance(alignment.get("route_evidence_count"), int)
+                or not 0
+                <= alignment["route_evidence_count"]
+                <= alignment["sample_count"]
+                or not isinstance(
+                    alignment.get("common_route_candidate_count"), int
+                )
+                or not 0 <= alignment["common_route_candidate_count"] <= 512
+                or not isinstance(alignment.get("sample_route_candidates"), list)
+                or len(alignment["sample_route_candidates"])
+                != alignment["sample_count"]
             )
         )
         or (
@@ -375,6 +407,28 @@ def validate_first_context_direct_renderer_capture(
         )
     ):
         raise ValueError("direct renderer slot alignment is inconsistent")
+    if schema_version == SCHEMA_VERSION:
+        for expected_index, sample in enumerate(
+            alignment["sample_route_candidates"]
+        ):
+            routes = sample.get("routes") if isinstance(sample, dict) else None
+            if (
+                not isinstance(sample, dict)
+                or set(sample) != {"index", "routes"}
+                or sample.get("index") != expected_index
+                or not isinstance(routes, list)
+                or len(routes) > 512
+                or any(
+                    not isinstance(route, list)
+                    or len(route) != 3
+                    or any(
+                        not isinstance(item, int) or isinstance(item, bool)
+                        for item in route
+                    )
+                    for route in routes
+                )
+            ):
+                raise ValueError("direct renderer slot route candidates are invalid")
 
 
 def main() -> int:

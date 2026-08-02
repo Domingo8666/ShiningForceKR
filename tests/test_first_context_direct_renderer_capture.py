@@ -207,7 +207,7 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
     def test_accepts_rendered_assignment_capture_receipt(self) -> None:
         value = {
             "artifact_kind": "sanitized-v5-1-first-context-direct-renderer-capture",
-            "schema_version": 5,
+            "schema_version": 6,
             "status": "direct-renderer-first-screen-captured",
             "baseline_target_sha256": "a" * 64,
             "test_target_sha256": "b" * 64,
@@ -227,6 +227,12 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
                 "constant_loader_base": 256,
                 "constant_write_slot_shift": 3,
                 "mapping_confirmed": True,
+                "route_evidence_count": 5,
+                "common_route_candidate_count": 1,
+                "sample_route_candidates": [
+                    {"index": index, "routes": [[44, 256, 3]]}
+                    for index in range(5)
+                ],
             },
             "cold_boot": True,
             "human_visual_review_required": True,

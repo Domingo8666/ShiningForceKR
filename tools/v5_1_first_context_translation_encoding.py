@@ -5078,7 +5078,7 @@ def _main() -> int:
             if (
                 capture.get("artifact_kind")
                 == "sanitized-v5-1-first-context-direct-renderer-capture"
-                and capture.get("schema_version") == 5
+                and capture.get("schema_version") in {5, 6}
                 and capture.get("baseline_target_sha256")
                 == capacity["target_sha256"]
                 and capture.get("renderer_route") == "direct-observed-page"
