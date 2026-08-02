@@ -285,9 +285,10 @@ else
     echo "SFKR critical path: rebuilding the first dialogue on the proven visible font page."
     write_next_step \
       "실기에서 정상 출력된 글꼴 페이지를 사용해 첫 대사 한 줄을 다시 만들고, 콜드부팅 화면을 자동 캡처하고 있습니다."
-    if python - <<'PY'
+    if python - "$critical_path_request_id" <<'PY'
 from pathlib import Path
 import json
+import sys
 
 from tools.patch_io import sha256_file
 from tools.v5_1_first_context_direct_renderer_capture import (
@@ -327,6 +328,7 @@ local_rows = local_encoding.get("rows")
 ready = (
     sha256_file(paths["rom"]) == build["test_target_sha256"]
     and capture.get("schema_version") == 5
+    and capture.get("runtime_stage_request_id") == sys.argv[1]
     and capture["test_target_sha256"] == build["test_target_sha256"]
     and capture["renderer_route"] == "direct-observed-page"
     and isinstance(capture.get("slot_alignment"), dict)

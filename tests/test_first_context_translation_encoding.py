@@ -220,6 +220,23 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             direct_renderer_font_tile_offset(21, 0x5E),
         )
 
+    def test_direct_renderer_limits_decoded_symbols_to_shifted_font_slots(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0x02),
+            0x5F: tree(0x5F, 0xC9, 0xFE),
+            0x02: tree(0x02, 0xC9, 0xFE),
+        }
+        symbols, assignments = solve_direct_renderer_proof_symbols(
+            trees=trees,
+            initial_context=0xC9,
+            maximum_bits=8,
+            visuals=["text:두"],
+            font_slot_shift=1,
+        )
+        self.assertEqual(symbols, [0x02, 0xC9])
+        self.assertEqual(assignments, [0x02])
+        self.assertLessEqual(assignments[0] + 1, 0x5F)
+
     def test_first_row_direct_renderer_omits_inline_page_token(self) -> None:
         direct_symbols = [*range(0x02, 0x0A), 0xC9]
         with patch(
@@ -239,6 +256,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 pages=(240,),
                 direct_renderer_first_row=True,
                 direct_renderer_pages=(21, 22),
+                direct_renderer_slot_shift=3,
             )
         self.assertEqual(rows[0]["symbols"], direct_symbols)
         self.assertEqual(rows[0]["runtime_symbol_count"], 9)
@@ -254,6 +272,10 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             {assignment["page"] for assignment in assignments[0]},
             {21, 22},
         )
+        self.assertTrue(all(
+            assignment["font_symbol"] == assignment["symbol"] + 3
+            for assignment in assignments[0]
+        ))
         self.assertTrue(all(
             assignment["visual"] == "technical-blank"
             for assignment in assignments[0][2:]

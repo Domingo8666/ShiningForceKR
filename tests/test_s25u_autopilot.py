@@ -158,6 +158,10 @@ class S25UAutopilotTests(unittest.TestCase):
             'local_rows[0].get("direct_renderer_proof") is True',
             RUNTIME_STAGE,
         )
+        self.assertIn(
+            'capture.get("runtime_stage_request_id") == sys.argv[1]',
+            RUNTIME_STAGE,
+        )
 
     def test_direct_renderer_stage_rebuilds_without_inline_page_token(self) -> None:
         direct_branch = RUNTIME_STAGE.index(

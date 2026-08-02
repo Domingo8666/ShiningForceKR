@@ -200,6 +200,9 @@ TRANSLATED_GLYPH_ROUTE_PATH = Path(
 TRANSLATED_GLYPH_ROUTE_LOCAL_PATH = Path(
     "reports/local/v5_1_first_context_translated_glyph_route.json"
 )
+DIRECT_RENDERER_CAPTURE_PATH = Path(
+    "analysis/device/v5_1_latest_first_context_direct_renderer_capture.json"
+)
 LOCAL_VISIBLE_UNICODE_MAPPING_PATH = Path(
     "reports/local/v5_1_visible_unicode_mapping.json"
 )
@@ -1331,6 +1334,7 @@ def solve_direct_renderer_proof_symbols(
     initial_context: int,
     maximum_bits: int,
     visuals: list[str],
+    font_slot_shift: int = 0,
 ) -> tuple[list[int], list[int]]:
     """Build one fixed-count row without the disproven inline page token.
 
@@ -1349,12 +1353,22 @@ def solve_direct_renderer_proof_symbols(
         not 0 <= initial_context <= 0xFF
         or not 1 <= maximum_bits <= 0x7FFF
         or not 1 <= len(visuals) <= 32
+        or not isinstance(font_slot_shift, int)
+        or isinstance(font_slot_shift, bool)
+        or not -0x5D <= font_slot_shift <= 0x5D
         or any(not isinstance(visual, str) or not visual for visual in visuals)
     ):
         raise ValueError("direct renderer proof inputs are invalid")
     lengths = _code_lengths(trees)
     glyph_symbols = set(
-        range(FONT_GLYPH_FIRST_SYMBOL, DIRECT_RENDERER_GLYPH_LAST_SYMBOL + 1)
+        symbol
+        for symbol in range(
+            FONT_GLYPH_FIRST_SYMBOL,
+            DIRECT_RENDERER_GLYPH_LAST_SYMBOL + 1,
+        )
+        if FONT_GLYPH_FIRST_SYMBOL
+        <= symbol + font_slot_shift
+        <= DIRECT_RENDERER_GLYPH_LAST_SYMBOL
     )
     assignments: list[int] = []
     visual_by_symbol: dict[int, str] = {}
@@ -4319,6 +4333,7 @@ def build_single_page_symbol_rows(
     pages: tuple[int | tuple[int, ...], ...] = ROW_FONT_PAGES,
     direct_renderer_first_row: bool = False,
     direct_renderer_pages: tuple[int, ...] = (DIRECT_RENDERER_PROOF_PAGE,),
+    direct_renderer_slot_shift: int = 0,
     proven_first_row_page: int | None = None,
 ) -> tuple[
     dict[str, int],
@@ -4336,6 +4351,9 @@ def build_single_page_symbol_rows(
         not direct_renderer_pages
         or len(direct_renderer_pages) != len(set(direct_renderer_pages))
         or any(not 0 <= page < FONT_PAGE_COUNT for page in direct_renderer_pages)
+        or not isinstance(direct_renderer_slot_shift, int)
+        or isinstance(direct_renderer_slot_shift, bool)
+        or not -0x5D <= direct_renderer_slot_shift <= 0x5D
     ):
         raise ValueError("direct renderer proof page candidates are invalid")
     if proven_first_row_page is not None and (
@@ -4413,6 +4431,7 @@ def build_single_page_symbol_rows(
                 initial_context=initial_context,
                 maximum_bits=target_bits,
                 visuals=renderer_visuals,
+                font_slot_shift=direct_renderer_slot_shift,
             )
             assignment_pages = [direct_renderer_pages[0]] * len(assignments)
             padding_count = 0
@@ -4672,7 +4691,10 @@ def build_single_page_symbol_rows(
                     "page": emitted_page,
                     "symbol": symbol,
                     **(
-                        {"direct_renderer_page": True}
+                        {
+                            "direct_renderer_page": True,
+                            "font_symbol": symbol + direct_renderer_slot_shift,
+                        }
                         if direct_renderer_page
                         else {}
                     ),
@@ -5020,6 +5042,7 @@ def _main() -> int:
     poc_expansion_proof = _load_json_object(paths["poc_expansion_proof"])
     validate_poc_expansion_proof(poc_expansion_proof)
     direct_renderer_pages: tuple[int, ...] = (DIRECT_RENDERER_PROOF_PAGE,)
+    direct_renderer_slot_shift = 0
     direct_renderer_first_row = (
         args.direct_renderer_page is not None
         or args.direct_renderer_observed_page
@@ -5047,7 +5070,30 @@ def _main() -> int:
             or not isinstance(local_route_analysis, dict)
         ):
             raise ValueError("direct renderer observed page evidence is invalid")
-        if route.get("direct_glyph_slot_alignment_confirmed") is True:
+        calibrated_page = None
+        capture_path = root / DIRECT_RENDERER_CAPTURE_PATH
+        if capture_path.is_file():
+            capture = _load_json_object(capture_path)
+            alignment = capture.get("slot_alignment")
+            if (
+                capture.get("artifact_kind")
+                == "sanitized-v5-1-first-context-direct-renderer-capture"
+                and capture.get("schema_version") == 5
+                and capture.get("baseline_target_sha256")
+                == capacity["target_sha256"]
+                and capture.get("renderer_route") == "direct-observed-page"
+                and isinstance(alignment, dict)
+                and alignment.get("mapping_confirmed") is True
+                and isinstance(alignment.get("observed_assignment_page"), int)
+                and isinstance(alignment.get("constant_write_slot_shift"), int)
+            ):
+                calibrated_page = int(alignment["observed_assignment_page"])
+                direct_renderer_slot_shift = int(
+                    alignment["constant_write_slot_shift"]
+                )
+        if calibrated_page is not None:
+            candidate_pages = [calibrated_page]
+        elif route.get("direct_glyph_slot_alignment_confirmed") is True:
             candidate_pages = local_route_analysis.get("aligned_pages")
         else:
             page_hashes = local_route_analysis.get("assignment_candidate_pages")
@@ -5239,6 +5285,7 @@ def _main() -> int:
         runtime_constraints=runtime_constraints,
         direct_renderer_first_row=direct_renderer_first_row,
         direct_renderer_pages=direct_renderer_pages,
+        direct_renderer_slot_shift=direct_renderer_slot_shift,
         proven_first_row_page=proven_first_row_page,
     )
     ACTIVE_FAILURE_STEP = "build-symbol-rows"
@@ -5273,12 +5320,14 @@ def _main() -> int:
             visual = assignment["visual"]
             page = assignment["page"]
             symbol = assignment["symbol"]
+            font_symbol = assignment.get("font_symbol", symbol)
             direct_renderer_page = (
                 assignment.get("direct_renderer_page") is True
             )
             assert isinstance(visual, str)
             assert isinstance(page, int)
             assert isinstance(symbol, int)
+            assert isinstance(font_symbol, int)
             if visual.startswith("text:"):
                 after = character_tiles.get(visual)
                 if after is None:
@@ -5305,7 +5354,7 @@ def _main() -> int:
                 after = sparse.data[source_start:source_end]
                 visual_kind = "reviewed-non-text-glyph-visual"
             start = (
-                direct_renderer_font_tile_offset(page, symbol)
+                direct_renderer_font_tile_offset(page, font_symbol)
                 if direct_renderer_page
                 else font_tile_offset(page, symbol)
             )
@@ -5319,7 +5368,7 @@ def _main() -> int:
                 write = ExpectedWrite(
                     writer=(
                         f"first-context-row-{row_index}-font-"
-                        f"{page:02x}-{symbol:02x}"
+                        f"{page:02x}-{font_symbol:02x}"
                     ),
                     purpose="first-context-technical-test-only",
                     offset=start,
@@ -5343,6 +5392,11 @@ def _main() -> int:
                     "visual_kind": visual_kind,
                     "page": page,
                     "symbol": symbol,
+                    **(
+                        {"font_symbol": font_symbol}
+                        if direct_renderer_page
+                        else {}
+                    ),
                     "direct_renderer_page": direct_renderer_page,
                     "tile_sha256": sha256_bytes(after),
                 }
