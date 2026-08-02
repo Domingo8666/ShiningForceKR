@@ -2511,14 +2511,18 @@ def solve_exact_length_row_blank_padded_visual_symbols(
     target_bits: int,
     page: int,
     visuals: list[str],
+    target_symbol_count: int | None = None,
 ) -> tuple[list[int], list[int], int]:
-    """Fill an exact record with same-page blank glyphs, not page controls.
+    """Extend the already visible fixed-count prefix with blank glyphs.
 
     Runtime captures proved two separate constraints on this renderer branch:
     the consumer reads the whole declared record, and page-select padding is
-    not visually inert.  Emit exactly one page token, map the approved text,
-    then consume the remaining Huffman budget with glyph slots whose tiles are
-    explicitly zeroed before placing the terminator on the final bit.
+    not visually inert.  A later exact-length search also proved that choosing
+    a new visible-symbol assignment can destroy the prefix that was already
+    seen correctly on hardware.  Rebuild that previously proven fixed-count
+    prefix first, freeze every visible assignment, remove only its early
+    terminator, and consume the remaining Huffman budget with glyph slots whose
+    tiles are explicitly zeroed before placing the terminator on the final bit.
     """
 
     if (
@@ -2536,6 +2540,34 @@ def solve_exact_length_row_blank_padded_visual_symbols(
         raise ValueError("first context exact blank-padded row is too wide")
     lengths = _code_lengths(trees)
     page_token = tuple(page_select_symbols(page))
+    if target_symbol_count is None:
+        target_symbol_count = len(page_token) + len(visuals) + 1
+    renderer_glyph_count = target_symbol_count - len(page_token) - 1
+    if renderer_glyph_count < len(visuals):
+        raise ValueError("first context frozen prefix has insufficient glyph slots")
+    frozen_visuals = [
+        *visuals,
+        *(
+            "technical-blank"
+            for _ in range(renderer_glyph_count - len(visuals))
+        ),
+    ]
+    frozen_symbols, frozen_page_padding, frozen_assignments = (
+        solve_fixed_count_row_visual_symbols(
+            trees=trees,
+            initial_context=initial_context,
+            maximum_bits=target_bits,
+            target_symbol_count=target_symbol_count,
+            page=page,
+            visuals=frozen_visuals,
+        )
+    )
+    if (
+        frozen_page_padding != 0
+        or tuple(frozen_symbols[: len(page_token)]) != page_token
+        or frozen_symbols[-1] != CANDIDATE_END_SYMBOL
+    ):
+        raise ValueError("first context frozen prefix is not renderer-safe")
 
     def transition(
         previous: int,
@@ -2550,16 +2582,16 @@ def solve_exact_length_row_blank_padded_visual_symbols(
             previous = symbol
         return bits, previous
 
-    selected = transition(initial_context, page_token)
+    frozen_prefix = tuple(frozen_symbols[:-1])
+    selected = transition(initial_context, frozen_prefix)
     if selected is None or selected[0] >= target_bits:
-        raise ValueError("first context exact blank-padded page is not selectable")
+        raise ValueError("first context frozen prefix is not encodable")
     start_bits, start_previous = selected
-    expanded_nodes = 0
-    maximum_nodes = 200_000
-    assignments: list[int] = []
-    symbol_by_visual: dict[str, int] = {}
-    visual_by_symbol: dict[int, str] = {}
-    visited: set[tuple[int, int, int, tuple[tuple[str, int], ...]]] = set()
+    protected_symbols = frozenset(
+        symbol
+        for visual, symbol in zip(frozen_visuals, frozen_assignments)
+        if visual != "technical-blank"
+    )
 
     def blank_suffix(
         previous: int,
@@ -2601,86 +2633,19 @@ def solve_exact_length_row_blank_padded_visual_symbols(
                 queue.append(state)
         return None
 
-    def search_visible(previous: int, bits: int, depth: int) -> tuple[
-        tuple[int, ...], tuple[int, ...]
-    ] | None:
-        nonlocal expanded_nodes
-        expanded_nodes += 1
-        if expanded_nodes > maximum_nodes:
-            raise ValueError(
-                "first context exact blank-padded search limit exceeded"
-            )
-        state = (
-            previous,
-            bits,
-            depth,
-            tuple(sorted(symbol_by_visual.items())),
-        )
-        if state in visited:
-            return None
-        visited.add(state)
-        if depth == len(visuals):
-            suffix = blank_suffix(
-                previous,
-                bits,
-                frozenset(visual_by_symbol),
-            )
-            if suffix is None:
-                return None
-            return suffix, tuple(assignments)
-
-        visual = visuals[depth]
-        assigned = symbol_by_visual.get(visual)
-        if assigned is not None:
-            candidates = ((int(lengths.get(previous, {}).get(assigned, 0)), assigned),)
-        else:
-            candidates = tuple(
-                sorted(
-                    (
-                        (int(code_length), symbol)
-                        for symbol, code_length in lengths.get(previous, {}).items()
-                        if symbol in glyph_symbols and symbol not in visual_by_symbol
-                    ),
-                    key=lambda item: (
-                        not bool(
-                            set(lengths.get(item[1], {})) & set(glyph_symbols)
-                        ),
-                        item[0],
-                        item[1],
-                    ),
-                )
-            )
-        for code_length, symbol in candidates:
-            if code_length <= 0 or bits + code_length >= target_bits:
-                continue
-            was_unassigned = visual not in symbol_by_visual
-            if was_unassigned:
-                symbol_by_visual[visual] = symbol
-                visual_by_symbol[symbol] = visual
-            assignments.append(symbol)
-            result = search_visible(symbol, bits + code_length, depth + 1)
-            if result is not None:
-                return result
-            assignments.pop()
-            if was_unassigned:
-                del symbol_by_visual[visual]
-                del visual_by_symbol[symbol]
-        return None
-
-    solved = search_visible(start_previous, start_bits, 0)
-    if solved is None:
+    blank_symbols = blank_suffix(start_previous, start_bits, protected_symbols)
+    if blank_symbols is None:
         raise ValueError(
-            "first context row has no exact blank-padded Huffman route"
+            "first context frozen prefix has no exact blank-padded Huffman route"
         )
-    blank_symbols, visible_assignments = solved
     symbols = [
-        *page_token,
-        *visible_assignments,
+        *frozen_prefix,
         *blank_symbols,
         CANDIDATE_END_SYMBOL,
     ]
-    all_assignments = [*visible_assignments, *blank_symbols]
-    return symbols, all_assignments, len(blank_symbols)
+    all_assignments = [*frozen_assignments, *blank_symbols]
+    blank_count = len(frozen_visuals) - len(visuals) + len(blank_symbols)
+    return symbols, all_assignments, blank_count
 
 
 def exact_multi_page_state_limit(page_count: int) -> int:
@@ -4100,6 +4065,14 @@ def select_row_font_pages(
                             ),
                             page=page,
                             visuals=route_visuals,
+                            target_symbol_count=int(
+                                constraint.get(
+                                    "original_symbol_count",
+                                    len(page_select_symbols(page))
+                                    + len(route_visuals)
+                                    + 1,
+                                )
+                            ),
                         )
                     elif "original_symbol_count" in constraint:
                         fixed_control_symbols = (
@@ -4423,6 +4396,14 @@ def build_single_page_symbol_rows(
                             target_bits=target_bits,
                             page=page,
                             visuals=renderer_visuals,
+                            target_symbol_count=int(
+                                constraint.get(
+                                    "original_symbol_count",
+                                    len(page_select_symbols(page))
+                                    + len(renderer_visuals)
+                                    + 1,
+                                )
+                            ),
                         )
                         renderer_visuals = [
                             *renderer_visuals,

@@ -148,6 +148,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 target_bits=7,
                 page=240,
                 visuals=["text:가"],
+                target_symbol_count=6,
             )
         )
         self.assertEqual(
