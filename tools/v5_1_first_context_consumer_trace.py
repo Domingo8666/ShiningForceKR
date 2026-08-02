@@ -142,7 +142,9 @@ LOCAL_REPORT_PATH = Path(
 )
 MAX_VECTOR_READ_HITS = 20
 MAX_NONVECTOR_HITS_PER_CONTEXT = 64
-MAX_DIRECT_RECORD_ANCHOR_HITS = 16
+MAX_DIRECT_RECORD_ANCHOR_HITS = 4
+DIRECT_RECORD_ANCHOR_TIMEOUT_SECONDS = 90.0
+NEXT_RECORD_ANCHOR_TIMEOUT_SECONDS = 2.0
 FAST_VECTOR_TRACE_LINE_COUNT = 32
 FIRST_VECTOR_TIMEOUT_SECONDS = 4.0
 NEXT_VECTOR_TIMEOUT_SECONDS = 0.75
@@ -677,6 +679,22 @@ def _fast_slot1_bank(
 ) -> int:
     """Read only the four mapper bytes needed to reject a wrong-bank hit."""
 
+    slot1, _ = _fast_slot_banks(
+        client,
+        ram_area_id=ram_area_id,
+        mapper_offset=mapper_offset,
+    )
+    return slot1
+
+
+def _fast_slot_banks(
+    client: McpStdioClient,
+    *,
+    ram_area_id: int,
+    mapper_offset: int,
+) -> tuple[int, int]:
+    """Read the two switchable ROM banks with one MCP memory request."""
+
     mapper_payload = client.call(
         "read_memory",
         {
@@ -685,8 +703,8 @@ def _fast_slot1_bank(
             "size": 4,
         },
     )
-    _, _, slot1, _ = _parse_mapper(mapper_payload.get("data"))
-    return slot1
+    _, _, slot1, slot2 = _parse_mapper(mapper_payload.get("data"))
+    return slot1, slot2
 
 
 def _fast_vector_sample(
@@ -808,34 +826,39 @@ def _capture_contexts(
         or not 0 <= target_mapped_bank <= 0xFF
     ):
         raise ValueError("consumer trace record anchor is invalid")
-    record_anchor_address = f"{target_logical_payload_address:04X}"
+    record_anchor_addresses = (
+        f"{target_logical_payload_address:04X}",
+        f"{target_logical_payload_address + 0x4000:04X}",
+    )
 
     def arm_record_anchor() -> None:
         nonlocal record_anchor_armed
-        client.call(
-            "set_breakpoint_range",
-            {
-                "start_address": record_anchor_address,
-                "end_address": record_anchor_address,
-                "memory_area": "rom_ram",
-                "execute": False,
-                "read": True,
-                "write": False,
-            },
-        )
+        for address in record_anchor_addresses:
+            client.call(
+                "set_breakpoint_range",
+                {
+                    "start_address": address,
+                    "end_address": address,
+                    "memory_area": "rom_ram",
+                    "execute": False,
+                    "read": True,
+                    "write": False,
+                },
+            )
         record_anchor_armed = True
 
     def disarm_record_anchor() -> None:
         nonlocal record_anchor_armed
         if record_anchor_armed:
-            client.call(
-                "remove_breakpoint",
-                {
-                    "address": record_anchor_address,
-                    "end_address": record_anchor_address,
-                    "memory_area": "rom_ram",
-                },
-            )
+            for address in record_anchor_addresses:
+                client.call(
+                    "remove_breakpoint",
+                    {
+                        "address": address,
+                        "end_address": address,
+                        "memory_area": "rom_ram",
+                    },
+                )
             record_anchor_armed = False
 
     def arm_vectors(context: int | None = None) -> None:
@@ -934,28 +957,37 @@ def _capture_contexts(
         arm_record_anchor()
         _set_unlimited_fast_forward(client, True)
         fast_forward_enabled = True
-        anchor_timeout = max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 120.0)
+        anchor_timeout = max(
+            ATTRACT_CAPTURE_TIMEOUT_SECONDS,
+            DIRECT_RECORD_ANCHOR_TIMEOUT_SECONDS,
+        )
         anchor_reached = False
         anchor_state: dict[str, object] | None = None
         for false_hit_index in range(MAX_DIRECT_RECORD_ANCHOR_HITS):
             status = _continue_until_breakpoint(
                 client,
-                anchor_timeout if false_hit_index == 0 else FIRST_VECTOR_TIMEOUT_SECONDS,
+                anchor_timeout
+                if false_hit_index == 0
+                else NEXT_RECORD_ANCHOR_TIMEOUT_SECONDS,
             )
             if status.get("at_breakpoint") is not True:
                 break
-            observed_slot1_bank = _fast_slot1_bank(
+            observed_slot1_bank, observed_slot2_bank = _fast_slot_banks(
                 client,
                 ram_area_id=ram_area_id,
                 mapper_offset=mapper_offset,
             )
-            accepted = observed_slot1_bank == target_mapped_bank
+            accepted = target_mapped_bank in {
+                observed_slot1_bank,
+                observed_slot2_bank,
+            }
             local["anchor_hits"].append(
                 {
                     "false_hit_index": false_hit_index,
                     "record_payload_logical_address": target_logical_payload_address,
                     "expected_slot1_bank": target_mapped_bank,
                     "observed_slot1_bank": observed_slot1_bank,
+                    "observed_slot2_bank": observed_slot2_bank,
                     "accepted": accepted,
                 }
             )

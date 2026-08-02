@@ -141,9 +141,9 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
         self.assertIn("arm_record_anchor()", capture_source)
         self.assertIn("disarm_record_anchor()", capture_source)
         self.assertNotIn("for _ in range(anchor_hit_limit)", capture_source)
-        self.assertIn("MAX_DIRECT_RECORD_ANCHOR_HITS = 16", TRACE_SOURCE)
+        self.assertIn("MAX_DIRECT_RECORD_ANCHOR_HITS = 4", TRACE_SOURCE)
         self.assertIn(
-            "max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 120.0)",
+            "DIRECT_RECORD_ANCHOR_TIMEOUT_SECONDS = 90.0",
             TRACE_SOURCE,
         )
 
