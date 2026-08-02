@@ -178,6 +178,10 @@ else
       fi
     fi
   fi
+  # Keep the validated request identity on the same variable used by the
+  # direct-renderer pre/post checks below.  With `set -u`, referring to a
+  # different name aborts the stage before the capture command can run.
+  critical_path_request_id="${stage_request_token:-}"
   if [ "$critical_path_focus" = "active-register-rom-source" ]; then
     echo "SFKR critical path: mapping the one unresolved ROM source boundary."
     write_next_step \

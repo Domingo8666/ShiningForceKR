@@ -130,6 +130,14 @@ class S25UAutopilotTests(unittest.TestCase):
             'if [ "$stage_request_token" != "$last_stage_request" ]',
             RUNTIME_STAGE,
         )
+        self.assertIn(
+            'critical_path_request_id="${stage_request_token:-}"',
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
+            'python - "$critical_path_request_id"',
+            RUNTIME_STAGE,
+        )
 
     def test_direct_renderer_trace_reuses_identical_execution_inputs(self) -> None:
         self.assertIn(
