@@ -37,6 +37,7 @@ from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
     solve_fixed_count_row_multi_page_visual_symbols,
     solve_exact_length_row_multi_page_visual_symbols,
     solve_exact_length_row_blank_padded_visual_symbols,
+    solve_byte_aligned_row_blank_padded_visual_symbols,
     solve_exact_length_row_visual_symbols,
     solve_row_visual_symbols,
     validate_first_context_translation_encoding,
@@ -157,6 +158,33 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         )
         self.assertEqual(assignments, [0x03, 0x04, 0x04])
         self.assertEqual(blank_count, 2)
+
+    def test_proven_prefix_ends_on_the_earliest_whole_byte(self) -> None:
+        trees = {
+            0xC9: tree(0xC9, 0x5F, 0xFE),
+            0x5F: tree(0x5F, 0x11, 0xFE),
+            0x11: tree(0x11, 0x02, 0xFE),
+            0x02: tree(0x02, 0x03, 0xFE),
+            0x03: tree(0x03, 0x04, 0xFE),
+            0x04: tree(0x04, 0x04, 0xC9),
+        }
+        symbols, assignments, blank_count, encoded_bits = (
+            solve_byte_aligned_row_blank_padded_visual_symbols(
+                trees=trees,
+                initial_context=0xC9,
+                maximum_bits=16,
+                page=240,
+                visuals=["text:가"],
+                target_symbol_count=6,
+            )
+        )
+        self.assertEqual(
+            symbols,
+            [0x5F, 0x11, 0x02, 0x03, 0x04, 0x04, 0x04, 0xC9],
+        )
+        self.assertEqual(assignments, [0x03, 0x04, 0x04, 0x04])
+        self.assertEqual(blank_count, 3)
+        self.assertEqual(encoded_bits, 8)
 
     def test_direct_renderer_reuses_only_the_same_visual_symbol(self) -> None:
         trees = {
@@ -279,8 +307,8 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
     def test_marks_proven_visible_page_route_on_first_row(self) -> None:
         with patch(
             "tools.v5_1_first_context_translation_encoding."
-            "solve_bounded_length_row_visual_symbols",
-            return_value=([0x02, 0xC9], 0, [0x02]),
+            "solve_byte_aligned_row_blank_padded_visual_symbols",
+            return_value=([0x02, 0xC9], [0x02], 0, 8),
         ):
             _, rows, _ = build_single_page_symbol_rows(
                 trees={},
@@ -289,6 +317,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 runtime_constraints=[{
                     "initial_context": 0xC9,
                     "original_record_length_bytes": 16,
+                    "original_symbol_count": 5,
                 }],
                 pages=(89,),
                 proven_first_row_page=89,
@@ -296,11 +325,15 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
         self.assertTrue(rows[0]["proven_visible_page_route"])
 
     def test_proven_page_select_route_fills_fixed_slots_with_blank_tiles(self) -> None:
-        symbols = [0x5F, 0x11, 0x02, 0x03, 0x04, 0x05, 0xC9]
+        symbols = [
+            0x5F, 0x11, 0x02,
+            0x03, 0x04, 0x05, 0x06, 0x07,
+            0xC9,
+        ]
         with patch(
             "tools.v5_1_first_context_translation_encoding."
-            "solve_fixed_count_row_visual_symbols",
-            return_value=(symbols, 0, [0x03, 0x04, 0x05]),
+            "solve_byte_aligned_row_blank_padded_visual_symbols",
+            return_value=(symbols, [0x03, 0x04, 0x05, 0x06, 0x07], 2, 16),
         ):
             counts, rows, assignments = build_single_page_symbol_rows(
                 trees={},
@@ -316,11 +349,18 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             )
         self.assertEqual(rows[0]["symbols"], symbols)
         self.assertEqual(rows[0]["page_select_count"], 1)
-        self.assertEqual(rows[0]["fixed_count_padding_symbol_count"], 0)
+        self.assertEqual(rows[0]["runtime_symbol_count"], len(symbols))
+        self.assertEqual(rows[0]["fixed_count_padding_symbol_count"], 4)
         self.assertEqual(counts["planned_page_select_count"], 1)
         self.assertEqual(
             [item["visual"] for item in assignments[0]],
-            ["text:가", "technical-blank", "technical-blank"],
+            [
+                "text:가",
+                "technical-blank",
+                "technical-blank",
+                "technical-blank",
+                "technical-blank",
+            ],
         )
         self.assertEqual({item["page"] for item in assignments[0]}, {89})
 

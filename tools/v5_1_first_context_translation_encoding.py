@@ -2512,6 +2512,7 @@ def solve_exact_length_row_blank_padded_visual_symbols(
     page: int,
     visuals: list[str],
     target_symbol_count: int | None = None,
+    prefix_maximum_bits: int | None = None,
 ) -> tuple[list[int], list[int], int]:
     """Extend the already visible fixed-count prefix with blank glyphs.
 
@@ -2542,6 +2543,10 @@ def solve_exact_length_row_blank_padded_visual_symbols(
     page_token = tuple(page_select_symbols(page))
     if target_symbol_count is None:
         target_symbol_count = len(page_token) + len(visuals) + 1
+    if prefix_maximum_bits is None:
+        prefix_maximum_bits = target_bits
+    if not target_bits <= prefix_maximum_bits <= 0x7FFF:
+        raise ValueError("first context frozen prefix bit limit is invalid")
     renderer_glyph_count = target_symbol_count - len(page_token) - 1
     if renderer_glyph_count < len(visuals):
         raise ValueError("first context frozen prefix has insufficient glyph slots")
@@ -2556,7 +2561,7 @@ def solve_exact_length_row_blank_padded_visual_symbols(
         solve_fixed_count_row_visual_symbols(
             trees=trees,
             initial_context=initial_context,
-            maximum_bits=target_bits,
+            maximum_bits=prefix_maximum_bits,
             target_symbol_count=target_symbol_count,
             page=page,
             visuals=frozen_visuals,
@@ -2646,6 +2651,45 @@ def solve_exact_length_row_blank_padded_visual_symbols(
     all_assignments = [*frozen_assignments, *blank_symbols]
     blank_count = len(frozen_visuals) - len(visuals) + len(blank_symbols)
     return symbols, all_assignments, blank_count
+
+
+def solve_byte_aligned_row_blank_padded_visual_symbols(
+    *,
+    trees: dict[int, object],
+    initial_context: int,
+    maximum_bits: int,
+    page: int,
+    visuals: list[str],
+    target_symbol_count: int,
+) -> tuple[list[int], list[int], int, int]:
+    """Keep the proven prefix and end it on the earliest whole byte.
+
+    The runtime record length is byte based.  Ending the Huffman terminator in
+    the middle of the final byte leaves old suffix bits reachable by this
+    renderer.  Search only whole-byte endpoints while solving the prefix with
+    the original capacity, so the already observed visible assignments cannot
+    change merely because the record is shortened.
+    """
+
+    if not 8 <= maximum_bits <= 0x7FFF:
+        raise ValueError("first context byte-aligned capacity is invalid")
+    for target_bits in range(8, maximum_bits + 1, 8):
+        try:
+            symbols, assignments, blank_count = (
+                solve_exact_length_row_blank_padded_visual_symbols(
+                    trees=trees,
+                    initial_context=initial_context,
+                    target_bits=target_bits,
+                    page=page,
+                    visuals=visuals,
+                    target_symbol_count=target_symbol_count,
+                    prefix_maximum_bits=maximum_bits,
+                )
+            )
+        except ValueError:
+            continue
+        return symbols, assignments, blank_count, target_bits
+    raise ValueError("first context proven prefix has no byte-aligned route")
 
 
 def exact_multi_page_state_limit(page_count: int) -> int:
@@ -4071,7 +4115,25 @@ def select_row_font_pages(
                         visuals=visuals,
                     )
                 else:
-                    if "original_symbol_count" in constraint:
+                    if (
+                        row_index == 0
+                        and proven_first_row_page is not None
+                        and "original_symbol_count" in constraint
+                    ):
+                        solve_byte_aligned_row_blank_padded_visual_symbols(
+                            trees=trees,
+                            initial_context=int(constraint["initial_context"]),
+                            maximum_bits=(
+                                int(constraint["original_record_length_bytes"])
+                                * 8
+                            ),
+                            page=page,
+                            visuals=route_visuals,
+                            target_symbol_count=int(
+                                constraint["original_symbol_count"]
+                            ),
+                        )
+                    elif "original_symbol_count" in constraint:
                         fixed_control_symbols = (
                             int(constraint["original_symbol_count"])
                             - len(route_visuals)
@@ -4386,15 +4448,44 @@ def build_single_page_symbol_rows(
                 int(constraint["original_record_length_bytes"]) * 8
             )
             route_capacity_bits = target_bits
+            byte_aligned_storage_first_row = (
+                expected_index == 1 and proven_first_row_page is not None
+            )
             ACTIVE_FAILURE_DETAIL = (
-                "solve-proven-bounded-row"
+                "solve-proven-byte-aligned-row"
+                if byte_aligned_storage_first_row
+                else "solve-proven-bounded-row"
                 if expected_index <= len(PROVEN_ROW_FONT_PAGES)
                 else "solve-extra-single-page-row"
             )
             if len(row_pages) == 1:
                 page = row_pages[0]
                 try:
-                    if "original_symbol_count" in constraint:
+                    if byte_aligned_storage_first_row:
+                        (
+                            symbols,
+                            assignments,
+                            blank_padding_count,
+                            _aligned_encoded_bits,
+                        ) = solve_byte_aligned_row_blank_padded_visual_symbols(
+                            trees=trees,
+                            initial_context=initial_context,
+                            maximum_bits=target_bits,
+                            page=page,
+                            visuals=renderer_visuals,
+                            target_symbol_count=int(
+                                constraint["original_symbol_count"]
+                            ),
+                        )
+                        renderer_visuals = [
+                            *renderer_visuals,
+                            *(
+                                "technical-blank"
+                                for _ in range(blank_padding_count)
+                            ),
+                        ]
+                        padding_count = 0
+                    elif "original_symbol_count" in constraint:
                         (
                             symbols,
                             padding_count,
@@ -4492,8 +4583,10 @@ def build_single_page_symbol_rows(
                         target_bits=target_bits,
                         candidate_bits=candidate_bits,
                     )
-            runtime_symbol_count = int(
-                constraint.get("original_symbol_count", len(symbols))
+            runtime_symbol_count = (
+                len(symbols)
+                if byte_aligned_storage_first_row
+                else int(constraint.get("original_symbol_count", len(symbols)))
             )
             visible_page_select_count = 0
             selected_page: int | None = None
@@ -4508,6 +4601,11 @@ def build_single_page_symbol_rows(
                 - 1
                 - visible_page_select_count * 3,
             )
+            if byte_aligned_storage_first_row:
+                fixed_count_padding_symbol_count = sum(
+                    visual == "technical-blank"
+                    for visual in renderer_visuals
+                )
         if not direct_renderer_page:
             page_select_count = 1 + padding_count
             terminator_count = 1
