@@ -4,26 +4,26 @@
   "status": "direct-renderer-first-screen-captured",
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "test_target_sha256": "ae8bf442022d6e1fec4c810bc6e3007fb5a6656ea41da319e6867697c1c99436",
-  "first_context_translation_test_build_sha256": "13d1c1a0263a47bb63a77ff84bdf67b549b46a025cf7544493c4dd9c8ac3844b",
-  "local_encoding_sha256": "f93d3eaba97582a2b70c4e2fea965dae4b94b56ce1cb58e5006e03a767c46ae9",
+  "first_context_translation_test_build_sha256": "4387339d523dfbb493f5b673c5f6617c72d24a38f68e07d5813d2676c00c8afd",
+  "local_encoding_sha256": "d16b428c8d3a5eca22c7307ffa7cbd16c568794b467e6100906d31ab323fd438",
   "capture_png_sha256": "0198cd23ee06119156a2f94c890f544e6d50598412e644a46e8d9aca40c9d5ee",
-  "captured_utc": "2026-08-02T18:23:18.049050Z",
+  "captured_utc": "2026-08-02T18:31:28.341962Z",
   "runtime_entry": {
     "selector": 2,
     "ordinal": 147
   },
   "renderer_route": "direct-observed-page",
-  "runtime_stage_request_id": "direct-renderer-slot-map-20260802-38",
+  "runtime_stage_request_id": "direct-renderer-slot-map-20260802-39",
   "direct_renderer_first_row_confirmed": true,
   "slot_alignment": {
     "sample_count": 5,
     "unique_desired_vram_match_count": 0,
-    "rendered_assignment_match_count": 0,
+    "rendered_assignment_match_count": 2,
     "observed_assignment_page": null,
     "constant_loader_base": null,
     "constant_write_slot_shift": null,
     "mapping_confirmed": false,
-    "route_evidence_count": 0,
+    "route_evidence_count": 2,
     "common_route_candidate_count": 0,
     "sample_route_candidates": [
       {
@@ -32,7 +32,13 @@
       },
       {
         "index": 1,
-        "routes": []
+        "routes": [
+          [
+            232,
+            95,
+            0
+          ]
+        ]
       },
       {
         "index": 2,
@@ -40,7 +46,18 @@
       },
       {
         "index": 3,
-        "routes": []
+        "routes": [
+          [
+            24,
+            96,
+            0
+          ],
+          [
+            30,
+            96,
+            0
+          ]
+        ]
       },
       {
         "index": 4,
