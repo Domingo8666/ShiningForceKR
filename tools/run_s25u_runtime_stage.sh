@@ -333,21 +333,43 @@ ready = (
 raise SystemExit(0 if ready else 1)
 PY
     then
-      direct_renderer_capture_output="$(
-        python tools/v5_1_first_context_consumer_trace.py \
-          --direct-renderer
-      )"
+      if command -v timeout >/dev/null 2>&1; then
+        direct_renderer_capture_output="$(
+          timeout -k 15s 180s \
+            python tools/v5_1_first_context_consumer_trace.py \
+            --direct-renderer 2>&1
+        )"
+      else
+        direct_renderer_capture_output="$(
+          python tools/v5_1_first_context_consumer_trace.py \
+            --direct-renderer 2>&1
+        )"
+      fi
     else
-      direct_renderer_capture_output="$(
-        python tools/v5_1_first_context_translation_encoding.py \
-          --proven-visible-page &&
-        python tools/v5_1_first_context_record_reinsertion.py &&
-        python tools/v5_1_first_context_translation_test_build.py &&
-        python tools/v5_1_first_context_direct_renderer_capture.py \
-          --proven-visible-page &&
-        python tools/v5_1_first_context_consumer_trace.py \
-          --direct-renderer
-      )"
+      if command -v timeout >/dev/null 2>&1; then
+        direct_renderer_capture_output="$(
+          python tools/v5_1_first_context_translation_encoding.py \
+            --proven-visible-page &&
+          python tools/v5_1_first_context_record_reinsertion.py &&
+          python tools/v5_1_first_context_translation_test_build.py &&
+          python tools/v5_1_first_context_direct_renderer_capture.py \
+            --proven-visible-page &&
+          timeout -k 15s 180s \
+            python tools/v5_1_first_context_consumer_trace.py \
+            --direct-renderer 2>&1
+        )"
+      else
+        direct_renderer_capture_output="$(
+          python tools/v5_1_first_context_translation_encoding.py \
+            --proven-visible-page &&
+          python tools/v5_1_first_context_record_reinsertion.py &&
+          python tools/v5_1_first_context_translation_test_build.py &&
+          python tools/v5_1_first_context_direct_renderer_capture.py \
+            --proven-visible-page &&
+          python tools/v5_1_first_context_consumer_trace.py \
+            --direct-renderer 2>&1
+        )"
+      fi
     fi
     direct_renderer_capture_status=$?
     if [ "$direct_renderer_capture_status" -eq 0 ]; then
@@ -401,7 +423,12 @@ PY
     if [ "$direct_renderer_capture_status" -ne 0 ]; then
       stage_status="$direct_renderer_capture_status"
       diagnostic_trigger=probe
-      record_stage_failure first-context-direct-renderer-capture
+      if [ "$direct_renderer_capture_status" -eq 124 ] || \
+        [ "$direct_renderer_capture_status" -eq 137 ]; then
+        record_stage_failure first-context-consumer-trace-timeout
+      else
+        record_stage_failure first-context-direct-renderer-capture
+      fi
     fi
   elif [ "$critical_path_focus" = "active-rom-cursor-reset" ]; then
     echo "SFKR critical path: resolving the ROM cursor reset and stride."
@@ -1455,7 +1482,11 @@ PY
       stage_status="$first_context_consumer_trace_status"
       diagnostic_trigger=probe
       first_context_consumer_trace_failure_stage=first-context-consumer-trace
-      case "$first_context_consumer_trace_output" in
+      if [ "$first_context_consumer_trace_status" -eq 124 ] || \
+        [ "$first_context_consumer_trace_status" -eq 137 ]; then
+        first_context_consumer_trace_failure_stage=first-context-consumer-trace-timeout
+      else
+        case "$first_context_consumer_trace_output" in
         *"consumer trace identity"*)
           first_context_consumer_trace_failure_stage=first-context-consumer-trace-identity
           ;;
@@ -1468,7 +1499,8 @@ PY
         *"fields do not match"*|*"counts do not match"*|*"is inconsistent"*)
           first_context_consumer_trace_failure_stage=first-context-consumer-trace-validation
           ;;
-      esac
+        esac
+      fi
       record_stage_failure "$first_context_consumer_trace_failure_stage"
     fi
   fi

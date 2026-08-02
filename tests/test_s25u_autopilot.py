@@ -171,6 +171,29 @@ class S25UAutopilotTests(unittest.TestCase):
             RUNTIME_STAGE,
         )
 
+    def test_direct_renderer_consumer_trace_has_its_own_wall_limit(self) -> None:
+        direct_branch = RUNTIME_STAGE.index(
+            'elif [ "$critical_path_focus" = "first-context-direct-renderer-capture" ]'
+        )
+        next_branch = RUNTIME_STAGE.index(
+            'elif [ "$critical_path_focus" = "active-rom-cursor-reset" ]',
+            direct_branch,
+        )
+        branch = RUNTIME_STAGE[direct_branch:next_branch]
+        self.assertIn("timeout -k 15s 180s", branch)
+        self.assertIn("first-context-consumer-trace-timeout", branch)
+
+    def test_consumer_trace_failures_can_always_write_a_diagnostic(self) -> None:
+        for stage in (
+            "first-context-consumer-trace",
+            "first-context-consumer-trace-timeout",
+            "first-context-consumer-trace-identity",
+            "first-context-consumer-trace-anchor",
+            "first-context-consumer-trace-input",
+            "first-context-consumer-trace-validation",
+        ):
+            self.assertIn(stage, RUNTIME_FAILURE_STAGES)
+
     def test_runtime_stage_batches_exact_no_change_rejections(self) -> None:
         self.assertIn("comparison_attempt_limit=8", RUNTIME_STAGE)
         self.assertIn(
