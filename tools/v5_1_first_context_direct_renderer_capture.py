@@ -169,10 +169,12 @@ def analyze_direct_renderer_slot_alignment(
     safe = {
         "sample_count": visible_count,
         "unique_desired_vram_match_count": unique_matches,
-        "constant_loader_base": next(iter(bases)) if len(bases) == 1 else None,
-        "constant_write_slot_shift": (
-            next(iter(shifts)) if len(shifts) == 1 else None
-        ),
+        # A partial constant is not actionable and schema v4 deliberately
+        # rejects it.  Publish both values only when the same base/shift pair
+        # explains every sampled glyph; otherwise keep the safe receipt
+        # explicitly unresolved and retain candidates in the local report.
+        "constant_loader_base": next(iter(bases)) if confirmed else None,
+        "constant_write_slot_shift": next(iter(shifts)) if confirmed else None,
         "mapping_confirmed": confirmed,
     }
     local = {
