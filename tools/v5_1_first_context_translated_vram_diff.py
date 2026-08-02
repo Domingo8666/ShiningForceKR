@@ -115,6 +115,9 @@ LOCAL_REPORT_PATH = Path(
 LOCAL_EVIDENCE_DIR = Path(
     "evidence/local/v5_1_first_context_translated_vram_diff"
 )
+LOCAL_FAILURE_STAGE_PATH = Path(
+    "reports/local/v5_1_first_context_translated_vram_failure_stage.txt"
+)
 COUNT_KEYS = {
     "vram_area_size",
     "changed_byte_count",
@@ -146,6 +149,11 @@ TOP_LEVEL_KEYS = {
 }
 FAST_FORWARD_TOOLS = {"set_fast_forward_speed", "toggle_fast_forward"}
 ANCHOR_TIMEOUT_SECONDS = 60.0
+
+
+def _record_failure_stage(path: Path, stage: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(stage + "\n", encoding="utf-8")
 
 
 def _is_sha256(value: object) -> bool:
@@ -364,7 +372,10 @@ def _capture_anchor_vram(
     *,
     rom_path: Path,
     evidence_path: Path,
+    failure_stage_path: Path,
+    phase_prefix: str,
 ) -> dict[str, object]:
+    _record_failure_stage(failure_stage_path, f"{phase_prefix}-initialize")
     client = McpStdioClient(_default_command())
     breakpoint_armed = False
     fast_forward_enabled = False
@@ -402,6 +413,7 @@ def _capture_anchor_vram(
         missing = sorted((REQUIRED_TOOLS | FAST_FORWARD_TOOLS) - tools)
         if missing:
             raise RuntimeError(f"Gearsystem MCP tools missing: {missing}")
+        _record_failure_stage(failure_stage_path, f"{phase_prefix}-media")
         client.call("load_media", {"file_path": str(rom_path)})
         media = client.call("get_media_info")
         if (
@@ -410,6 +422,7 @@ def _capture_anchor_vram(
             or int(media.get("rom_size", 0)) != rom_path.stat().st_size
         ):
             raise RuntimeError("Gearsystem did not load the exact comparison ROM")
+        _record_failure_stage(failure_stage_path, f"{phase_prefix}-anchor")
         client.call("debug_reset")
         client.call("debug_pause")
         if any(button is not None for _, button in ATTRACT_CAPTURE_SCHEDULE):
@@ -435,11 +448,13 @@ def _capture_anchor_vram(
             raise RuntimeError("confirmed dialogue anchor was not reached")
         _set_unlimited_fast_forward(client, False)
         fast_forward_enabled = False
+        _record_failure_stage(failure_stage_path, f"{phase_prefix}-context")
         initial_context, _ = _capture_runtime_initial_context(
             client,
             rom_size=rom_path.stat().st_size,
         )
         _step_frames_and_wait(client, POST_DECODE_CAPTURE_FRAMES)
+        _record_failure_stage(failure_stage_path, f"{phase_prefix}-vram")
         memory_areas = client.call("list_memory_areas")
         area = _select_vram_area(memory_areas)
         vram = _read_memory_area(
@@ -447,6 +462,7 @@ def _capture_anchor_vram(
             area_id=int(area["id"]),
             size=int(area["size"]),
         )
+        _record_failure_stage(failure_stage_path, f"{phase_prefix}-screenshot")
         png, screen_metadata = _parse_screenshot(client.call("get_screenshot"))
         evidence_path.parent.mkdir(parents=True, exist_ok=True)
         _write_bytes_atomic(evidence_path, png)
@@ -487,6 +503,12 @@ def _main() -> int:
         "build": root / TEST_BUILD_PATH,
         "encoding": root / LOCAL_ENCODING_PATH,
     }
+    failure_stage_path = root / LOCAL_FAILURE_STAGE_PATH
+    failure_stage_path.unlink(missing_ok=True)
+    _record_failure_stage(
+        failure_stage_path,
+        "first-context-translated-vram-identity",
+    )
     if not all(path.is_file() for path in paths.values()):
         if args.if_ready:
             print("First context translated VRAM diff is not ready")
@@ -513,15 +535,23 @@ def _main() -> int:
     baseline_capture = _capture_anchor_vram(
         rom_path=paths["baseline"],
         evidence_path=evidence_dir / "baseline.png",
+        failure_stage_path=failure_stage_path,
+        phase_prefix="first-context-translated-vram-baseline",
     )
     translated_capture = _capture_anchor_vram(
         rom_path=paths["test"],
         evidence_path=evidence_dir / "translated.png",
+        failure_stage_path=failure_stage_path,
+        phase_prefix="first-context-translated-vram-test",
     )
     baseline_vram = baseline_capture.pop("vram")
     translated_vram = translated_capture.pop("vram")
     assert isinstance(baseline_vram, bytes)
     assert isinstance(translated_vram, bytes)
+    _record_failure_stage(
+        failure_stage_path,
+        "first-context-translated-vram-analysis",
+    )
     counts, local_analysis = analyze_translated_vram_diff(
         baseline=baseline_vram,
         translated=translated_vram,
@@ -538,6 +568,10 @@ def _main() -> int:
     if not same_runtime or not same_context:
         raise RuntimeError("translated VRAM captures did not reach the same context")
 
+    _record_failure_stage(
+        failure_stage_path,
+        "first-context-translated-vram-artifact",
+    )
     captured_utc = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     local = {
         "artifact_kind": "local-v5-1-first-context-translated-vram-diff",
@@ -577,6 +611,7 @@ def _main() -> int:
         json.dumps(safe, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    failure_stage_path.unlink(missing_ok=True)
     print(f"SFKR first context translated VRAM diff: {safe_path}")
     return 0
 

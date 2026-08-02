@@ -188,6 +188,33 @@ class S25UAutopilotTests(unittest.TestCase):
             RUNTIME_STAGE.index("if decoder_selection_ready || group_selection_ready; then"),
         )
 
+    def test_translated_vram_failure_records_exact_bounded_phase(self) -> None:
+        token = (
+            "reports/local/"
+            "v5_1_first_context_translated_vram_failure_stage.txt"
+        )
+        self.assertIn(token, RUNTIME_STAGE)
+        for phase in (
+            "baseline-initialize",
+            "baseline-media",
+            "baseline-anchor",
+            "baseline-context",
+            "baseline-vram",
+            "baseline-screenshot",
+            "test-initialize",
+            "test-media",
+            "test-anchor",
+            "test-context",
+            "test-vram",
+            "test-screenshot",
+            "analysis",
+            "artifact",
+        ):
+            self.assertIn(
+                f"first-context-translated-vram-{phase}",
+                RUNTIME_STAGE,
+            )
+
     def test_autopilot_publishes_sanitized_active_rom_read_block(self) -> None:
         self.assertIn(
             "analysis/device/v5_1_latest_active_rom_read_block.json",

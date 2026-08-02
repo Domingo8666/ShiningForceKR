@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import copy
+from pathlib import Path
+import tempfile
 import unittest
 
 from tools.patch_io import sha256_bytes
 from tools.v5_1_first_context_translated_vram_diff import (
+    _record_failure_stage,
     analyze_translated_vram_diff,
     build_first_context_translated_vram_diff,
     validate_first_context_translated_vram_diff,
@@ -12,6 +15,13 @@ from tools.v5_1_first_context_translated_vram_diff import (
 
 
 class FirstContextTranslatedVramDiffTests(unittest.TestCase):
+    def test_records_only_the_current_bounded_failure_phase(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "failure-stage.txt"
+            _record_failure_stage(path, "baseline-anchor")
+            _record_failure_stage(path, "test-vram")
+            self.assertEqual(path.read_text(encoding="utf-8"), "test-vram\n")
+
     def test_confirms_changed_custom_glyph_tile(self) -> None:
         baseline = bytes(64)
         glyph = bytes(range(32))

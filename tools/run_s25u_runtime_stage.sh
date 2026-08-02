@@ -195,7 +195,33 @@ else
     if [ "$translated_vram_diff_status" -ne 0 ]; then
       stage_status="$translated_vram_diff_status"
       diagnostic_trigger=probe
-      record_stage_failure first-context-translated-vram-diff
+      translated_vram_failure_stage="first-context-translated-vram-diff"
+      translated_vram_failure_token="reports/local/v5_1_first_context_translated_vram_failure_stage.txt"
+      if [ -f "$translated_vram_failure_token" ]; then
+        candidate_failure_stage="$(
+          tr -d '\r\n' <"$translated_vram_failure_token"
+        )"
+        case "$candidate_failure_stage" in
+          first-context-translated-vram-identity|\
+          first-context-translated-vram-baseline-initialize|\
+          first-context-translated-vram-baseline-media|\
+          first-context-translated-vram-baseline-anchor|\
+          first-context-translated-vram-baseline-context|\
+          first-context-translated-vram-baseline-vram|\
+          first-context-translated-vram-baseline-screenshot|\
+          first-context-translated-vram-test-initialize|\
+          first-context-translated-vram-test-media|\
+          first-context-translated-vram-test-anchor|\
+          first-context-translated-vram-test-context|\
+          first-context-translated-vram-test-vram|\
+          first-context-translated-vram-test-screenshot|\
+          first-context-translated-vram-analysis|\
+          first-context-translated-vram-artifact)
+            translated_vram_failure_stage="$candidate_failure_stage"
+            ;;
+        esac
+      fi
+      record_stage_failure "$translated_vram_failure_stage"
     fi
   elif [ "$critical_path_focus" = "active-rom-cursor-reset" ]; then
     echo "SFKR critical path: resolving the ROM cursor reset and stride."
