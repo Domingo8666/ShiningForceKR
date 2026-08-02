@@ -41,6 +41,7 @@ class FirstContextTranslatedGlyphRouteTests(unittest.TestCase):
         self.assertEqual(counts["uniquely_aligned_match_count"], 1)
         self.assertEqual(counts["aligned_candidate_page_count"], 1)
         self.assertEqual(local["aligned_pages"], [240])
+        self.assertEqual(local["pairing_method"], "direct-vram-tile-hash-pairs")
         value = build_first_context_translated_glyph_route(
             baseline_target_sha256="1" * 64,
             test_target_sha256="2" * 64,
@@ -54,6 +55,39 @@ class FirstContextTranslatedGlyphRouteTests(unittest.TestCase):
         self.assertTrue(value["direct_glyph_slot_alignment_confirmed"])
         self.assertTrue(value["single_font_page_candidate_confirmed"])
         self.assertTrue(value["first_row_candidate_observed"])
+
+    def test_recovers_old_one_to_one_capture_without_rerunning_emulator(self) -> None:
+        hash_a = "a" * 64
+        hash_b = "b" * 64
+        local_vram = {
+            "analysis": {
+                "changed_custom_glyph_match_tiles": [0x35, 0x36],
+                "changed_custom_glyph_hashes": [hash_b, hash_a],
+            }
+        }
+        local_encoding = {
+            "character_assignments": [
+                {
+                    "row_index": 1,
+                    "page": 240,
+                    "symbol": 0x35,
+                    "tile_sha256": hash_a,
+                },
+                {
+                    "row_index": 1,
+                    "page": 240,
+                    "symbol": 0x36,
+                    "tile_sha256": hash_b,
+                },
+            ]
+        }
+        counts, local = analyze_translated_glyph_route(local_vram, local_encoding)
+        self.assertEqual(counts["match_with_slot_alignment_count"], 2)
+        self.assertEqual(counts["uniquely_aligned_match_count"], 2)
+        self.assertEqual(
+            local["pairing_method"],
+            "unique-slot-constrained-legacy-pairs",
+        )
 
     def test_rejects_an_inconsistent_safe_conclusion(self) -> None:
         counts = {

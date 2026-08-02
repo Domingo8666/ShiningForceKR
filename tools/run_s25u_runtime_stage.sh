@@ -237,12 +237,17 @@ else
   elif [ "$critical_path_focus" = "first-context-translated-glyph-route" ]; then
     echo "SFKR critical path: joining confirmed VRAM tiles to font slots."
     write_next_step \
-      "확인된 한글 VRAM 타일이 실제 글꼴 페이지와 어느 슬롯에서 연결되는지 한 번만 재현해 판정하고 있습니다."
-    python tools/v5_1_first_context_translated_vram_diff.py
+      "기존에 확인된 한글 VRAM 타일을 재사용해 실제 글꼴 페이지와 슬롯 연결을 판정하고 있습니다."
+    python tools/v5_1_first_context_translated_glyph_route.py
     translated_glyph_route_status=$?
-    if [ "$translated_glyph_route_status" -eq 0 ]; then
-      python tools/v5_1_first_context_translated_glyph_route.py
+    if [ "$translated_glyph_route_status" -ne 0 ]; then
+      echo "Existing private VRAM evidence is insufficient; refreshing it once."
+      python tools/v5_1_first_context_translated_vram_diff.py
       translated_glyph_route_status=$?
+      if [ "$translated_glyph_route_status" -eq 0 ]; then
+        python tools/v5_1_first_context_translated_glyph_route.py
+        translated_glyph_route_status=$?
+      fi
     fi
     if [ "$translated_glyph_route_status" -ne 0 ]; then
       stage_status="$translated_glyph_route_status"

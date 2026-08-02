@@ -101,9 +101,6 @@ def analyze_translated_glyph_route(
     assignments = local_encoding.get("character_assignments")
     if not isinstance(analysis, dict) or not isinstance(assignments, list):
         raise ValueError("translated glyph route local inputs are incomplete")
-    matches = analysis.get("changed_custom_glyph_matches")
-    if not isinstance(matches, list) or not matches:
-        raise ValueError("translated glyph route needs paired VRAM tile matches")
 
     normalized_assignments = []
     for assignment in assignments:
@@ -124,6 +121,52 @@ def analyze_translated_glyph_route(
         ):
             raise ValueError("translated glyph assignment fields are invalid")
         normalized_assignments.append(assignment)
+
+    matches = analysis.get("changed_custom_glyph_matches")
+    pairing_method = "direct-vram-tile-hash-pairs"
+    if not isinstance(matches, list) or not matches:
+        legacy_tiles = analysis.get("changed_custom_glyph_match_tiles")
+        legacy_hashes = analysis.get("changed_custom_glyph_hashes")
+        if (
+            not isinstance(legacy_tiles, list)
+            or not legacy_tiles
+            or not isinstance(legacy_hashes, list)
+            or len(legacy_tiles) != len(legacy_hashes)
+            or len(set(legacy_tiles)) != len(legacy_tiles)
+            or len(set(legacy_hashes)) != len(legacy_hashes)
+        ):
+            raise ValueError("translated glyph route needs paired VRAM tile matches")
+        legacy_hash_set = set(legacy_hashes)
+        inferred_matches = []
+        for tile_index in legacy_tiles:
+            if (
+                not isinstance(tile_index, int)
+                or isinstance(tile_index, bool)
+                or tile_index < 0
+            ):
+                raise ValueError("legacy translated VRAM tile index is invalid")
+            candidate_hashes = {
+                str(assignment["tile_sha256"])
+                for assignment in normalized_assignments
+                if assignment["tile_sha256"] in legacy_hash_set
+                and int(assignment["symbol"]) == (tile_index & 0xFF)
+            }
+            if len(candidate_hashes) != 1:
+                raise ValueError(
+                    "legacy translated VRAM pairs are not uniquely recoverable"
+                )
+            inferred_matches.append(
+                {
+                    "tile_index": tile_index,
+                    "tile_sha256": candidate_hashes.pop(),
+                }
+            )
+        if len({item["tile_sha256"] for item in inferred_matches}) != len(
+            legacy_hashes
+        ):
+            raise ValueError("legacy translated VRAM pairs are not one-to-one")
+        matches = inferred_matches
+        pairing_method = "unique-slot-constrained-legacy-pairs"
 
     local_matches = []
     all_candidates = []
@@ -185,6 +228,7 @@ def analyze_translated_glyph_route(
         "matches": local_matches,
         "aligned_pages": sorted(aligned_pages),
         "aligned_rows": sorted(aligned_rows),
+        "pairing_method": pairing_method,
     }
     return counts, local
 
