@@ -84,6 +84,8 @@ class FirstContextTranslatedGlyphRouteTests(unittest.TestCase):
         counts, local = analyze_translated_glyph_route(local_vram, local_encoding)
         self.assertEqual(counts["match_with_slot_alignment_count"], 2)
         self.assertEqual(counts["uniquely_aligned_match_count"], 2)
+        self.assertEqual(counts["complete_page_candidate_count"], 1)
+        self.assertEqual(counts["maximum_page_candidate_glyph_count"], 2)
         self.assertEqual(
             local["pairing_method"],
             "slot-constrained-legacy-candidates",
@@ -99,6 +101,12 @@ class FirstContextTranslatedGlyphRouteTests(unittest.TestCase):
             "aligned_candidate_page_count": 0,
             "aligned_candidate_row_count": 0,
             "first_row_aligned_candidate_count": 0,
+            "matched_hash_with_assignment_count": 0,
+            "assignment_candidate_page_count": 0,
+            "assignment_candidate_row_count": 0,
+            "complete_page_candidate_count": 0,
+            "maximum_page_candidate_glyph_count": 0,
+            "first_row_assignment_candidate_count": 0,
         }
         value = build_first_context_translated_glyph_route(
             baseline_target_sha256="1" * 64,

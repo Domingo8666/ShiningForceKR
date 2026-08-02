@@ -45,7 +45,7 @@ except ImportError:  # pragma: no cover - direct script execution
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-translated-glyph-route"
 LOCAL_ARTIFACT_KIND = "local-v5-1-first-context-translated-glyph-route"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_translated_glyph_route.json"
 )
@@ -61,6 +61,12 @@ COUNT_KEYS = {
     "aligned_candidate_page_count",
     "aligned_candidate_row_count",
     "first_row_aligned_candidate_count",
+    "matched_hash_with_assignment_count",
+    "assignment_candidate_page_count",
+    "assignment_candidate_row_count",
+    "complete_page_candidate_count",
+    "maximum_page_candidate_glyph_count",
+    "first_row_assignment_candidate_count",
 }
 TOP_LEVEL_KEYS = {
     "artifact_kind",
@@ -155,6 +161,7 @@ def analyze_translated_glyph_route(
         pairing_method = "slot-constrained-legacy-candidates"
 
     local_matches = []
+    observed_hashes = set()
     all_candidates = []
     aligned_candidates = []
     aligned_pages = set()
@@ -183,6 +190,7 @@ def analyze_translated_glyph_route(
             candidate_hash_set = {str(item) for item in candidate_hashes}
         else:
             raise ValueError("translated VRAM glyph match hashes are invalid")
+        observed_hashes.update(candidate_hash_set)
         candidates = [
             assignment
             for assignment in normalized_assignments
@@ -208,6 +216,28 @@ def analyze_translated_glyph_route(
             }
         )
 
+    observed_assignments = [
+        assignment
+        for assignment in normalized_assignments
+        if assignment["tile_sha256"] in observed_hashes
+    ]
+    assigned_hashes = {
+        str(assignment["tile_sha256"])
+        for assignment in observed_assignments
+    }
+    page_hashes: dict[int, set[str]] = {}
+    for assignment in observed_assignments:
+        page_hashes.setdefault(int(assignment["page"]), set()).add(
+            str(assignment["tile_sha256"])
+        )
+    maximum_page_glyph_count = max(
+        (len(hashes) for hashes in page_hashes.values()),
+        default=0,
+    )
+    complete_page_count = sum(
+        hashes == observed_hashes for hashes in page_hashes.values()
+    )
+
     counts = {
         "confirmed_vram_match_count": len(matches),
         "assignment_candidate_count": len(all_candidates),
@@ -219,12 +249,25 @@ def analyze_translated_glyph_route(
         "first_row_aligned_candidate_count": sum(
             int(item["row_index"]) == 1 for item in aligned_candidates
         ),
+        "matched_hash_with_assignment_count": len(assigned_hashes),
+        "assignment_candidate_page_count": len(page_hashes),
+        "assignment_candidate_row_count": len(
+            {int(item["row_index"]) for item in observed_assignments}
+        ),
+        "complete_page_candidate_count": complete_page_count,
+        "maximum_page_candidate_glyph_count": maximum_page_glyph_count,
+        "first_row_assignment_candidate_count": sum(
+            int(item["row_index"]) == 1 for item in observed_assignments
+        ),
     }
     local = {
         "matches": local_matches,
         "aligned_pages": sorted(aligned_pages),
         "aligned_rows": sorted(aligned_rows),
         "pairing_method": pairing_method,
+        "assignment_candidate_pages": {
+            str(page): sorted(hashes) for page, hashes in sorted(page_hashes.items())
+        },
     }
     return counts, local
 
@@ -245,7 +288,13 @@ def build_first_context_translated_glyph_route(
         == analysis["confirmed_vram_match_count"]
     )
     single_page = aligned and analysis["aligned_candidate_page_count"] == 1
-    first_row = analysis["first_row_aligned_candidate_count"] > 0
+    if not aligned:
+        single_page = analysis["complete_page_candidate_count"] == 1
+    first_row = (
+        analysis["first_row_aligned_candidate_count"] > 0
+        if aligned
+        else analysis["first_row_assignment_candidate_count"] > 0
+    )
     value = {
         "artifact_kind": ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
@@ -271,7 +320,11 @@ def build_first_context_translated_glyph_route(
         "next_checkpoint": (
             "capture-changed-glyph-vdp-source-page"
             if aligned
-            else "repair-translated-glyph-slot-alignment"
+            else (
+                "rebuild-first-context-on-observed-font-page"
+                if single_page
+                else "capture-changed-glyph-vdp-source-page"
+            )
         ),
     }
     validate_first_context_translated_glyph_route(value)
@@ -317,7 +370,13 @@ def validate_first_context_translated_glyph_route(value: dict[str, object]) -> N
         == counts["confirmed_vram_match_count"]
     )
     single_page = aligned and counts["aligned_candidate_page_count"] == 1
-    first_row = counts["first_row_aligned_candidate_count"] > 0
+    if not aligned:
+        single_page = counts["complete_page_candidate_count"] == 1
+    first_row = (
+        counts["first_row_aligned_candidate_count"] > 0
+        if aligned
+        else counts["first_row_assignment_candidate_count"] > 0
+    )
     if (
         value["direct_glyph_slot_alignment_confirmed"] is not aligned
         or value["single_font_page_candidate_confirmed"] is not single_page
@@ -333,7 +392,11 @@ def validate_first_context_translated_glyph_route(value: dict[str, object]) -> N
         != (
             "capture-changed-glyph-vdp-source-page"
             if aligned
-            else "repair-translated-glyph-slot-alignment"
+            else (
+                "rebuild-first-context-on-observed-font-page"
+                if single_page
+                else "capture-changed-glyph-vdp-source-page"
+            )
         )
         or value["local_payload_policy"]
         != "pages-symbols-rows-characters-tile-hashes-and-matches-local-only"
