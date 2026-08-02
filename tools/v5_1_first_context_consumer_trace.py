@@ -147,6 +147,7 @@ LOCAL_REPORT_PATH = Path(
 MAX_VECTOR_READ_HITS = 20
 MAX_NONVECTOR_HITS_PER_CONTEXT = 64
 MAX_DIRECT_RECORD_ANCHOR_HITS = 16
+FAST_VECTOR_TRACE_LINE_COUNT = 32
 FIRST_VECTOR_TIMEOUT_SECONDS = 4.0
 NEXT_VECTOR_TIMEOUT_SECONDS = 0.75
 VECTOR_LOGICAL_BASES = (0x4100, 0x8100)
@@ -692,6 +693,51 @@ def _fast_slot1_bank(
     return slot1
 
 
+def _fast_vector_sample(
+    client: McpStdioClient,
+    *,
+    ram_area_id: int,
+    mapper_offset: int,
+    rom_size: int,
+) -> tuple[dict[str, object] | None, dict[str, object], dict[str, object]]:
+    """Capture only mapper, registers, and a short trace for one vector read."""
+
+    mapper_payload = client.call(
+        "read_memory",
+        {
+            "area": ram_area_id,
+            "offset": f"{mapper_offset:04X}",
+            "size": 4,
+        },
+    )
+    _, slot0, slot1, slot2 = _parse_mapper(mapper_payload.get("data"))
+    z80 = client.call("get_z80_status")
+    trace = client.call(
+        "get_trace_log",
+        {"count": FAST_VECTOR_TRACE_LINE_COUNT},
+    )
+    state: dict[str, object] = {
+        "pc_after": 0,
+        "physical_pc_after": 0,
+        "slot0_bank": slot0,
+        "slot1_bank": slot1,
+        "slot2_bank": slot2,
+    }
+    evidence: dict[str, object] = {
+        "mapper": mapper_payload,
+        "z80": z80,
+        "trace": trace,
+    }
+    sample = _last_rom_read(state, evidence, rom_size)
+    safe_state = {
+        "slot0_bank": slot0,
+        "slot1_bank": slot1,
+        "slot2_bank": slot2,
+        "trace_entries": int(trace.get("count", len(trace.get("lines", [])))),
+    }
+    return sample, safe_state, evidence
+
+
 def resolve_record_length_anchor(
     *,
     group_extract: dict[str, object],
@@ -978,7 +1024,12 @@ def _capture_contexts(
                 )
                 if status.get("at_breakpoint") is not True:
                     break
-                state, evidence = _capture_state(client)
+                sample, state, evidence = _fast_vector_sample(
+                    client,
+                    ram_area_id=ram_area_id,
+                    mapper_offset=mapper_offset,
+                    rom_size=rom_size,
+                )
                 trace = evidence.get("trace")
                 if isinstance(trace, dict):
                     lines = trace.get("lines")
@@ -990,7 +1041,6 @@ def _capture_contexts(
                                 for line in lines[:remaining]
                                 if isinstance(line, str)
                             )
-                sample = _last_rom_read(state, evidence, rom_size)
                 physical = (
                     sample.get("physical_file_offset")
                     if sample is not None

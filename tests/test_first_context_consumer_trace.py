@@ -10,6 +10,7 @@ from tools.sfgfc_huffman import CANDIDATE_END_SYMBOL
 from tools.v5_1_first_context_consumer_trace import (
     _fast_entry_coordinates,
     _fast_slot1_bank,
+    _fast_vector_sample,
     analyze_vector_contexts_from_trace,
     build_first_context_consumer_trace,
     extract_vector_contexts_from_trace,
@@ -81,6 +82,46 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
                     {"area": 3, "offset": "1FFC", "size": 4},
                 )
             ],
+        )
+
+    def test_fast_vector_sample_uses_three_mcp_reads(self) -> None:
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def call(
+                self,
+                method: str,
+                payload: dict[str, object] | None = None,
+            ) -> dict[str, object]:
+                self.calls.append(method)
+                if method == "read_memory":
+                    return {"data": "00 02 20 06"}
+                if method == "get_z80_status":
+                    return {"IX": "0000", "IY": "0000"}
+                return {
+                    "count": 1,
+                    "lines": [
+                        "20:5000 A:00 BC:0000 DE:0000 HL:4100 "
+                        "SP:DFF0  7E"
+                    ],
+                }
+
+        client = FakeClient()
+        sample, state, evidence = _fast_vector_sample(  # type: ignore[arg-type]
+            client,
+            ram_area_id=3,
+            mapper_offset=0x1FFC,
+            rom_size=0x100000,
+        )
+        self.assertIsNotNone(sample)
+        assert sample is not None
+        self.assertEqual(sample["physical_file_offset"], HUFFMAN_VECTOR_START)
+        self.assertEqual(state["slot1_bank"], 0x20)
+        self.assertEqual(evidence["trace"]["count"], 1)
+        self.assertEqual(
+            client.calls,
+            ["read_memory", "get_z80_status", "get_trace_log"],
         )
 
     def test_vector_breakpoints_stay_armed_across_samples(self) -> None:
