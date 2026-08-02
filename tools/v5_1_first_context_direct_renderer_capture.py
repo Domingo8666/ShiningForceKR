@@ -15,7 +15,9 @@ try:
     from .v5_1_png_pixels import decode_png_rgba
     from .v5_1_first_context_translated_vram_diff import _capture_anchor_vram
     from .v5_1_first_context_translation_encoding import (
+        DIRECT_RENDERER_GLYPH_LAST_SYMBOL,
         FONT_PAGE_COUNT,
+        FONT_GLYPH_FIRST_SYMBOL,
         LOCAL_REPORT_PATH as LOCAL_ENCODING_PATH,
         direct_renderer_font_tile_offset,
     )
@@ -28,7 +30,9 @@ except ImportError:  # pragma: no cover - direct script execution
     from v5_1_png_pixels import decode_png_rgba
     from v5_1_first_context_translated_vram_diff import _capture_anchor_vram
     from v5_1_first_context_translation_encoding import (
+        DIRECT_RENDERER_GLYPH_LAST_SYMBOL,
         FONT_PAGE_COUNT,
+        FONT_GLYPH_FIRST_SYMBOL,
         LOCAL_REPORT_PATH as LOCAL_ENCODING_PATH,
         direct_renderer_font_tile_offset,
     )
@@ -39,8 +43,9 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-direct-renderer-capture"
-SCHEMA_VERSION = 7
-ROUTE_SCHEMA_VERSIONS = {6, SCHEMA_VERSION}
+SCHEMA_VERSION = 8
+ROUTE_SCHEMA_VERSIONS = {6, 7, SCHEMA_VERSION}
+NUMERIC_SAMPLE_SCHEMA_VERSIONS = {7, SCHEMA_VERSION}
 NAME_TABLE_BASE = 0x3800
 NAME_TABLE_WIDTH = 32
 # Gearsystem returns the cropped 160x144 Game Gear viewport.  Its upper-left
@@ -248,6 +253,24 @@ def analyze_direct_renderer_slot_alignment(
             }
         )
 
+    rom_font_tiles_by_hash: dict[str, list[tuple[int, int]]] = {}
+    if isinstance(rom, bytes):
+        for page in range(FONT_PAGE_COUNT):
+            for physical_symbol in range(
+                FONT_GLYPH_FIRST_SYMBOL,
+                DIRECT_RENDERER_GLYPH_LAST_SYMBOL + 1,
+            ):
+                font_offset = direct_renderer_font_tile_offset(
+                    page, physical_symbol
+                )
+                font_end = font_offset + VRAM_TILE_BYTES
+                if font_end > len(rom):
+                    continue
+                digest = sha256(rom[font_offset:font_end]).hexdigest()
+                rom_font_tiles_by_hash.setdefault(digest, []).append(
+                    (page, physical_symbol)
+                )
+
     # (font page, VRAM loader base, physical write slot - decoded symbol)
     common_routes: set[tuple[int, int, int]] | None = None
     route_evidence_count = 0
@@ -277,7 +300,9 @@ def analyze_direct_renderer_slot_alignment(
         route_tiles = screen_tiles or [rendered_tile]
         rendered_assignments = []
         routes: set[tuple[int, int, int]] = set()
-        rom_route_candidates: list[tuple[int, int, int]] = []
+        rom_route_candidates: set[tuple[int, int, int]] = set()
+        rom_font_candidates: set[tuple[int, int]] = set()
+        rom_offsets: set[int] = set()
         route_tile_digests = []
         for route_tile in route_tiles:
             route_start = route_tile * VRAM_TILE_BYTES
@@ -295,20 +320,30 @@ def analyze_direct_renderer_slot_alignment(
                 )
                 for candidate in tile_assignments
             )
-        # A garbled screen can legitimately contain glyphs that are not part of
-        # the translated assignment set.  Compare the rendered tile against the
-        # same decoded symbol on every complete ROM font page.  A page/base pair
-        # that survives several different symbols identifies the page actually
-        # loaded by the renderer without exposing ROM bytes or glyph identities.
+        # A garbled screen can legitimately contain a different physical glyph
+        # than its decoded symbol.  Compare each displayed tile against every
+        # physical slot on every complete ROM font page.  This distinguishes a
+        # wrong page from a decoded-symbol-to-physical-slot transform without
+        # exposing ROM bytes or glyph identities in the safe receipt.
         if isinstance(rom, bytes):
             for route_tile, route_digest in zip(route_tiles, route_tile_digests):
-                for page in range(FONT_PAGE_COUNT):
-                    font_offset = direct_renderer_font_tile_offset(page, symbol)
-                    font_end = font_offset + VRAM_TILE_BYTES
-                    if font_end > len(rom):
-                        continue
-                    if sha256(rom[font_offset:font_end]).hexdigest() == route_digest:
-                        rom_route_candidates.append((page, route_tile - symbol, 0))
+                font_candidates = rom_font_tiles_by_hash.get(route_digest, [])
+                rom_font_candidates.update(font_candidates)
+                rom_route_candidates.update(
+                    (
+                        page,
+                        route_tile - physical_symbol,
+                        physical_symbol - symbol,
+                    )
+                    for page, physical_symbol in font_candidates
+                )
+                route_start = route_tile * VRAM_TILE_BYTES
+                route_bytes = vram[route_start:route_start + VRAM_TILE_BYTES]
+                if any(route_bytes):
+                    offset = rom.find(route_bytes)
+                    while offset >= 0:
+                        rom_offsets.add(offset)
+                        offset = rom.find(route_bytes, offset + 1)
             routes.update(rom_route_candidates)
         if routes:
             rendered_assignment_matches += 1
@@ -354,6 +389,10 @@ def analyze_direct_renderer_slot_alignment(
                 "rom_route_candidates": [
                     list(route) for route in sorted(rom_route_candidates)
                 ],
+                "rom_font_candidates": [
+                    list(candidate) for candidate in sorted(rom_font_candidates)
+                ],
+                "rom_offsets": sorted(rom_offsets),
                 "route_candidates": [list(route) for route in sorted(routes)],
             }
         )
@@ -387,6 +426,10 @@ def analyze_direct_renderer_slot_alignment(
                 "screen_tiles": [
                     int(tile) for tile in sample["screenshot_tile_candidates"]
                 ],
+                "font_tile_match_count": len(sample["rom_font_candidates"]),
+                "font_tiles": sample["rom_font_candidates"][:512],
+                "rom_match_count": len(sample["rom_offsets"]),
+                "rom_offsets": sample["rom_offsets"][:512],
                 "routes": sample["route_candidates"],
             }
             for sample in samples
@@ -415,7 +458,7 @@ def validate_first_context_direct_renderer_capture(
         (schema_version == 2 and set(value) == TOP_LEVEL_KEYS_V2)
         or (schema_version == 3 and set(value) == TOP_LEVEL_KEYS)
         or (
-            schema_version in {4, 5, 6, SCHEMA_VERSION}
+            schema_version in {4, 5, 6, 7, SCHEMA_VERSION}
             and set(value) == TOP_LEVEL_KEYS_V4
         )
     ):
@@ -423,7 +466,7 @@ def validate_first_context_direct_renderer_capture(
     runtime_entry = value.get("runtime_entry")
     if (
         value.get("artifact_kind") != ARTIFACT_KIND
-        or schema_version not in {2, 3, 4, 5, 6, SCHEMA_VERSION}
+        or schema_version not in {2, 3, 4, 5, 6, 7, SCHEMA_VERSION}
         or value.get("status") != "direct-renderer-first-screen-captured"
         or value.get("renderer_route")
         not in {"direct-observed-page", "proven-visible-page"}
@@ -449,7 +492,7 @@ def validate_first_context_direct_renderer_capture(
         or value.get("translation_build_eligible") is not False
     ):
         raise ValueError("direct renderer capture is inconsistent")
-    if schema_version in {3, 6, SCHEMA_VERSION} and (
+    if schema_version in {3, 6, 7, SCHEMA_VERSION} and (
         not isinstance(value.get("runtime_stage_request_id"), str)
         or re.fullmatch(
             r"[a-z0-9][a-z0-9._-]{0,63}",
@@ -543,20 +586,40 @@ def validate_first_context_direct_renderer_capture(
             expected_sample_keys = (
                 {"index", "routes"}
                 if schema_version == 6
-                else {
-                    "index",
-                    "encoded_symbol",
-                    "rendered_tile",
-                    "screen_tiles",
-                    "routes",
-                }
+                else (
+                    {
+                        "index",
+                        "encoded_symbol",
+                        "rendered_tile",
+                        "screen_tiles",
+                        "routes",
+                    }
+                    if schema_version == 7
+                    else {
+                        "index",
+                        "encoded_symbol",
+                        "rendered_tile",
+                        "screen_tiles",
+                        "font_tile_match_count",
+                        "font_tiles",
+                        "rom_match_count",
+                        "rom_offsets",
+                        "routes",
+                    }
+                )
+            )
+            font_tiles = (
+                sample.get("font_tiles") if isinstance(sample, dict) else None
+            )
+            rom_offsets = (
+                sample.get("rom_offsets") if isinstance(sample, dict) else None
             )
             if (
                 not isinstance(sample, dict)
                 or set(sample) != expected_sample_keys
                 or sample.get("index") != expected_index
                 or (
-                    schema_version == SCHEMA_VERSION
+                    schema_version in NUMERIC_SAMPLE_SCHEMA_VERSIONS
                     and (
                         not isinstance(sample.get("encoded_symbol"), int)
                         or isinstance(sample.get("encoded_symbol"), bool)
@@ -571,6 +634,42 @@ def validate_first_context_direct_renderer_capture(
                             or isinstance(tile, bool)
                             or not 0 <= tile <= 0x1FF
                             for tile in screen_tiles
+                        )
+                    )
+                )
+                or (
+                    schema_version == SCHEMA_VERSION
+                    and (
+                        not isinstance(sample.get("font_tile_match_count"), int)
+                        or isinstance(sample.get("font_tile_match_count"), bool)
+                        or not 0 <= sample["font_tile_match_count"] <= 0x10000
+                        or not isinstance(font_tiles, list)
+                        or len(font_tiles) > 512
+                        or len(font_tiles) > sample["font_tile_match_count"]
+                        or any(
+                            not isinstance(candidate, list)
+                            or len(candidate) != 2
+                            or not isinstance(candidate[0], int)
+                            or isinstance(candidate[0], bool)
+                            or not 0 <= candidate[0] < FONT_PAGE_COUNT
+                            or not isinstance(candidate[1], int)
+                            or isinstance(candidate[1], bool)
+                            or not FONT_GLYPH_FIRST_SYMBOL
+                            <= candidate[1]
+                            <= DIRECT_RENDERER_GLYPH_LAST_SYMBOL
+                            for candidate in font_tiles
+                        )
+                        or not isinstance(sample.get("rom_match_count"), int)
+                        or isinstance(sample.get("rom_match_count"), bool)
+                        or not 0 <= sample["rom_match_count"] <= 0x1000000
+                        or not isinstance(rom_offsets, list)
+                        or len(rom_offsets) > 512
+                        or len(rom_offsets) > sample["rom_match_count"]
+                        or any(
+                            not isinstance(offset, int)
+                            or isinstance(offset, bool)
+                            or offset < 0
+                            for offset in rom_offsets
                         )
                     )
                 )

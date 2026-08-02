@@ -85,16 +85,19 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
     def test_resolves_loaded_rom_page_when_rendered_glyphs_are_unassigned(self) -> None:
         vram = bytearray(0x4000)
         symbols = (0x10, 0x11, 0x12)
+        physical_symbols = tuple(symbol + 3 for symbol in symbols)
         page = 7
         loader_base = 0x100
         tiles = [bytes([0x31 + index]) * 32 for index in range(len(symbols))]
-        rom_size = direct_renderer_font_tile_offset(page, symbols[-1]) + 32
+        rom_size = direct_renderer_font_tile_offset(page, physical_symbols[-1]) + 32
         rom = bytearray(rom_size)
-        for index, (symbol, tile) in enumerate(zip(symbols, tiles)):
-            rendered_tile = loader_base + symbol
+        for index, (symbol, physical_symbol, tile) in enumerate(
+            zip(symbols, physical_symbols, tiles)
+        ):
+            rendered_tile = loader_base + physical_symbol
             vram_start = rendered_tile * 32
             vram[vram_start:vram_start + 32] = tile
-            font_start = direct_renderer_font_tile_offset(page, symbol)
+            font_start = direct_renderer_font_tile_offset(page, physical_symbol)
             rom[font_start:font_start + 32] = tile
             name_offset = NAME_TABLE_BASE + 2 * (
                 FIRST_DIALOGUE_TEXT_ROW * NAME_TABLE_WIDTH
@@ -121,7 +124,11 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
         self.assertTrue(safe["mapping_confirmed"])
         self.assertEqual(safe["observed_assignment_page"], page)
         self.assertEqual(safe["constant_loader_base"], loader_base)
-        self.assertEqual(safe["constant_write_slot_shift"], 0)
+        self.assertEqual(safe["constant_write_slot_shift"], 3)
+        self.assertEqual(
+            [sample["font_tiles"] for sample in safe["sample_route_candidates"]],
+            [[[page, physical_symbol]] for physical_symbol in physical_symbols],
+        )
         self.assertTrue(all(sample["rom_route_candidates"] for sample in local["samples"]))
 
     def test_resolves_rom_page_from_cropped_screenshot_tiles(self) -> None:
@@ -329,7 +336,7 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
     def test_accepts_rendered_assignment_capture_receipt(self) -> None:
         value = {
             "artifact_kind": "sanitized-v5-1-first-context-direct-renderer-capture",
-            "schema_version": 7,
+            "schema_version": 8,
             "status": "direct-renderer-first-screen-captured",
             "baseline_target_sha256": "a" * 64,
             "test_target_sha256": "b" * 64,
@@ -357,6 +364,10 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
                         "encoded_symbol": 0x10 + index,
                         "rendered_tile": 0x113 + index,
                         "screen_tiles": [0x113 + index],
+                        "font_tile_match_count": 1,
+                        "font_tiles": [[44, 0x13 + index]],
+                        "rom_match_count": 1,
+                        "rom_offsets": [0x1000 + index * 32],
                         "routes": [[44, 256, 3]],
                     }
                     for index in range(5)
@@ -368,6 +379,17 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
             "next_checkpoint": "rebuild-first-dialogue-with-observed-slot-shift",
         }
         validate_first_context_direct_renderer_capture(value)
+        numeric_legacy = copy.deepcopy(value)
+        numeric_legacy["schema_version"] = 7
+        for sample in numeric_legacy["slot_alignment"]["sample_route_candidates"]:
+            for key in (
+                "font_tile_match_count",
+                "font_tiles",
+                "rom_match_count",
+                "rom_offsets",
+            ):
+                del sample[key]
+        validate_first_context_direct_renderer_capture(numeric_legacy)
         legacy = copy.deepcopy(value)
         legacy["schema_version"] = 6
         legacy["slot_alignment"]["sample_route_candidates"] = [

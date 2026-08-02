@@ -299,7 +299,7 @@ value = json.loads(path.read_text(encoding="utf-8"))
 alignment = value.get("slot_alignment")
 raise SystemExit(
     0
-    if value.get("schema_version") in {6, 7}
+    if value.get("schema_version") in {6, 7, 8}
     and isinstance(alignment, dict)
     and alignment.get("mapping_confirmed") is True
     else 1
@@ -360,7 +360,7 @@ validate_first_context_translation_encoding(published_encoding)
 local_rows = local_encoding.get("rows")
 ready = (
     sha256_file(paths["rom"]) == build["test_target_sha256"]
-    and capture.get("schema_version") in {6, 7}
+    and capture.get("schema_version") in {6, 7, 8}
     and capture.get("runtime_stage_request_id") == sys.argv[1]
     and capture["test_target_sha256"] == build["test_target_sha256"]
     and capture["renderer_route"] == "direct-observed-page"
@@ -440,7 +440,7 @@ trace_ready = (
     == capture_sha256
 )
 ready = (
-    capture.get("schema_version") in {6, 7}
+    capture.get("schema_version") in {6, 7, 8}
     and capture.get("runtime_stage_request_id") == sys.argv[1]
     and capture["test_target_sha256"] == build["test_target_sha256"]
     and (not mapping_confirmed or trace_ready)
