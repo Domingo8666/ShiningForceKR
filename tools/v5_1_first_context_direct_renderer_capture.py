@@ -14,7 +14,9 @@ try:
     from .patch_io import sha256_file
     from .v5_1_first_context_translated_vram_diff import _capture_anchor_vram
     from .v5_1_first_context_translation_encoding import (
+        FONT_PAGE_COUNT,
         LOCAL_REPORT_PATH as LOCAL_ENCODING_PATH,
+        direct_renderer_font_tile_offset,
     )
     from .v5_1_first_context_translation_test_build import (
         PUBLISH_RELATIVE_PATH as TEST_BUILD_PATH,
@@ -24,7 +26,9 @@ except ImportError:  # pragma: no cover - direct script execution
     from patch_io import sha256_file
     from v5_1_first_context_translated_vram_diff import _capture_anchor_vram
     from v5_1_first_context_translation_encoding import (
+        FONT_PAGE_COUNT,
         LOCAL_REPORT_PATH as LOCAL_ENCODING_PATH,
+        direct_renderer_font_tile_offset,
     )
     from v5_1_first_context_translation_test_build import (
         PUBLISH_RELATIVE_PATH as TEST_BUILD_PATH,
@@ -113,6 +117,7 @@ SLOT_ALIGNMENT_KEYS = SLOT_ALIGNMENT_KEYS_V5 | {
 def analyze_direct_renderer_slot_alignment(
     vram: bytes,
     encoding: dict[str, object],
+    rom: bytes | None = None,
 ) -> tuple[dict[str, object], dict[str, object]]:
     """Join rendered name-table slots to the intended first-row glyph tiles."""
 
@@ -209,6 +214,21 @@ def analyze_direct_renderer_slot_alignment(
             )
             for candidate in rendered_assignments
         }
+        # A garbled screen can legitimately contain glyphs that are not part of
+        # the translated assignment set.  Compare the rendered tile against the
+        # same decoded symbol on every complete ROM font page.  A page/base pair
+        # that survives several different symbols identifies the page actually
+        # loaded by the renderer without exposing ROM bytes or glyph identities.
+        rom_route_candidates = []
+        if isinstance(rom, bytes):
+            for page in range(FONT_PAGE_COUNT):
+                font_offset = direct_renderer_font_tile_offset(page, symbol)
+                font_end = font_offset + VRAM_TILE_BYTES
+                if font_end > len(rom):
+                    continue
+                if sha256(rom[font_offset:font_end]).hexdigest() == rendered_digest:
+                    rom_route_candidates.append((page, rendered_tile - symbol, 0))
+            routes.update(rom_route_candidates)
         if routes:
             rendered_assignment_matches += 1
         else:
@@ -245,6 +265,9 @@ def analyze_direct_renderer_slot_alignment(
                 "rendered_tile_sha256": rendered_digest,
                 "desired_tiles": desired_tiles,
                 "rendered_assignments": rendered_assignments,
+                "rom_route_candidates": [
+                    list(route) for route in sorted(rom_route_candidates)
+                ],
                 "route_candidates": [list(route) for route in sorted(routes)],
             }
         )
@@ -497,7 +520,11 @@ def main() -> int:
     if not isinstance(vram, bytes):
         raise ValueError("direct renderer VRAM capture is invalid")
     slot_alignment, local_slot_alignment = (
-        analyze_direct_renderer_slot_alignment(vram, encoding)
+        analyze_direct_renderer_slot_alignment(
+            vram,
+            encoding,
+            paths["rom"].read_bytes(),
+        )
     )
     local_slot_path = root / LOCAL_SLOT_ALIGNMENT_PATH
     local_slot_path.parent.mkdir(parents=True, exist_ok=True)

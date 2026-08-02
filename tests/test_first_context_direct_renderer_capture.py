@@ -16,6 +16,9 @@ from tools.v5_1_first_context_direct_renderer_capture import (
     analyze_direct_renderer_slot_alignment,
     validate_first_context_direct_renderer_capture,
 )
+from tools.v5_1_first_context_translation_encoding import (
+    direct_renderer_font_tile_offset,
+)
 
 
 class FirstContextDirectRendererCaptureTests(unittest.TestCase):
@@ -70,6 +73,48 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
         self.assertEqual(safe["observed_assignment_page"], 21)
         self.assertTrue(safe["mapping_confirmed"])
         self.assertEqual(len(local["samples"]), 2)
+
+    def test_resolves_loaded_rom_page_when_rendered_glyphs_are_unassigned(self) -> None:
+        vram = bytearray(0x4000)
+        symbols = (0x10, 0x11, 0x12)
+        page = 7
+        loader_base = 0x100
+        tiles = [bytes([0x31 + index]) * 32 for index in range(len(symbols))]
+        rom_size = direct_renderer_font_tile_offset(page, symbols[-1]) + 32
+        rom = bytearray(rom_size)
+        for index, (symbol, tile) in enumerate(zip(symbols, tiles)):
+            rendered_tile = loader_base + symbol
+            vram_start = rendered_tile * 32
+            vram[vram_start:vram_start + 32] = tile
+            font_start = direct_renderer_font_tile_offset(page, symbol)
+            rom[font_start:font_start + 32] = tile
+            name_offset = NAME_TABLE_BASE + 2 * (
+                FIRST_DIALOGUE_TEXT_ROW * NAME_TABLE_WIDTH
+                + FIRST_DIALOGUE_TEXT_COLUMN
+                + index
+            )
+            vram[name_offset:name_offset + 2] = rendered_tile.to_bytes(2, "little")
+        encoding = {
+            "rows": [{"direct_renderer_proof": True, "visible_symbol_count": 3}],
+            "character_assignments": [
+                {
+                    "row_index": 1,
+                    "visual_kind": "approved-target-character",
+                    "page": 21,
+                    "symbol": symbol,
+                    "tile_sha256": "f" * 64,
+                }
+                for symbol in symbols
+            ],
+        }
+        safe, local = analyze_direct_renderer_slot_alignment(
+            bytes(vram), encoding, bytes(rom)
+        )
+        self.assertTrue(safe["mapping_confirmed"])
+        self.assertEqual(safe["observed_assignment_page"], page)
+        self.assertEqual(safe["constant_loader_base"], loader_base)
+        self.assertEqual(safe["constant_write_slot_shift"], 0)
+        self.assertTrue(all(sample["rom_route_candidates"] for sample in local["samples"]))
 
     def test_keeps_partial_slot_alignment_out_of_safe_receipt(self) -> None:
         vram = bytearray(0x4000)
