@@ -3,8 +3,8 @@
   "schema_version": 1,
   "status": "group-context-partially-narrows",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "source_group_extract_sha256": "748b46373e5af42a8a5ddfc4793505876ffb0c3e7add97ffacbe414f508450ab",
-  "captured_utc": "2026-08-02T11:10:49.617147Z",
+  "source_group_extract_sha256": "8b959fe27e307f90f158d6f2acfd7f2705f3ddc6f52066a2ff78894ef8b83d44",
+  "captured_utc": "2026-08-02T11:14:27.732973Z",
   "group": {
     "selector": 2,
     "record_count": 148
@@ -12,16 +12,16 @@
   "context_test": {
     "total_candidate_matches": 4271,
     "records_with_one_candidate": 0,
-    "best_context_exact_entry_count": 118,
-    "maximum_candidates_per_record": 51,
-    "available_context_count": 51,
+    "records_with_zero_candidates": 0,
     "resolved_entry_count": 0,
+    "best_context_exact_entry_count": 118,
+    "common_context_count": 0,
     "best_context_tie_count": 1,
     "canonical_context_exact_entry_count": 77,
-    "common_context_count": 0,
-    "records_with_multiple_candidates": 148,
+    "maximum_candidates_per_record": 51,
+    "available_context_count": 51,
     "remaining_unresolved_count": 148,
-    "records_with_zero_candidates": 0
+    "records_with_multiple_candidates": 148
   },
   "local_payload_policy": "contexts-encoded-bytes-symbols-codepoints-and-text-local-only",
   "translation_build_eligible": false,
