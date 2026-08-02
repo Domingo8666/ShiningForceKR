@@ -131,6 +131,26 @@ class S25UAutopilotTests(unittest.TestCase):
             RUNTIME_STAGE,
         )
 
+    def test_direct_renderer_trace_reuses_identical_execution_inputs(self) -> None:
+        self.assertIn(
+            "PUBLISH_RELATIVE_PATH as ENCODING_PATH",
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
+            'capture["test_target_sha256"] == build["test_target_sha256"]',
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
+            'capture["local_encoding_sha256"]\n'
+            '    == published_encoding["local_encoding_sha256"]',
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
+            'capture["local_encoding_sha256"]\n'
+            '    == sha256_file(paths["encoding"])',
+            RUNTIME_STAGE,
+        )
+
     def test_runtime_stage_batches_exact_no_change_rejections(self) -> None:
         self.assertIn("comparison_attempt_limit=8", RUNTIME_STAGE)
         self.assertIn(

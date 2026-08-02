@@ -297,6 +297,8 @@ from tools.v5_1_first_context_direct_renderer_capture import (
 )
 from tools.v5_1_first_context_translation_encoding import (
     LOCAL_REPORT_PATH as LOCAL_ENCODING_PATH,
+    PUBLISH_RELATIVE_PATH as ENCODING_PATH,
+    validate_first_context_translation_encoding,
 )
 from tools.v5_1_first_context_translation_test_build import (
     PUBLISH_RELATIVE_PATH as BUILD_PATH,
@@ -307,19 +309,24 @@ paths = {
     "capture": CAPTURE_PATH,
     "rom": TEST_ROM_PATH,
     "encoding": LOCAL_ENCODING_PATH,
+    "published_encoding": ENCODING_PATH,
     "build": BUILD_PATH,
 }
 if any(not path.is_file() for path in paths.values()):
     raise SystemExit(1)
 capture = json.loads(paths["capture"].read_text(encoding="utf-8"))
 build = json.loads(paths["build"].read_text(encoding="utf-8"))
+published_encoding = json.loads(
+    paths["published_encoding"].read_text(encoding="utf-8")
+)
 validate_first_context_direct_renderer_capture(capture)
 validate_first_context_translation_test_build(build)
+validate_first_context_translation_encoding(published_encoding)
 ready = (
     sha256_file(paths["rom"]) == build["test_target_sha256"]
     and capture["test_target_sha256"] == build["test_target_sha256"]
-    and capture["first_context_translation_test_build_sha256"]
-    == sha256_file(paths["build"])
+    and capture["local_encoding_sha256"]
+    == published_encoding["local_encoding_sha256"]
     and capture["local_encoding_sha256"]
     == sha256_file(paths["encoding"])
 )
