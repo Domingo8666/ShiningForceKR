@@ -233,7 +233,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
     def test_prefers_the_previously_visible_page_for_first_row(self) -> None:
         with patch(
             "tools.v5_1_first_context_translation_encoding."
-            "solve_bounded_length_row_visual_symbols",
+            "solve_exact_length_row_visual_symbols",
             return_value=([0x02, 0xC9], 0, [0x02]),
         ) as solver:
             pages = select_row_font_pages(
@@ -252,7 +252,7 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
     def test_marks_proven_visible_page_route_on_first_row(self) -> None:
         with patch(
             "tools.v5_1_first_context_translation_encoding."
-            "solve_bounded_length_row_visual_symbols",
+            "solve_exact_length_row_visual_symbols",
             return_value=([0x02, 0xC9], 0, [0x02]),
         ):
             _, rows, _ = build_single_page_symbol_rows(
@@ -268,12 +268,16 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
             )
         self.assertTrue(rows[0]["proven_visible_page_route"])
 
-    def test_proven_page_select_route_fills_fixed_slots_with_blank_tiles(self) -> None:
-        symbols = [0x5F, 0x11, 0x02, 0x03, 0x04, 0x05, 0xC9]
+    def test_proven_page_select_route_fills_the_record_bit_budget(self) -> None:
+        symbols = [
+            0x5F, 0x11, 0x02,
+            0x5F, 0x11, 0x02,
+            0x03, 0xC9,
+        ]
         with patch(
             "tools.v5_1_first_context_translation_encoding."
-            "solve_fixed_count_row_visual_symbols",
-            return_value=(symbols, 0, [0x03, 0x04, 0x05]),
+            "solve_exact_length_row_visual_symbols",
+            return_value=(symbols, 1, [0x03]),
         ):
             counts, rows, assignments = build_single_page_symbol_rows(
                 trees={},
@@ -288,12 +292,13 @@ class FirstContextTranslationEncodingTests(unittest.TestCase):
                 proven_first_row_page=89,
             )
         self.assertEqual(rows[0]["symbols"], symbols)
-        self.assertEqual(rows[0]["page_select_count"], 1)
-        self.assertEqual(rows[0]["fixed_count_padding_symbol_count"], 0)
-        self.assertEqual(counts["planned_page_select_count"], 1)
+        self.assertEqual(rows[0]["page_select_count"], 2)
+        self.assertEqual(rows[0]["runtime_symbol_count"], len(symbols))
+        self.assertEqual(rows[0]["fixed_count_padding_symbol_count"], 3)
+        self.assertEqual(counts["planned_page_select_count"], 2)
         self.assertEqual(
             [item["visual"] for item in assignments[0]],
-            ["text:가", "technical-blank", "technical-blank"],
+            ["text:가"],
         )
         self.assertEqual({item["page"] for item in assignments[0]}, {89})
 

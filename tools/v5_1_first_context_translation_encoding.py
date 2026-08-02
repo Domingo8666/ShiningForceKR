@@ -3834,22 +3834,6 @@ def select_row_font_pages(
             used_pages.update(direct_renderer_pages)
             continue
         route_visuals = visuals
-        if (
-            row_index == 0
-            and proven_first_row_page is not None
-            and constraint is not None
-            and "original_symbol_count" in constraint
-        ):
-            renderer_glyph_count = int(constraint["original_symbol_count"]) - 4
-            if len(visuals) > renderer_glyph_count:
-                raise ValueError("proven visible page has insufficient glyph slots")
-            route_visuals = [
-                *visuals,
-                *(
-                    "technical-blank"
-                    for _ in range(renderer_glyph_count - len(visuals))
-                ),
-            ]
         ACTIVE_FAILURE_DETAIL = (
             "solve-proven-exact-row"
             if row_index < len(PROVEN_ROW_FONT_PAGES)
@@ -3927,7 +3911,18 @@ def select_row_font_pages(
                         visuals=visuals,
                     )
                 else:
-                    if "original_symbol_count" in constraint:
+                    if row_index == 0 and proven_first_row_page is not None:
+                        solve_exact_length_row_visual_symbols(
+                            trees=trees,
+                            initial_context=int(constraint["initial_context"]),
+                            target_bits=(
+                                int(constraint["original_record_length_bytes"])
+                                * 8
+                            ),
+                            page=page,
+                            visuals=route_visuals,
+                        )
+                    elif "original_symbol_count" in constraint:
                         fixed_control_symbols = (
                             int(constraint["original_symbol_count"])
                             - len(route_visuals)
@@ -4161,23 +4156,6 @@ def build_single_page_symbol_rows(
             raise ValueError("first context row font page group is invalid")
         renderer_visuals = visuals
         direct_renderer_page = False
-        if (
-            expected_index == 1
-            and proven_first_row_page is not None
-            and not direct_renderer_first_row
-            and constraint is not None
-            and "original_symbol_count" in constraint
-        ):
-            renderer_glyph_count = int(constraint["original_symbol_count"]) - 4
-            if len(visuals) > renderer_glyph_count:
-                raise ValueError("proven visible page has insufficient glyph slots")
-            renderer_visuals = [
-                *visuals,
-                *(
-                    "technical-blank"
-                    for _ in range(renderer_glyph_count - len(visuals))
-                ),
-            ]
         if direct_renderer_first_row and expected_index == 1:
             if constraint is None:
                 raise ValueError("direct renderer proof requires a runtime row")
@@ -4242,15 +4220,32 @@ def build_single_page_symbol_rows(
                 int(constraint["original_record_length_bytes"]) * 8
             )
             route_capacity_bits = target_bits
+            exact_storage_first_row = (
+                expected_index == 1 and proven_first_row_page is not None
+            )
             ACTIVE_FAILURE_DETAIL = (
-                "solve-proven-bounded-row"
+                "solve-proven-exact-row"
+                if exact_storage_first_row
+                else "solve-proven-bounded-row"
                 if expected_index <= len(PROVEN_ROW_FONT_PAGES)
                 else "solve-extra-single-page-row"
             )
             if len(row_pages) == 1:
                 page = row_pages[0]
                 try:
-                    if "original_symbol_count" in constraint:
+                    if exact_storage_first_row:
+                        (
+                            symbols,
+                            padding_count,
+                            assignments,
+                        ) = solve_exact_length_row_visual_symbols(
+                            trees=trees,
+                            initial_context=initial_context,
+                            target_bits=target_bits,
+                            page=page,
+                            visuals=renderer_visuals,
+                        )
+                    elif "original_symbol_count" in constraint:
                         (
                             symbols,
                             padding_count,
@@ -4348,8 +4343,10 @@ def build_single_page_symbol_rows(
                         target_bits=target_bits,
                         candidate_bits=candidate_bits,
                     )
-            runtime_symbol_count = int(
-                constraint.get("original_symbol_count", len(symbols))
+            runtime_symbol_count = (
+                len(symbols)
+                if exact_storage_first_row
+                else int(constraint.get("original_symbol_count", len(symbols)))
             )
             visible_page_select_count = 0
             selected_page: int | None = None
