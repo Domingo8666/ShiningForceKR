@@ -736,10 +736,13 @@ def _capture_contexts(
         arm_entry()
         _set_unlimited_fast_forward(client, True)
         fast_forward_enabled = True
-        anchor_timeout = max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 60.0)
+        anchor_timeout = max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 120.0)
+        anchor_hit_limit = MAX_REJECTED_TARGET_HITS * len(
+            ATTRACT_CAPTURE_SCHEDULE
+        )
         anchor_reached = False
         anchor_state: dict[str, object] | None = None
-        for _ in range(MAX_REJECTED_TARGET_HITS):
+        for _ in range(anchor_hit_limit):
             status = _continue_until_breakpoint(client, anchor_timeout)
             if status.get("at_breakpoint") is not True:
                 break

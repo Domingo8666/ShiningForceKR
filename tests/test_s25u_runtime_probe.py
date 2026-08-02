@@ -257,6 +257,19 @@ class S25URuntimeProbeTests(unittest.TestCase):
         )
         self.assertEqual(receipt["mcp_method"], "debug_get_status")
 
+    def test_runtime_failure_receipt_classifies_consumer_anchor_failure(
+        self,
+    ) -> None:
+        receipt = _runtime_failure_receipt(
+            "candidate-probe",
+            RuntimeError("consumer trace confirmed anchor was not reached"),
+            None,
+        )
+        self.assertEqual(
+            receipt["failure_kind"],
+            "runtime-sequence-anchor-missing",
+        )
+
     def test_watch_ranges_require_trace_schema_five(self) -> None:
         plan = {
             "schema_version": 5,

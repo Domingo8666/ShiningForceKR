@@ -1180,6 +1180,8 @@ def _runtime_failure_kind(error: Exception) -> str:
     message = str(error)
     if message == "runtime sequence confirmed anchor was not reached":
         return "runtime-sequence-anchor-missing"
+    if message == "consumer trace confirmed anchor was not reached":
+        return "runtime-sequence-anchor-missing"
     if message in {
         "runtime sequence registers are missing",
         "runtime sequence registers are invalid",

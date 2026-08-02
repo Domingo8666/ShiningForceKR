@@ -43,7 +43,13 @@ class FirstContextConsumerTraceTests(unittest.TestCase):
         self.assertIn("_set_unlimited_fast_forward(client, True)", TRACE_SOURCE)
         self.assertIn("_set_unlimited_fast_forward(client, False)", TRACE_SOURCE)
         self.assertIn(
-            "max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 60.0)",
+            "max(ATTRACT_CAPTURE_TIMEOUT_SECONDS, 120.0)",
+            TRACE_SOURCE,
+        )
+        self.assertIn(
+            "MAX_REJECTED_TARGET_HITS * len(\n"
+            "            ATTRACT_CAPTURE_SCHEDULE\n"
+            "        )",
             TRACE_SOURCE,
         )
 
