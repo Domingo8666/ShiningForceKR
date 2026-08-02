@@ -4,12 +4,12 @@
   "status": "one-unresolved-boundary-selected",
   "target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "source_register_trace_sha256": "0f172e70a48edac1ac849469ea5709d94ccc350bb3cc6d365aefe9d4d1d70040",
-  "selected_stage": "first-context-translated-glyph-route",
-  "confirmed_boundary": "translated-custom-glyph-vram",
-  "blocked_boundary": "translated-vram-tile-to-font-assignment-route",
-  "selection_reason": "current-translated-vram-ready-current-glyph-slot-route-missing",
-  "generated_utc": "2026-08-02T12:04:18.711144Z",
+  "selected_stage": "first-context-direct-renderer-capture",
+  "confirmed_boundary": "translated-custom-glyph-observed-font-page",
+  "blocked_boundary": "observed-font-page-to-correct-first-dialogue-screen",
+  "selection_reason": "single-observed-font-page-ready-direct-renderer-screen-missing",
+  "generated_utc": "2026-08-02T12:08:47.933861Z",
   "baseline_script_bytes_unchanged": true,
   "translation_build_eligible": false,
-  "next_checkpoint": "join-translated-vram-tiles-to-private-font-assignments"
+  "next_checkpoint": "rebuild-first-dialogue-without-inline-page-select"
 }
