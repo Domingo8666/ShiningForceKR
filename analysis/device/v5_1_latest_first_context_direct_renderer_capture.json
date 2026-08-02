@@ -4,72 +4,39 @@
   "status": "direct-renderer-first-screen-captured",
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
   "test_target_sha256": "ae8bf442022d6e1fec4c810bc6e3007fb5a6656ea41da319e6867697c1c99436",
-  "first_context_translation_test_build_sha256": "f4fb2b4e0329c2c3572d20c8ecc9c8c741eb6788bccb994c02b456c6420f366b",
-  "local_encoding_sha256": "67bfc07b6ac3b6fdf7dd65b1ac600ff84602a99a5e44c9c1f4dde7ea86dd8fa6",
+  "first_context_translation_test_build_sha256": "831c8ff73a8d5977c3e4691129f5668021d50d66df1b6a5d331d89f863e45761",
+  "local_encoding_sha256": "4e4e2c6a0eabdc2986e443a179024f6ccfd8ec815d8e16cdae8543c4f7e2d12e",
   "capture_png_sha256": "0198cd23ee06119156a2f94c890f544e6d50598412e644a46e8d9aca40c9d5ee",
-  "captured_utc": "2026-08-02T18:07:29.497860Z",
+  "captured_utc": "2026-08-02T18:16:41.105234Z",
   "runtime_entry": {
     "selector": 2,
     "ordinal": 147
   },
   "renderer_route": "direct-observed-page",
-  "runtime_stage_request_id": "direct-renderer-slot-map-20260802-36",
+  "runtime_stage_request_id": "direct-renderer-slot-map-20260802-37",
   "direct_renderer_first_row_confirmed": true,
   "slot_alignment": {
     "sample_count": 5,
     "unique_desired_vram_match_count": 0,
-    "rendered_assignment_match_count": 3,
+    "rendered_assignment_match_count": 0,
     "observed_assignment_page": null,
     "constant_loader_base": null,
     "constant_write_slot_shift": null,
     "mapping_confirmed": false,
-    "route_evidence_count": 3,
+    "route_evidence_count": 0,
     "common_route_candidate_count": 0,
     "sample_route_candidates": [
       {
         "index": 0,
-        "routes": [
-          [
-            89,
-            -7,
-            -88
-          ],
-          [
-            89,
-            -6,
-            -89
-          ]
-        ]
+        "routes": []
       },
       {
         "index": 1,
-        "routes": [
-          [
-            89,
-            -7,
-            5
-          ],
-          [
-            89,
-            -6,
-            4
-          ]
-        ]
+        "routes": []
       },
       {
         "index": 2,
-        "routes": [
-          [
-            89,
-            -7,
-            -14
-          ],
-          [
-            89,
-            -6,
-            -15
-          ]
-        ]
+        "routes": []
       },
       {
         "index": 3,
