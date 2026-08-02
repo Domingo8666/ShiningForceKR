@@ -43,6 +43,7 @@ from tools.v5_1_critical_path import (
     READ_BLOCK_STAGE,
     SOURCE_ROLE_STAGE,
     TRANSLATED_VRAM_DIFF_STAGE,
+    TRANSLATED_GLYPH_ROUTE_STAGE,
     select_critical_path,
     validate_critical_path,
 )

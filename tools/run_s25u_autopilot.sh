@@ -250,6 +250,7 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_active_rom_lookup_index_producer.json|\
     analysis/device/v5_1_latest_active_rom_path_scope.json|\
     analysis/device/v5_1_latest_first_context_translated_vram_diff.json|\
+    analysis/device/v5_1_latest_first_context_translated_glyph_route.json|\
     analysis/device/v5_1_latest_active_rom_cursor_reset.json|\
     analysis/device/v5_1_latest_critical_path.json|\
     analysis/device/v5_1_latest_visible_unicode_mapping.json|\

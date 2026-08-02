@@ -234,6 +234,21 @@ else
       fi
       record_stage_failure "$translated_vram_failure_stage"
     fi
+  elif [ "$critical_path_focus" = "first-context-translated-glyph-route" ]; then
+    echo "SFKR critical path: joining confirmed VRAM tiles to font slots."
+    write_next_step \
+      "확인된 한글 VRAM 타일이 실제 글꼴 페이지와 어느 슬롯에서 연결되는지 한 번만 재현해 판정하고 있습니다."
+    python tools/v5_1_first_context_translated_vram_diff.py
+    translated_glyph_route_status=$?
+    if [ "$translated_glyph_route_status" -eq 0 ]; then
+      python tools/v5_1_first_context_translated_glyph_route.py
+      translated_glyph_route_status=$?
+    fi
+    if [ "$translated_glyph_route_status" -ne 0 ]; then
+      stage_status="$translated_glyph_route_status"
+      diagnostic_trigger=probe
+      record_stage_failure first-context-translated-glyph-route
+    fi
   elif [ "$critical_path_focus" = "active-rom-cursor-reset" ]; then
     echo "SFKR critical path: resolving the ROM cursor reset and stride."
     write_next_step \

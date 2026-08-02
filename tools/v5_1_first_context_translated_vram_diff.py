@@ -211,6 +211,13 @@ def analyze_translated_vram_diff(
         for index in changed_tiles
         if translated_hashes[index] in custom_glyph_hashes
     ]
+    changed_match_records = [
+        {
+            "tile_index": index,
+            "tile_sha256": translated_hashes[index],
+        }
+        for index in changed_matches
+    ]
     matched_hashes = {translated_hashes[index] for index in changed_matches}
     safe_counts = {
         "vram_area_size": len(translated),
@@ -226,6 +233,7 @@ def analyze_translated_vram_diff(
         "changed_tiles": changed_tiles,
         "test_custom_glyph_match_tiles": all_matches,
         "changed_custom_glyph_match_tiles": changed_matches,
+        "changed_custom_glyph_matches": changed_match_records,
         "changed_custom_glyph_hashes": sorted(matched_hashes),
     }
     return safe_counts, local

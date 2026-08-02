@@ -213,6 +213,7 @@ RUNTIME_FAILURE_STAGES = {
     "first-context-translated-vram-test-screenshot",
     "first-context-translated-vram-analysis",
     "first-context-translated-vram-artifact",
+    "first-context-translated-glyph-route",
     "active-register-rom-source-initialize",
     "active-register-rom-source-load-media",
     "active-register-rom-source-watch",

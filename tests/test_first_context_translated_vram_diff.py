@@ -42,6 +42,10 @@ class FirstContextTranslatedVramDiffTests(unittest.TestCase):
         self.assertEqual(counts["changed_tile_count"], 1)
         self.assertEqual(counts["changed_custom_glyph_tile_match_count"], 1)
         self.assertEqual(local["changed_custom_glyph_match_tiles"], [1])
+        self.assertEqual(
+            local["changed_custom_glyph_matches"],
+            [{"tile_index": 1, "tile_sha256": sha256_bytes(glyph)}],
+        )
 
         value = build_first_context_translated_vram_diff(
             baseline_target_sha256="a" * 64,
