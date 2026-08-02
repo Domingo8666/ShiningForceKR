@@ -112,6 +112,49 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
         self.assertLess(record_write.allowed_end_exclusive, next_length_offset + 1)
         self.assertEqual(record_write.after, b"\xAA\xBB\xCC\xDD")
 
+    def test_compacts_only_the_confirmed_terminal_record(self) -> None:
+        target, records = self._target_with_group()
+        length_offset, payload_start, payload_end = records[-1]
+        writes, font_count, record_count = build_translation_writes(
+            target=target,
+            font_overlay=b"PATCHEOF",
+            reinsertion_rows=[{
+                "review_index": 1,
+                "target_selector": 7,
+                "target_ordinal": 3,
+                "alias_keys": [(7, 3)],
+                "length_offset": length_offset,
+                "payload_start": payload_start,
+                "payload_end": payload_end,
+                "encoded_payload_hex": "AABB",
+                "encoded_payload_bits": 16,
+                "fits_in_place": True,
+                "compact_terminal_record": True,
+            }],
+            group_selector=7,
+            group_physical_start=40,
+            declared_group_entry_count=4,
+        )
+        self.assertEqual(font_count, 0)
+        self.assertEqual(record_count, 1)
+        self.assertEqual(len(writes), 2)
+        length_write = next(write for write in writes if "length" in write.writer)
+        payload_write = next(
+            write for write in writes
+            if write.writer == "first-context-record-001"
+        )
+        self.assertEqual(length_write.offset, length_offset)
+        self.assertEqual(length_write.before, b"\x03")
+        self.assertEqual(length_write.after, b"\x02")
+        self.assertEqual(payload_write.offset, payload_start)
+        self.assertEqual(payload_write.after, b"\xAA\xBB")
+        self.assertEqual(payload_write.allowed_end_exclusive, payload_end)
+        self.assertTrue(all(
+            not (write.offset <= payload_start + 2 < write.offset + len(write.after))
+            for write in writes
+        ))
+        self.assertEqual(target[payload_start + 2], 0x3A)
+
     def test_preserves_unused_bits_after_a_short_terminated_prefix(self) -> None:
         target, records = self._target_with_group()
         length_offset, payload_start, payload_end = records[0]

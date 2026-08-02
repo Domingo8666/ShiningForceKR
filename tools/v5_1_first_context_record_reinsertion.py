@@ -266,6 +266,11 @@ def build_reinsertion_rows(
                     target[payload_start:payload_end]
                 ),
                 "encoded_payload_sha256": sha256_bytes(payload),
+                **(
+                    {"compact_terminal_record": True}
+                    if encoding_row.get("compact_terminal_record") is True
+                    else {}
+                ),
             }
         )
     return rows

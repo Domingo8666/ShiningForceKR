@@ -27,6 +27,7 @@ try:
     )
     from .v5_1_confirmed_group_extract import (
         PUBLISH_RELATIVE_PATH as GROUP_EXTRACT_PATH,
+        parse_length_prefixed_group,
         validate_confirmed_group_extract,
     )
     from .v5_1_first_context_record_reinsertion import (
@@ -61,6 +62,7 @@ except ImportError:  # pragma: no cover - direct script execution
     )
     from v5_1_confirmed_group_extract import (
         PUBLISH_RELATIVE_PATH as GROUP_EXTRACT_PATH,
+        parse_length_prefixed_group,
         validate_confirmed_group_extract,
     )
     from v5_1_first_context_record_reinsertion import (
@@ -195,6 +197,19 @@ def build_translation_writes(
         raise ValueError("first context group identity is invalid")
     record_write_count = 0
     seen_payload_ranges = set()
+    group_records = parse_length_prefixed_group(
+        target,
+        physical_start=group_physical_start,
+        entry_count=declared_group_entry_count,
+    )
+    terminal_record = group_records[-1]
+    compact_rows = [
+        row
+        for row in reinsertion_rows
+        if row.get("compact_terminal_record") is True
+    ]
+    if len(compact_rows) > 1:
+        raise ValueError("first context terminal compaction row is not unique")
     ordered_rows = sorted(
         reinsertion_rows,
         key=lambda item: int(item["length_offset"]),
@@ -229,6 +244,35 @@ def build_translation_writes(
             or len(encoded) != (encoded_bits + 7) // 8
         ):
             raise ValueError("first context record write bit length is invalid")
+        compact_terminal_record = row.get("compact_terminal_record") is True
+        if compact_terminal_record:
+            original_length = end - start
+            if (
+                row.get("target_selector") != group_selector
+                or row.get("target_ordinal") != declared_group_entry_count - 1
+                or length_offset != terminal_record["length_offset"]
+                or start != terminal_record["payload_start"]
+                or end != terminal_record["payload_end"]
+                or original_length != terminal_record["record_length_bytes"]
+                or not 1 <= len(encoded) < original_length
+            ):
+                raise ValueError(
+                    "first context compact row is not the confirmed terminal record"
+                )
+            writes.append(
+                ExpectedWrite(
+                    writer=(
+                        f"first-context-record-length-"
+                        f"{int(row['review_index']):03d}"
+                    ),
+                    purpose="first-context-terminal-record-compaction",
+                    offset=length_offset,
+                    before=bytes((original_length,)),
+                    after=bytes((len(encoded),)),
+                    allowed_start=length_offset,
+                    allowed_end_exclusive=length_offset + 1,
+                )
+            )
         payload_range = (start, end)
         if payload_range in seen_payload_ranges:
             raise ValueError("first context record write is duplicated")
@@ -325,13 +369,23 @@ def verify_translation_build(
             bool,
         ):
             raise ValueError("first context build expected symbols are missing")
+        compact_terminal_record = (
+            reinsertion.get("compact_terminal_record") is True
+        )
+        expected_record_length = (
+            expected_bytes if compact_terminal_record else original_length
+        )
         encoded_lengths_exact += int(expected_bits == target_bits)
         length_fields_verified += int(
             baseline[length_offset] == original_length
-            and test[length_offset] == original_length
+            and test[length_offset] == expected_record_length
             and expected_bytes == int(reinsertion["encoded_payload_bytes"])
             and expected_bytes == (expected_bits + 7) // 8
             and expected_bits <= original_length * 8
+            and (
+                not compact_terminal_record
+                or expected_record_length < original_length
+            )
         )
         length_fields_changed += int(
             test[length_offset] != baseline[length_offset]
@@ -344,7 +398,7 @@ def verify_translation_build(
                 payload_start,
                 runtime_symbol_count,
                 initial_symbol=initial_context,
-                max_bytes=original_length,
+                max_bytes=expected_record_length,
             )
         except PatchError:
             failures += 1
@@ -423,7 +477,7 @@ def build_first_context_translation_test_build(
         == verification["context_entry_count"]
         and verification["record_length_field_verified_count"]
         == verification["context_entry_count"]
-        and verification["record_length_changed_count"] == 0
+        and verification["record_length_changed_count"] <= 1
         and verification["decoded_roundtrip_entry_count"]
         == verification["context_entry_count"]
         and verification["decoded_failure_entry_count"] == 0
@@ -511,7 +565,7 @@ def validate_first_context_translation_test_build(
         == verification["context_entry_count"]
         and verification["record_length_field_verified_count"]
         == verification["context_entry_count"]
-        and verification["record_length_changed_count"] == 0
+        and verification["record_length_changed_count"] <= 1
         and verification["decoded_roundtrip_entry_count"]
         == verification["context_entry_count"]
         and verification["decoded_failure_entry_count"] == 0
