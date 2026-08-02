@@ -8,7 +8,7 @@
   "confirmed_boundary": "approved-translation-to-static-test-rom",
   "blocked_boundary": "static-test-rom-to-translated-glyph-vram",
   "selection_reason": "current-rom-path-is-nontext-capture-baseline-test-vram-difference",
-  "generated_utc": "2026-08-02T21:52:41.497606Z",
+  "generated_utc": "2026-08-02T22:01:18.167008Z",
   "baseline_script_bytes_unchanged": true,
   "translation_build_eligible": false,
   "next_checkpoint": "capture-translated-test-rom-vram-difference"
