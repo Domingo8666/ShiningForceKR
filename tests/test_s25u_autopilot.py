@@ -88,6 +88,16 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn('if [ "$interval" -lt 30 ]', SCRIPT)
         self.assertIn('if [ "$interval" -lt 30 ]', MANAGER)
 
+    def test_background_work_yields_to_android_input(self) -> None:
+        self.assertIn('SFKR_AUTOPILOT_NICE:-15', SCRIPT)
+        self.assertIn('renice -n "$nice_level" -p "$$"', SCRIPT)
+        self.assertIn("git config --local pack.threads 1", SCRIPT)
+        self.assertIn("git config --local index.threads 1", SCRIPT)
+        self.assertIn("git config --local checkout.workers 1", SCRIPT)
+        self.assertIn('SFKR_AUTOPILOT_NICE:-15', MANAGER)
+        self.assertIn('nice -n "$nice_level" bash', MANAGER)
+        self.assertIn("백그라운드 우선순위: nice $nice_level", MANAGER)
+
     def test_runtime_stage_batches_exact_no_change_rejections(self) -> None:
         self.assertIn("comparison_attempt_limit=8", RUNTIME_STAGE)
         self.assertIn(

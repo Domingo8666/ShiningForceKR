@@ -4,6 +4,7 @@ set -uo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_rom="${SFKR_SOURCE_ROM:-/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg}"
 interval="${SFKR_AUTOPILOT_INTERVAL:-30}"
+nice_level="${SFKR_AUTOPILOT_NICE:-15}"
 state_dir="${SFKR_AUTOPILOT_STATE_DIR:-$HOME/.local/state/shiningforcekr}"
 status_file="$root/reports/AUTOPILOT_STATUS.txt"
 action="status"
@@ -109,6 +110,16 @@ case "$interval" in
 esac
 if [ "$interval" -lt 30 ]; then
   echo "--interval must be at least 30 seconds" >&2
+  exit 2
+fi
+case "$nice_level" in
+  ''|*[!0-9]*)
+    echo "SFKR_AUTOPILOT_NICE must be an integer from 0 to 19" >&2
+    exit 2
+    ;;
+esac
+if [ "$nice_level" -gt 19 ]; then
+  echo "SFKR_AUTOPILOT_NICE must be an integer from 0 to 19" >&2
   exit 2
 fi
 
@@ -245,6 +256,7 @@ write_status() {
       printf '%s\n' "프로세스: $live_pid"
     fi
     printf '%s\n' "부팅 실행기: $boot_state"
+    printf '%s\n' "백그라운드 우선순위: nice $nice_level"
     printf '%s\n' "현재 Git 커밋: $current_head"
     printf '%s\n' "마지막 처리 커밋: $last_head"
     printf '%s\n' "마지막 기록: $last_log"
@@ -303,8 +315,13 @@ start_autopilot() {
   if [ "$force" -eq 1 ]; then
     autopilot_args+=(--force)
   fi
-  nohup bash "$root/tools/run_s25u_autopilot.sh" \
-    "${autopilot_args[@]}" >>"$launcher_log" 2>&1 </dev/null &
+  if command -v nice >/dev/null 2>&1; then
+    nohup nice -n "$nice_level" bash "$root/tools/run_s25u_autopilot.sh" \
+      "${autopilot_args[@]}" >>"$launcher_log" 2>&1 </dev/null &
+  else
+    nohup bash "$root/tools/run_s25u_autopilot.sh" \
+      "${autopilot_args[@]}" >>"$launcher_log" 2>&1 </dev/null &
+  fi
   launched_pid=$!
   printf '%s\n' "$launched_pid" >"$launcher_pid_file"
 

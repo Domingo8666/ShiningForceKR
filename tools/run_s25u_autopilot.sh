@@ -5,6 +5,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source_rom="${SFKR_SOURCE_ROM:-/storage/emulated/0/ROM/Shining Force Gaiden - Final Conflict (Japan).gg}"
 interval="${SFKR_AUTOPILOT_INTERVAL:-30}"
 runtime_timeout="${SFKR_RUNTIME_TIMEOUT:-300}"
+nice_level="${SFKR_AUTOPILOT_NICE:-15}"
 state_dir="${SFKR_AUTOPILOT_STATE_DIR:-$HOME/.local/state/shiningforcekr}"
 once=0
 force=0
@@ -101,6 +102,16 @@ if [ "$runtime_timeout" -lt 300 ]; then
   echo "--runtime-timeout must be at least 300 seconds" >&2
   exit 2
 fi
+case "$nice_level" in
+  ''|*[!0-9]*)
+    echo "SFKR_AUTOPILOT_NICE must be an integer from 0 to 19" >&2
+    exit 2
+    ;;
+esac
+if [ "$nice_level" -gt 19 ]; then
+  echo "SFKR_AUTOPILOT_NICE must be an integer from 0 to 19" >&2
+  exit 2
+fi
 
 mkdir -p "$state_dir"
 log_file="$state_dir/autopilot.log"
@@ -174,6 +185,10 @@ fi
 
 cd "$root"
 
+if command -v renice >/dev/null 2>&1; then
+  renice -n "$nice_level" -p "$$" >/dev/null 2>&1 || true
+fi
+
 if [ ! -f "$source_rom" ]; then
   log "source ROM is not available at the configured S25U-local path"
   exit 4
@@ -203,6 +218,11 @@ case "$remote_url" in
     exit 5
     ;;
 esac
+
+git config --local pack.threads 1
+git config --local index.threads 1
+git config --local checkout.workers 1
+log "background priority nice=$nice_level; git worker threads=1"
 
 is_safe_artifact() {
   case "$1" in
