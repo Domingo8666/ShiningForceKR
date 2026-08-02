@@ -326,8 +326,10 @@ validate_first_context_translation_encoding(published_encoding)
 local_rows = local_encoding.get("rows")
 ready = (
     sha256_file(paths["rom"]) == build["test_target_sha256"]
+    and capture.get("schema_version") == 4
     and capture["test_target_sha256"] == build["test_target_sha256"]
     and capture["renderer_route"] == "direct-observed-page"
+    and isinstance(capture.get("slot_alignment"), dict)
     and capture["local_encoding_sha256"]
     == published_encoding["local_encoding_sha256"]
     and capture["local_encoding_sha256"]

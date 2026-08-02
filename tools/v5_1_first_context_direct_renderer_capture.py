@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from hashlib import sha256
 import json
 from pathlib import Path
 import re
@@ -32,7 +33,12 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-direct-renderer-capture"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
+NAME_TABLE_BASE = 0x3800
+NAME_TABLE_WIDTH = 32
+FIRST_DIALOGUE_TEXT_COLUMN = 1
+FIRST_DIALOGUE_TEXT_ROW = 12
+VRAM_TILE_BYTES = 32
 RUNTIME_STAGE_REQUEST_PATH = Path(
     "analysis/control/s25u_runtime_stage_request.json"
 )
@@ -47,6 +53,9 @@ PUBLISH_IMAGE_RELATIVE_PATH = Path(
 )
 LOCAL_EVIDENCE_PATH = Path(
     "evidence/local/v5_1_first_context_direct_renderer_capture.png"
+)
+LOCAL_SLOT_ALIGNMENT_PATH = Path(
+    "reports/local/v5_1_first_context_direct_renderer_slot_alignment.json"
 )
 FAILURE_STAGE_PATH = Path(
     "reports/local/v5_1_first_context_direct_renderer_capture_failure_stage.txt"
@@ -70,7 +79,109 @@ TOP_LEVEL_KEYS_V2 = {
     "next_checkpoint",
 }
 TOP_LEVEL_KEYS = TOP_LEVEL_KEYS_V2 | {"runtime_stage_request_id"}
+TOP_LEVEL_KEYS_V4 = TOP_LEVEL_KEYS | {"slot_alignment"}
 RUNTIME_ENTRY_KEYS = {"selector", "ordinal"}
+SLOT_ALIGNMENT_KEYS = {
+    "sample_count",
+    "unique_desired_vram_match_count",
+    "constant_loader_base",
+    "constant_write_slot_shift",
+    "mapping_confirmed",
+}
+
+
+def analyze_direct_renderer_slot_alignment(
+    vram: bytes,
+    encoding: dict[str, object],
+) -> tuple[dict[str, object], dict[str, object]]:
+    """Join rendered name-table slots to the intended first-row glyph tiles."""
+
+    rows = encoding.get("rows")
+    assignments = encoding.get("character_assignments")
+    if (
+        len(vram) < 0x4000
+        or not isinstance(rows, list)
+        or not rows
+        or not isinstance(rows[0], dict)
+        or rows[0].get("direct_renderer_proof") is not True
+        or not isinstance(assignments, list)
+    ):
+        raise ValueError("direct renderer slot alignment input is invalid")
+    visible_count = rows[0].get("visible_symbol_count")
+    if not isinstance(visible_count, int) or not 1 <= visible_count <= 18:
+        raise ValueError("direct renderer visible glyph count is invalid")
+    first_row = [
+        assignment
+        for assignment in assignments
+        if isinstance(assignment, dict)
+        and assignment.get("row_index") == 1
+        and assignment.get("visual_kind") == "approved-target-character"
+    ]
+    if len(first_row) != visible_count:
+        raise ValueError("direct renderer first-row assignments are incomplete")
+
+    hashes: dict[str, list[int]] = {}
+    for tile_index in range(len(vram) // VRAM_TILE_BYTES):
+        start = tile_index * VRAM_TILE_BYTES
+        digest = sha256(vram[start:start + VRAM_TILE_BYTES]).hexdigest()
+        hashes.setdefault(digest, []).append(tile_index)
+
+    common_shifts: set[int] | None = None
+    common_bases: set[int] | None = None
+    unique_matches = 0
+    samples = []
+    for index, assignment in enumerate(first_row):
+        symbol = assignment.get("symbol")
+        tile_sha256 = assignment.get("tile_sha256")
+        if (
+            not isinstance(symbol, int)
+            or isinstance(symbol, bool)
+            or not isinstance(tile_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", tile_sha256) is None
+        ):
+            raise ValueError("direct renderer assignment identity is invalid")
+        name_offset = NAME_TABLE_BASE + 2 * (
+            FIRST_DIALOGUE_TEXT_ROW * NAME_TABLE_WIDTH
+            + FIRST_DIALOGUE_TEXT_COLUMN
+            + index
+        )
+        name_word = int.from_bytes(vram[name_offset:name_offset + 2], "little")
+        rendered_tile = name_word & 0x01FF
+        desired_tiles = hashes.get(tile_sha256, [])
+        unique_matches += int(len(desired_tiles) == 1)
+        shifts = {rendered_tile - tile for tile in desired_tiles}
+        bases = {tile - symbol for tile in desired_tiles}
+        common_shifts = shifts if common_shifts is None else common_shifts & shifts
+        common_bases = bases if common_bases is None else common_bases & bases
+        samples.append(
+            {
+                "index": index,
+                "encoded_symbol": symbol,
+                "rendered_tile": rendered_tile,
+                "desired_tiles": desired_tiles,
+                "write_slot_shifts": sorted(shifts),
+                "loader_bases": sorted(bases),
+            }
+        )
+    shifts = common_shifts or set()
+    bases = common_bases or set()
+    confirmed = len(shifts) == 1 and len(bases) == 1
+    safe = {
+        "sample_count": visible_count,
+        "unique_desired_vram_match_count": unique_matches,
+        "constant_loader_base": next(iter(bases)) if len(bases) == 1 else None,
+        "constant_write_slot_shift": (
+            next(iter(shifts)) if len(shifts) == 1 else None
+        ),
+        "mapping_confirmed": confirmed,
+    }
+    local = {
+        "name_table_base": NAME_TABLE_BASE,
+        "text_column": FIRST_DIALOGUE_TEXT_COLUMN,
+        "text_row": FIRST_DIALOGUE_TEXT_ROW,
+        "samples": samples,
+    }
+    return safe, local
 
 
 def _is_sha256(value: object) -> bool:
@@ -83,13 +194,14 @@ def validate_first_context_direct_renderer_capture(
     schema_version = value.get("schema_version")
     if not (
         (schema_version == 2 and set(value) == TOP_LEVEL_KEYS_V2)
-        or (schema_version == SCHEMA_VERSION and set(value) == TOP_LEVEL_KEYS)
+        or (schema_version == 3 and set(value) == TOP_LEVEL_KEYS)
+        or (schema_version == SCHEMA_VERSION and set(value) == TOP_LEVEL_KEYS_V4)
     ):
         raise ValueError("direct renderer capture fields do not match")
     runtime_entry = value.get("runtime_entry")
     if (
         value.get("artifact_kind") != ARTIFACT_KIND
-        or schema_version not in {2, SCHEMA_VERSION}
+        or schema_version not in {2, 3, SCHEMA_VERSION}
         or value.get("status") != "direct-renderer-first-screen-captured"
         or value.get("renderer_route")
         not in {"direct-observed-page", "proven-visible-page"}
@@ -113,11 +225,9 @@ def validate_first_context_direct_renderer_capture(
         or value.get("cold_boot") is not True
         or value.get("human_visual_review_required") is not True
         or value.get("translation_build_eligible") is not False
-        or value.get("next_checkpoint")
-        != "human-verify-first-direct-renderer-dialogue-screen"
     ):
         raise ValueError("direct renderer capture is inconsistent")
-    if schema_version == SCHEMA_VERSION and (
+    if schema_version in {3, SCHEMA_VERSION} and (
         not isinstance(value.get("runtime_stage_request_id"), str)
         or re.fullmatch(
             r"[a-z0-9][a-z0-9._-]{0,63}",
@@ -126,6 +236,45 @@ def validate_first_context_direct_renderer_capture(
         is None
     ):
         raise ValueError("direct renderer capture request identity is invalid")
+    if schema_version < SCHEMA_VERSION:
+        if (
+            value.get("next_checkpoint")
+            != "human-verify-first-direct-renderer-dialogue-screen"
+        ):
+            raise ValueError("direct renderer capture checkpoint is invalid")
+        return
+    alignment = value.get("slot_alignment")
+    if not isinstance(alignment, dict) or set(alignment) != SLOT_ALIGNMENT_KEYS:
+        raise ValueError("direct renderer slot alignment fields do not match")
+    confirmed = alignment.get("mapping_confirmed")
+    if (
+        not isinstance(alignment.get("sample_count"), int)
+        or not 1 <= alignment["sample_count"] <= 18
+        or not isinstance(alignment.get("unique_desired_vram_match_count"), int)
+        or not 0 <= alignment["unique_desired_vram_match_count"] <= alignment["sample_count"]
+        or not isinstance(confirmed, bool)
+        or (
+            confirmed
+            and (
+                not isinstance(alignment.get("constant_loader_base"), int)
+                or not isinstance(alignment.get("constant_write_slot_shift"), int)
+            )
+        )
+        or (
+            not confirmed
+            and (
+                alignment.get("constant_loader_base") is not None
+                or alignment.get("constant_write_slot_shift") is not None
+            )
+        )
+        or value.get("next_checkpoint")
+        != (
+            "rebuild-first-dialogue-with-observed-slot-shift"
+            if confirmed
+            else "trace-direct-renderer-slot-alignment"
+        )
+    ):
+        raise ValueError("direct renderer slot alignment is inconsistent")
 
 
 def main() -> int:
@@ -179,7 +328,18 @@ def main() -> int:
         failure_stage_path=failure_path,
         phase_prefix="first-context-direct-renderer",
     )
-    capture.pop("vram")
+    vram = capture.pop("vram")
+    if not isinstance(vram, bytes):
+        raise ValueError("direct renderer VRAM capture is invalid")
+    slot_alignment, local_slot_alignment = (
+        analyze_direct_renderer_slot_alignment(vram, encoding)
+    )
+    local_slot_path = root / LOCAL_SLOT_ALIGNMENT_PATH
+    local_slot_path.parent.mkdir(parents=True, exist_ok=True)
+    local_slot_path.write_text(
+        json.dumps(local_slot_alignment, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     publish_image = root / PUBLISH_IMAGE_RELATIVE_PATH
     publish_image.parent.mkdir(parents=True, exist_ok=True)
     publish_image.write_bytes(local_image.read_bytes())
@@ -210,10 +370,15 @@ def main() -> int:
         ),
         "runtime_stage_request_id": request["request_id"],
         "direct_renderer_first_row_confirmed": True,
+        "slot_alignment": slot_alignment,
         "cold_boot": True,
         "human_visual_review_required": True,
         "translation_build_eligible": False,
-        "next_checkpoint": "human-verify-first-direct-renderer-dialogue-screen",
+        "next_checkpoint": (
+            "rebuild-first-dialogue-with-observed-slot-shift"
+            if slot_alignment["mapping_confirmed"] is True
+            else "trace-direct-renderer-slot-alignment"
+        ),
     }
     validate_first_context_direct_renderer_capture(safe)
     safe_path = root / PUBLISH_RELATIVE_PATH
