@@ -222,6 +222,17 @@ class S25UAutopilotTests(unittest.TestCase):
             SCRIPT,
         )
 
+    def test_one_shot_publishes_new_runtime_artifacts_before_exit(self) -> None:
+        loop_start = SCRIPT.index('log "S25U autopilot started"')
+        stage_run = SCRIPT.index("      run_current_head", loop_start)
+        once_branch = SCRIPT.index('  if [ "$once" -eq 1 ]; then', stage_run)
+        final_sync = SCRIPT.index("    sync_main", once_branch)
+        once_exit = SCRIPT.index('    exit "$cycle_status"', final_sync)
+        self.assertLess(stage_run, once_branch)
+        self.assertLess(once_branch, final_sync)
+        self.assertLess(final_sync, once_exit)
+        self.assertIn("one-shot runtime artifacts synchronized", SCRIPT)
+
     def test_runtime_stage_publishes_progress_then_continues_comparison(
         self,
     ) -> None:

@@ -489,6 +489,17 @@ while true; do
   fi
 
   if [ "$once" -eq 1 ]; then
+    log "finalizing one-shot runtime artifacts"
+    sync_main
+    final_sync_status=$?
+    if [ "$final_sync_status" -ne 0 ]; then
+      log "one-shot runtime artifact synchronization stopped with status $final_sync_status"
+      if [ "$cycle_status" -eq 0 ]; then
+        cycle_status="$final_sync_status"
+      fi
+    else
+      log "one-shot runtime artifacts synchronized"
+    fi
     exit "$cycle_status"
   fi
   sleep "$interval"
