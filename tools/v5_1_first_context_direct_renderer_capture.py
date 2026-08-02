@@ -33,7 +33,7 @@ except ImportError:  # pragma: no cover - direct script execution
 
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-direct-renderer-capture"
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 NAME_TABLE_BASE = 0x3800
 NAME_TABLE_WIDTH = 32
 FIRST_DIALOGUE_TEXT_COLUMN = 1
@@ -81,12 +81,16 @@ TOP_LEVEL_KEYS_V2 = {
 TOP_LEVEL_KEYS = TOP_LEVEL_KEYS_V2 | {"runtime_stage_request_id"}
 TOP_LEVEL_KEYS_V4 = TOP_LEVEL_KEYS | {"slot_alignment"}
 RUNTIME_ENTRY_KEYS = {"selector", "ordinal"}
-SLOT_ALIGNMENT_KEYS = {
+SLOT_ALIGNMENT_KEYS_V4 = {
     "sample_count",
     "unique_desired_vram_match_count",
     "constant_loader_base",
     "constant_write_slot_shift",
     "mapping_confirmed",
+}
+SLOT_ALIGNMENT_KEYS = SLOT_ALIGNMENT_KEYS_V4 | {
+    "rendered_assignment_match_count",
+    "observed_assignment_page",
 }
 
 
@@ -126,9 +130,35 @@ def analyze_direct_renderer_slot_alignment(
         digest = sha256(vram[start:start + VRAM_TILE_BYTES]).hexdigest()
         hashes.setdefault(digest, []).append(tile_index)
 
-    common_shifts: set[int] | None = None
-    common_bases: set[int] | None = None
+    assignments_by_hash: dict[str, list[dict[str, int]]] = {}
+    for assignment in assignments:
+        if not isinstance(assignment, dict):
+            continue
+        tile_sha256 = assignment.get("tile_sha256")
+        page = assignment.get("page")
+        encoded_symbol = assignment.get("symbol")
+        physical_symbol = assignment.get("font_symbol", encoded_symbol)
+        if (
+            not isinstance(tile_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", tile_sha256) is None
+            or not isinstance(page, int)
+            or isinstance(page, bool)
+            or not isinstance(physical_symbol, int)
+            or isinstance(physical_symbol, bool)
+        ):
+            continue
+        assignments_by_hash.setdefault(tile_sha256, []).append(
+            {
+                "page": page,
+                "physical_symbol": physical_symbol,
+                "row_index": int(assignment.get("row_index", 0)),
+            }
+        )
+
+    # (font page, VRAM loader base, physical write slot - decoded symbol)
+    common_routes: set[tuple[int, int, int]] | None = None
     unique_matches = 0
+    rendered_assignment_matches = 0
     samples = []
     for index, assignment in enumerate(first_row):
         symbol = assignment.get("symbol")
@@ -149,32 +179,66 @@ def analyze_direct_renderer_slot_alignment(
         rendered_tile = name_word & 0x01FF
         desired_tiles = hashes.get(tile_sha256, [])
         unique_matches += int(len(desired_tiles) == 1)
-        shifts = {rendered_tile - tile for tile in desired_tiles}
-        bases = {tile - symbol for tile in desired_tiles}
-        common_shifts = shifts if common_shifts is None else common_shifts & shifts
-        common_bases = bases if common_bases is None else common_bases & bases
+        rendered_start = rendered_tile * VRAM_TILE_BYTES
+        rendered_digest = sha256(
+            vram[rendered_start:rendered_start + VRAM_TILE_BYTES]
+        ).hexdigest()
+        rendered_assignments = assignments_by_hash.get(rendered_digest, [])
+        routes = {
+            (
+                candidate["page"],
+                rendered_tile - candidate["physical_symbol"],
+                candidate["physical_symbol"] - symbol,
+            )
+            for candidate in rendered_assignments
+        }
+        if routes:
+            rendered_assignment_matches += 1
+        else:
+            page = assignment.get("page")
+            physical_symbol = assignment.get("font_symbol", symbol)
+            if (
+                isinstance(page, int)
+                and not isinstance(page, bool)
+                and isinstance(physical_symbol, int)
+                and not isinstance(physical_symbol, bool)
+            ):
+                routes = {
+                    (
+                        page,
+                        tile - physical_symbol,
+                        physical_symbol - symbol + rendered_tile - tile,
+                    )
+                    for tile in desired_tiles
+                }
+        common_routes = routes if common_routes is None else common_routes & routes
         samples.append(
             {
                 "index": index,
                 "encoded_symbol": symbol,
                 "rendered_tile": rendered_tile,
+                "rendered_tile_sha256": rendered_digest,
                 "desired_tiles": desired_tiles,
-                "write_slot_shifts": sorted(shifts),
-                "loader_bases": sorted(bases),
+                "rendered_assignments": rendered_assignments,
+                "route_candidates": [list(route) for route in sorted(routes)],
             }
         )
-    shifts = common_shifts or set()
-    bases = common_bases or set()
-    confirmed = len(shifts) == 1 and len(bases) == 1
+    routes = common_routes or set()
+    confirmed = len(routes) == 1
+    page, loader_base, write_slot_shift = (
+        next(iter(routes)) if confirmed else (None, None, None)
+    )
     safe = {
         "sample_count": visible_count,
         "unique_desired_vram_match_count": unique_matches,
-        # A partial constant is not actionable and schema v4 deliberately
+        "rendered_assignment_match_count": rendered_assignment_matches,
+        "observed_assignment_page": page,
+        # A partial constant is not actionable and the safe schema deliberately
         # rejects it.  Publish both values only when the same base/shift pair
         # explains every sampled glyph; otherwise keep the safe receipt
         # explicitly unresolved and retain candidates in the local report.
-        "constant_loader_base": next(iter(bases)) if confirmed else None,
-        "constant_write_slot_shift": next(iter(shifts)) if confirmed else None,
+        "constant_loader_base": loader_base,
+        "constant_write_slot_shift": write_slot_shift,
         "mapping_confirmed": confirmed,
     }
     local = {
@@ -197,13 +261,13 @@ def validate_first_context_direct_renderer_capture(
     if not (
         (schema_version == 2 and set(value) == TOP_LEVEL_KEYS_V2)
         or (schema_version == 3 and set(value) == TOP_LEVEL_KEYS)
-        or (schema_version == SCHEMA_VERSION and set(value) == TOP_LEVEL_KEYS_V4)
+        or (schema_version in {4, SCHEMA_VERSION} and set(value) == TOP_LEVEL_KEYS_V4)
     ):
         raise ValueError("direct renderer capture fields do not match")
     runtime_entry = value.get("runtime_entry")
     if (
         value.get("artifact_kind") != ARTIFACT_KIND
-        or schema_version not in {2, 3, SCHEMA_VERSION}
+        or schema_version not in {2, 3, 4, SCHEMA_VERSION}
         or value.get("status") != "direct-renderer-first-screen-captured"
         or value.get("renderer_route")
         not in {"direct-observed-page", "proven-visible-page"}
@@ -238,7 +302,7 @@ def validate_first_context_direct_renderer_capture(
         is None
     ):
         raise ValueError("direct renderer capture request identity is invalid")
-    if schema_version < SCHEMA_VERSION:
+    if schema_version < 4:
         if (
             value.get("next_checkpoint")
             != "human-verify-first-direct-renderer-dialogue-screen"
@@ -246,7 +310,10 @@ def validate_first_context_direct_renderer_capture(
             raise ValueError("direct renderer capture checkpoint is invalid")
         return
     alignment = value.get("slot_alignment")
-    if not isinstance(alignment, dict) or set(alignment) != SLOT_ALIGNMENT_KEYS:
+    expected_alignment_keys = (
+        SLOT_ALIGNMENT_KEYS_V4 if schema_version == 4 else SLOT_ALIGNMENT_KEYS
+    )
+    if not isinstance(alignment, dict) or set(alignment) != expected_alignment_keys:
         raise ValueError("direct renderer slot alignment fields do not match")
     confirmed = alignment.get("mapping_confirmed")
     if (
@@ -256,10 +323,23 @@ def validate_first_context_direct_renderer_capture(
         or not 0 <= alignment["unique_desired_vram_match_count"] <= alignment["sample_count"]
         or not isinstance(confirmed, bool)
         or (
+            schema_version == SCHEMA_VERSION
+            and (
+                not isinstance(alignment.get("rendered_assignment_match_count"), int)
+                or not 0
+                <= alignment["rendered_assignment_match_count"]
+                <= alignment["sample_count"]
+            )
+        )
+        or (
             confirmed
             and (
                 not isinstance(alignment.get("constant_loader_base"), int)
                 or not isinstance(alignment.get("constant_write_slot_shift"), int)
+                or (
+                    schema_version == SCHEMA_VERSION
+                    and not isinstance(alignment.get("observed_assignment_page"), int)
+                )
             )
         )
         or (
@@ -267,6 +347,10 @@ def validate_first_context_direct_renderer_capture(
             and (
                 alignment.get("constant_loader_base") is not None
                 or alignment.get("constant_write_slot_shift") is not None
+                or (
+                    schema_version == SCHEMA_VERSION
+                    and alignment.get("observed_assignment_page") is not None
+                )
             )
         )
         or value.get("next_checkpoint")

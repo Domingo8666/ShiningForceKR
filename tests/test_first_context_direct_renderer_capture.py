@@ -41,6 +41,7 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
                 {
                     "row_index": 1,
                     "visual_kind": "approved-target-character",
+                    "page": 21,
                     "symbol": symbol,
                     "tile_sha256": sha256(tile).hexdigest(),
                 }
@@ -54,6 +55,7 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
         self.assertEqual(safe["unique_desired_vram_match_count"], 2)
         self.assertEqual(safe["constant_loader_base"], 0x100)
         self.assertEqual(safe["constant_write_slot_shift"], 8)
+        self.assertEqual(safe["observed_assignment_page"], 21)
         self.assertTrue(safe["mapping_confirmed"])
         self.assertEqual(len(local["samples"]), 2)
 
@@ -83,6 +85,7 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
                 {
                     "row_index": 1,
                     "visual_kind": "approved-target-character",
+                    "page": 21,
                     "symbol": symbol,
                     "tile_sha256": sha256(tile).hexdigest(),
                 }
@@ -95,7 +98,90 @@ class FirstContextDirectRendererCaptureTests(unittest.TestCase):
         self.assertFalse(safe["mapping_confirmed"])
         self.assertIsNone(safe["constant_loader_base"])
         self.assertIsNone(safe["constant_write_slot_shift"])
+        self.assertIsNone(safe["observed_assignment_page"])
         self.assertEqual(len(local["samples"]), 2)
+
+    def test_maps_rendered_tiles_back_to_another_assignment_page(self) -> None:
+        vram = bytearray(0x4000)
+        intended_tiles = [bytes([5]) * 32, bytes([6]) * 32]
+        rendered_tiles = [bytes([7]) * 32, bytes([8]) * 32]
+        rendered_indexes = [0x113, 0x114]
+        for tile, tile_index in zip(rendered_tiles, rendered_indexes):
+            start = tile_index * 32
+            vram[start:start + 32] = tile
+        for index, tile_index in enumerate(rendered_indexes):
+            offset = NAME_TABLE_BASE + 2 * (
+                FIRST_DIALOGUE_TEXT_ROW * NAME_TABLE_WIDTH
+                + FIRST_DIALOGUE_TEXT_COLUMN
+                + index
+            )
+            vram[offset:offset + 2] = tile_index.to_bytes(2, "little")
+        encoding = {
+            "rows": [
+                {
+                    "direct_renderer_proof": True,
+                    "visible_symbol_count": 2,
+                }
+            ],
+            "character_assignments": [
+                {
+                    "row_index": 1,
+                    "visual_kind": "approved-target-character",
+                    "page": 21,
+                    "symbol": symbol,
+                    "tile_sha256": sha256(tile).hexdigest(),
+                }
+                for symbol, tile in zip((0x10, 0x11), intended_tiles)
+            ] + [
+                {
+                    "row_index": 3,
+                    "visual_kind": "approved-target-character",
+                    "page": 44,
+                    "symbol": symbol,
+                    "tile_sha256": sha256(tile).hexdigest(),
+                }
+                for symbol, tile in zip((0x13, 0x14), rendered_tiles)
+            ],
+        }
+
+        safe, _ = analyze_direct_renderer_slot_alignment(bytes(vram), encoding)
+
+        self.assertTrue(safe["mapping_confirmed"])
+        self.assertEqual(safe["rendered_assignment_match_count"], 2)
+        self.assertEqual(safe["observed_assignment_page"], 44)
+        self.assertEqual(safe["constant_loader_base"], 0x100)
+        self.assertEqual(safe["constant_write_slot_shift"], 3)
+
+    def test_accepts_rendered_assignment_capture_receipt(self) -> None:
+        value = {
+            "artifact_kind": "sanitized-v5-1-first-context-direct-renderer-capture",
+            "schema_version": 5,
+            "status": "direct-renderer-first-screen-captured",
+            "baseline_target_sha256": "a" * 64,
+            "test_target_sha256": "b" * 64,
+            "first_context_translation_test_build_sha256": "c" * 64,
+            "local_encoding_sha256": "d" * 64,
+            "capture_png_sha256": "e" * 64,
+            "captured_utc": "2026-08-02T00:00:00Z",
+            "runtime_entry": {"selector": 2, "ordinal": 147},
+            "renderer_route": "direct-observed-page",
+            "runtime_stage_request_id": "direct-slot-map-20260802-02",
+            "direct_renderer_first_row_confirmed": True,
+            "slot_alignment": {
+                "sample_count": 5,
+                "unique_desired_vram_match_count": 0,
+                "rendered_assignment_match_count": 5,
+                "observed_assignment_page": 44,
+                "constant_loader_base": 256,
+                "constant_write_slot_shift": 3,
+                "mapping_confirmed": True,
+            },
+            "cold_boot": True,
+            "human_visual_review_required": True,
+            "translation_build_eligible": False,
+            "next_checkpoint": "rebuild-first-dialogue-with-observed-slot-shift",
+        }
+        validate_first_context_direct_renderer_capture(value)
 
     def test_accepts_slot_aligned_capture_receipt(self) -> None:
         value = {
