@@ -587,7 +587,7 @@ PY
         return 1
       fi
       if command -v timeout >/dev/null 2>&1; then
-        timeout -k 15s 180s \
+        timeout -k 15s 300s \
           python tools/v5_1_first_context_consumer_trace.py \
           --direct-renderer
       else

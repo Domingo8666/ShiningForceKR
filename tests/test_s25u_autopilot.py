@@ -253,7 +253,7 @@ class S25UAutopilotTests(unittest.TestCase):
             trace_branch,
         )
         branch = RUNTIME_STAGE[trace_branch:next_branch]
-        self.assertIn("timeout -k 15s 180s", branch)
+        self.assertIn("timeout -k 15s 300s", branch)
         self.assertIn("first-context-consumer-trace-timeout", branch)
 
     def test_direct_renderer_capture_publishes_before_consumer_trace(self) -> None:
