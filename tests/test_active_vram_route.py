@@ -34,7 +34,7 @@ def _runtime_entry() -> dict[str, int]:
 
 
 class ActiveVramRouteTests(unittest.TestCase):
-    def test_can_read_vram_in_one_bounded_mcp_response(self) -> None:
+    def test_can_read_vram_in_four_bounded_mcp_responses(self) -> None:
         class Client:
             calls: list[tuple[str, dict[str, object]]] = []
 
@@ -53,12 +53,14 @@ class ActiveVramRouteTests(unittest.TestCase):
                 client,
                 area_id=2,
                 size=0x4000,
-                chunk_size=0x4000,
+                chunk_size=0x1000,
             ),
             bytes(0x4000),
         )
-        self.assertEqual(len(client.calls), 1)
-        self.assertEqual(client.calls[0][1]["size"], 0x4000)
+        self.assertEqual(len(client.calls), 4)
+        self.assertTrue(
+            all(call[1]["size"] == 0x1000 for call in client.calls)
+        )
 
     def test_parses_memory_and_selects_exact_vram_area(self) -> None:
         self.assertEqual(_parse_memory_bytes("00 7F FF", 3), b"\x00\x7f\xff")

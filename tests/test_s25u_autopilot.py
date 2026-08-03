@@ -264,7 +264,7 @@ class S25UAutopilotTests(unittest.TestCase):
         )
         branch = RUNTIME_STAGE[direct_branch:next_branch]
         self.assertIn("run_direct_renderer_capture_bounded", branch)
-        self.assertIn("timeout -k 10s 300s", branch)
+        self.assertIn("timeout -k 10s 360s", branch)
         self.assertEqual(
             branch.count(
                 "python tools/v5_1_first_context_direct_renderer_capture.py"

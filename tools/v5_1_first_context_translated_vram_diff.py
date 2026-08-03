@@ -485,9 +485,9 @@ def _capture_anchor_vram(
             client,
             area_id=int(area["id"]),
             size=int(area["size"]),
-            # One immutable 16 KiB response avoids sixteen Android/MCP round
-            # trips that can otherwise consume the outer stage budget.
-            chunk_size=int(area["size"]),
+            # Four bounded 4 KiB responses avoid both the unsupported 16 KiB
+            # payload and the sixteen-call overhead of the conservative path.
+            chunk_size=min(0x1000, int(area["size"])),
         )
         return {
             "selector": CONFIRMED_SELECTOR,

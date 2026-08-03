@@ -294,7 +294,7 @@ else
       local local_failure_stage="reports/local/v5_1_first_context_direct_renderer_capture_failure_stage.txt"
       local safe_failure_stage="analysis/device/v5_1_latest_first_context_direct_renderer_capture_failure_stage.txt"
       if command -v timeout >/dev/null 2>&1; then
-        timeout -k 10s 300s \
+        timeout -k 10s 360s \
           python tools/v5_1_first_context_direct_renderer_capture.py
         capture_status=$?
       else
