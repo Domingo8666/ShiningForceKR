@@ -48,6 +48,17 @@ SCREENSHOT_ARTIFACT_KIND = (
     "sanitized-v5-1-first-context-direct-renderer-screenshot"
 )
 SCREENSHOT_SCHEMA_VERSION = 1
+
+
+def capture_mode_from_request_id(request_id: str) -> str:
+    """Treat the persisted request as the source of truth for split captures."""
+    if request_id.endswith("-screenshot"):
+        return "screenshot"
+    if request_id.endswith("-vram"):
+        return "vram"
+    return "combined"
+
+
 ROUTE_SCHEMA_VERSIONS = {6, 7, SCHEMA_VERSION}
 NUMERIC_SAMPLE_SCHEMA_VERSIONS = {7, SCHEMA_VERSION}
 NAME_TABLE_BASE = 0x3800
@@ -787,6 +798,13 @@ def main() -> int:
         is None
     ):
         raise ValueError("direct renderer capture input is invalid")
+    request_mode = capture_mode_from_request_id(request["request_id"])
+    if request_mode == "screenshot":
+        args.screenshot_only = True
+        args.vram_only = False
+    elif request_mode == "vram":
+        args.screenshot_only = False
+        args.vram_only = True
     if (
         args.screenshot_only
         and not request["request_id"].endswith("-screenshot")

@@ -16,6 +16,7 @@ from tools.v5_1_first_context_direct_renderer_capture import (
     NAME_TABLE_BASE,
     NAME_TABLE_WIDTH,
     analyze_direct_renderer_slot_alignment,
+    capture_mode_from_request_id,
     validate_first_context_direct_renderer_capture,
     validate_first_context_direct_renderer_screenshot,
 )
@@ -36,6 +37,20 @@ from unittest.mock import patch
 
 
 class FirstContextDirectRendererCaptureTests(unittest.TestCase):
+    def test_persisted_request_id_selects_split_capture_mode(self) -> None:
+        self.assertEqual(
+            capture_mode_from_request_id("direct-slot-69-screenshot"),
+            "screenshot",
+        )
+        self.assertEqual(
+            capture_mode_from_request_id("direct-slot-70-vram"),
+            "vram",
+        )
+        self.assertEqual(
+            capture_mode_from_request_id("direct-slot-legacy"),
+            "combined",
+        )
+
     def test_screenshot_write_falls_back_on_android_atomic_error(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             target = Path(temporary) / "evidence" / "capture.png"
