@@ -924,6 +924,8 @@ def _capture_contexts(
     target_post_skip_pc: int,
     target_length_logical_address: int,
     target_mapped_bank: int,
+    observe_any_context: bool = False,
+    max_observed_contexts: int | None = None,
 ) -> tuple[list[int], dict[str, object]]:
     client = McpStdioClient(_default_command())
     post_skip_anchor_armed = False
@@ -936,6 +938,15 @@ def _capture_contexts(
         not 0 <= target_post_skip_pc <= 0x3FFF
         or not 0x4000 <= target_length_logical_address < 0x8000
         or not 0 <= target_mapped_bank <= 0xFF
+        or not isinstance(observe_any_context, bool)
+        or (
+            max_observed_contexts is not None
+            and (
+                not isinstance(max_observed_contexts, int)
+                or isinstance(max_observed_contexts, bool)
+                or not 1 <= max_observed_contexts <= MAX_VECTOR_READ_HITS
+            )
+        )
     ):
         raise ValueError("consumer trace post-skip anchor is invalid")
     post_skip_address = f"{target_post_skip_pc:04X}"
@@ -1125,13 +1136,18 @@ def _capture_contexts(
         # idle.  The outer consumer can span several Huffman records for one
         # dialogue screen, so a single overread sample is not enough to size
         # the replacement stream.
-        sample_limit = MAX_VECTOR_READ_HITS
+        sample_limit = max_observed_contexts or MAX_VECTOR_READ_HITS
         for planned_index in range(len(contexts), sample_limit):
-            planned_context = (
+            expected_context = (
                 planned_contexts[planned_index]
                 if planned_index < len(planned_contexts)
                 else None
             )
+            # A failed direct-renderer screen must reveal the contexts it
+            # actually consumes.  Waiting only for the expected contexts hides
+            # the first divergence and can spend the whole wall limit skipping
+            # valid vector reads.  The normal proof path remains narrowed.
+            planned_context = None if observe_any_context else expected_context
             # Exact two-byte vector ranges reject unrelated table reads before
             # they cross the MCP boundary.  After the expected sequence, use
             # the complete vector window to follow every record consumed for
@@ -1215,7 +1231,11 @@ def _capture_contexts(
             len(contexts),
         )
         trace_diagnostics["mapped_vector_read_count"] = len(contexts)
-        local["sampling_mode"] = "post-skip-exec-then-read-breakpoint"
+        local["sampling_mode"] = (
+            "post-skip-exec-then-any-vector-read-breakpoint"
+            if observe_any_context
+            else "post-skip-exec-then-read-breakpoint"
+        )
         local["trace_diagnostics"] = trace_diagnostics
         local["raw_trace_lines"] = diagnostic_lines
         local["observed_contexts"] = contexts
@@ -1339,17 +1359,24 @@ def _main() -> int:
     if decoder_trace["target_sha256"] != build["baseline_target_sha256"]:
         raise ValueError("first context consumer trace decoder identity disagrees")
 
+    planned_contexts = [
+        initial_context,
+        *expected_symbols[:-1],
+        CANDIDATE_END_SYMBOL,
+    ]
     observed_contexts, local_capture = _capture_contexts(
         rom_path=paths["rom"],
         rom_size=paths["rom"].stat().st_size,
-        planned_contexts=[
-            initial_context,
-            *expected_symbols[:-1],
-            CANDIDATE_END_SYMBOL,
-        ],
+        planned_contexts=planned_contexts,
         target_post_skip_pc=target_post_skip_pc,
         target_length_logical_address=target_length_logical_address,
         target_mapped_bank=target_mapped_bank,
+        observe_any_context=args.direct_renderer,
+        max_observed_contexts=(
+            min(MAX_VECTOR_READ_HITS, len(planned_contexts) + 8)
+            if args.direct_renderer
+            else None
+        ),
     )
     counts, prefix_complete, first_post, direct = summarize_consumer_contexts(
         observed_contexts=observed_contexts,
