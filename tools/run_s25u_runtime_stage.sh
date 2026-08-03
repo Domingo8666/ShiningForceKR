@@ -558,6 +558,10 @@ PY
 import json
 from pathlib import Path
 
+from tools.v5_1_first_context_translation_encoding import (
+    infer_direct_renderer_physical_symbol_map,
+)
+
 path = Path("analysis/device/v5_1_latest_first_context_direct_renderer_capture.json")
 value = json.loads(path.read_text(encoding="utf-8"))
 alignment = value.get("slot_alignment")
@@ -565,7 +569,10 @@ raise SystemExit(
     0
     if value.get("schema_version") in {6, 7, 8}
     and isinstance(alignment, dict)
-    and alignment.get("mapping_confirmed") is True
+    and (
+        alignment.get("mapping_confirmed") is True
+        or infer_direct_renderer_physical_symbol_map(value) is not None
+    )
     else 1
 )
 PY
@@ -604,6 +611,9 @@ from tools.v5_1_first_context_translation_test_build import (
     PUBLISH_RELATIVE_PATH as BUILD_PATH,
     validate_first_context_translation_test_build,
 )
+from tools.v5_1_first_context_translation_encoding import (
+    infer_direct_renderer_physical_symbol_map,
+)
 
 paths = {
     "trace": TRACE_PATH,
@@ -621,7 +631,10 @@ validate_first_context_translation_test_build(build)
 capture_sha256 = sha256_file(paths["capture"])
 ready = (
     isinstance(capture.get("slot_alignment"), dict)
-    and capture["slot_alignment"].get("mapping_confirmed") is True
+    and (
+        capture["slot_alignment"].get("mapping_confirmed") is True
+        or infer_direct_renderer_physical_symbol_map(capture) is not None
+    )
     and trace["test_target_sha256"] == build["test_target_sha256"]
     and trace["first_context_translation_test_build_sha256"]
     == sha256_file(paths["build"])

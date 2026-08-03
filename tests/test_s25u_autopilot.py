@@ -214,6 +214,14 @@ class S25UAutopilotTests(unittest.TestCase):
 
     def test_direct_renderer_consumer_stage_requires_current_trace_output(self) -> None:
         self.assertIn(
+            "infer_direct_renderer_physical_symbol_map(capture) is not None",
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
+            "infer_direct_renderer_physical_symbol_map(value) is not None",
+            RUNTIME_STAGE,
+        )
+        self.assertIn(
             "validate_first_context_consumer_trace(trace)",
             RUNTIME_STAGE,
         )
