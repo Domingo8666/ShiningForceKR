@@ -1,0 +1,27 @@
+{
+  "artifact_kind": "sanitized-v5-1-first-context-bit-alignment",
+  "schema_version": 1,
+  "status": "consumer-context-divergence-ends-byte-boundary",
+  "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "test_target_sha256": "085fe3f43bb45796f6661beecd1e9b04c93b857a15aac09dd69460fd3a821e02",
+  "consumer_trace_sha256": "3d49b709e1282c377c90b2d848dcca58cd86e9e1bd94dde72ea9a091e1cee3c9",
+  "local_consumer_trace_sha256": "6c67c5bc3ba68ef7d5114a8b76871c21ac25725b49118be6bfbd7598bcddc99b",
+  "local_encoding_sha256": "ecb8f8de52ec52d549644d9d101a00bfe519eb0feff99b76d42c05da1b7aadcd",
+  "test_build_sha256": "c60152f72f3f643e0bf74548177894f727a9a9e9dabd29ab647d90ee37c91efc",
+  "captured_utc": "2026-08-03T05:19:59.338393Z",
+  "analysis": {
+    "expected_context_count": 9,
+    "observed_context_count": 18,
+    "context_prefix_match_count": 3,
+    "confirmed_symbol_count": 2,
+    "confirmed_prefix_bit_count": 4,
+    "confirmed_prefix_bit_modulo_8": 4,
+    "next_expected_code_bit_count": 4
+  },
+  "context_mismatch_observed": true,
+  "next_expected_code_crosses_byte_boundary": false,
+  "next_expected_code_ends_on_byte_boundary": true,
+  "source_and_target_text_local_only": true,
+  "translation_build_eligible": false,
+  "next_checkpoint": "trace-runtime-huffman-byte-reload"
+}
