@@ -1,10 +1,10 @@
 {
   "artifact_kind": "sanitized-runtime-stage-diagnostic",
   "schema_version": 4,
-  "status": "runtime-stage-ready",
-  "trigger": "manual",
-  "exit_code": 0,
-  "attempt_utc": "2026-08-03T04:06:52Z",
+  "status": "runtime-stage-not-ready",
+  "trigger": "probe",
+  "exit_code": 1,
+  "attempt_utc": "2026-08-03T04:09:12Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -16,9 +16,14 @@
     "trace_plan_present": true,
     "target_identity_ready": true
   },
-  "failed_stage": null,
+  "failed_stage": "runtime-command",
   "runtime_observation_present": true,
-  "runtime_failure": null,
-  "runtime_failure_detail": null,
-  "next_checkpoint": "rerun-runtime-probe"
+  "runtime_failure": {
+    "schema_version": 1,
+    "failure_stage": "first-context-direct-renderer-capture",
+    "failure_kind": "runtime-error",
+    "mcp_method": null
+  },
+  "runtime_failure_detail": "first-context-direct-renderer-capture-dispatch",
+  "next_checkpoint": "repair-runtime-command"
 }
