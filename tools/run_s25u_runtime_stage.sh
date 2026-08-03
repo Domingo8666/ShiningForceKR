@@ -474,6 +474,18 @@ from tools.v5_1_first_context_translation_test_build import (
 )
 
 mode = sys.argv[2]
+failure_path = Path(
+    "analysis/device/"
+    "v5_1_latest_first_context_direct_renderer_capture_failure_stage.txt"
+)
+
+
+def fail(stage: str) -> None:
+    failure_path.parent.mkdir(parents=True, exist_ok=True)
+    failure_path.write_text(stage + "\n", encoding="utf-8")
+    raise SystemExit(1)
+
+
 if mode == "screenshot":
     paths = {
         "capture": SCREENSHOT_PATH,
@@ -489,11 +501,14 @@ else:
     }
     validator = validate_first_context_direct_renderer_capture
 if any(not path.is_file() for path in paths.values()):
-    raise SystemExit(1)
-capture = json.loads(paths["capture"].read_text(encoding="utf-8"))
-build = json.loads(paths["build"].read_text(encoding="utf-8"))
-validator(capture)
-validate_first_context_translation_test_build(build)
+    fail("first-context-direct-renderer-post-validation-input")
+try:
+    capture = json.loads(paths["capture"].read_text(encoding="utf-8"))
+    build = json.loads(paths["build"].read_text(encoding="utf-8"))
+    validator(capture)
+    validate_first_context_translation_test_build(build)
+except (OSError, ValueError, json.JSONDecodeError):
+    fail("first-context-direct-renderer-post-validation-schema")
 ready = (
     capture.get("runtime_stage_request_id") == sys.argv[1]
     and capture["test_target_sha256"] == build["test_target_sha256"]
@@ -501,7 +516,8 @@ ready = (
     == sha256_file(paths["build"])
     and capture["capture_png_sha256"] == sha256_file(paths["image"])
 )
-raise SystemExit(0 if ready else 1)
+if not ready:
+    fail("first-context-direct-renderer-post-validation-identity")
 PY
       direct_renderer_capture_status=$?
     fi
