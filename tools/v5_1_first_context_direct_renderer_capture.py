@@ -65,6 +65,23 @@ def capture_mode_from_request_id(request_id: str) -> str:
     return "combined"
 
 
+def validate_split_screenshot_identity(
+    screenshot_receipt: dict[str, object],
+    build: dict[str, object],
+    screenshot_image: Path,
+) -> None:
+    """Require stable ROM/image identity across separate cold-boot sessions."""
+    if (
+        screenshot_receipt["baseline_target_sha256"]
+        != build["baseline_target_sha256"]
+        or screenshot_receipt["test_target_sha256"]
+        != build["test_target_sha256"]
+        or screenshot_receipt["capture_png_sha256"]
+        != sha256_file(screenshot_image)
+    ):
+        raise ValueError("direct renderer screenshot identity disagrees")
+
+
 ROUTE_SCHEMA_VERSIONS = {6, 7, SCHEMA_VERSION}
 NUMERIC_SAMPLE_SCHEMA_VERSIONS = {7, SCHEMA_VERSION}
 NAME_TABLE_BASE = 0x3800
@@ -1013,17 +1030,11 @@ def main() -> int:
         if not isinstance(screenshot_receipt, dict):
             raise ValueError("direct renderer screenshot receipt is invalid")
         validate_first_context_direct_renderer_screenshot(screenshot_receipt)
-        if (
-            screenshot_receipt["baseline_target_sha256"]
-            != build["baseline_target_sha256"]
-            or screenshot_receipt["test_target_sha256"]
-            != build["test_target_sha256"]
-            or screenshot_receipt["local_encoding_sha256"]
-            != sha256_file(paths["encoding"])
-            or screenshot_receipt["capture_png_sha256"]
-            != sha256_file(screenshot_image)
-        ):
-            raise ValueError("direct renderer screenshot identity disagrees")
+        validate_split_screenshot_identity(
+            screenshot_receipt,
+            build,
+            screenshot_image,
+        )
         capture = _capture_anchor_vram(
             rom_path=paths["rom"],
             evidence_path=local_image,

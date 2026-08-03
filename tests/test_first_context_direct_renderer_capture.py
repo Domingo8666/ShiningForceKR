@@ -20,6 +20,7 @@ from tools.v5_1_first_context_direct_renderer_capture import (
     _record_failure_stage,
     validate_first_context_direct_renderer_capture,
     validate_first_context_direct_renderer_screenshot,
+    validate_split_screenshot_identity,
 )
 from tools.v5_1_first_context_translation_encoding import (
     direct_renderer_font_tile_offset,
@@ -38,6 +39,26 @@ from unittest.mock import patch
 
 
 class FirstContextDirectRendererCaptureTests(unittest.TestCase):
+    def test_split_identity_ignores_timestamped_report_hashes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            image = Path(temporary) / "capture.png"
+            image.write_bytes(b"stable screenshot")
+            image_sha256 = sha256(image.read_bytes()).hexdigest()
+            receipt = {
+                "baseline_target_sha256": "a" * 64,
+                "test_target_sha256": "b" * 64,
+                "capture_png_sha256": image_sha256,
+                "local_encoding_sha256": "c" * 64,
+            }
+            build = {
+                "baseline_target_sha256": "a" * 64,
+                "test_target_sha256": "b" * 64,
+            }
+            validate_split_screenshot_identity(receipt, build, image)
+            build["test_target_sha256"] = "d" * 64
+            with self.assertRaises(ValueError):
+                validate_split_screenshot_identity(receipt, build, image)
+
     def test_capture_failure_stage_writer_is_available(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "capture-stage.txt"
