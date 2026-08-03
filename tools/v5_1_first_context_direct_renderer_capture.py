@@ -851,9 +851,10 @@ def main() -> int:
         local_image.parent.mkdir(parents=True, exist_ok=True)
         local_image.write_bytes(screenshot_image.read_bytes())
     else:
+        capture_image = screenshot_image if args.screenshot_only else local_image
         capture = _capture_anchor_vram(
             rom_path=paths["rom"],
-            evidence_path=local_image,
+            evidence_path=capture_image,
             failure_stage_path=failure_path,
             phase_prefix="first-context-direct-renderer",
             capture_screenshot=True,
@@ -865,7 +866,6 @@ def main() -> int:
             "first-context-direct-renderer-publish-image",
         )
         screenshot_image.parent.mkdir(parents=True, exist_ok=True)
-        screenshot_image.write_bytes(local_image.read_bytes())
         if not screenshot_image.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"):
             raise ValueError("direct renderer screenshot image is not PNG")
         safe_screenshot = {
