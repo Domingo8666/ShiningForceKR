@@ -199,7 +199,7 @@ class S25UAutopilotTests(unittest.TestCase):
             capture_segment.split("python tools/v5_1_first_context_consumer_trace.py", 1)[0],
         )
 
-    def test_direct_renderer_stage_requires_current_trace_output(self) -> None:
+    def test_direct_renderer_consumer_stage_requires_current_trace_output(self) -> None:
         self.assertIn(
             "validate_first_context_consumer_trace(trace)",
             RUNTIME_STAGE,
@@ -220,16 +220,31 @@ class S25UAutopilotTests(unittest.TestCase):
         )
 
     def test_direct_renderer_consumer_trace_has_its_own_wall_limit(self) -> None:
-        direct_branch = RUNTIME_STAGE.index(
-            'elif [ "$critical_path_focus" = "first-context-direct-renderer-capture" ]'
+        trace_branch = RUNTIME_STAGE.index(
+            'elif [ "$critical_path_focus" = "first-context-direct-renderer-consumer-trace" ]'
         )
         next_branch = RUNTIME_STAGE.index(
             'elif [ "$critical_path_focus" = "active-rom-cursor-reset" ]',
-            direct_branch,
+            trace_branch,
         )
-        branch = RUNTIME_STAGE[direct_branch:next_branch]
+        branch = RUNTIME_STAGE[trace_branch:next_branch]
         self.assertIn("timeout -k 15s 180s", branch)
         self.assertIn("first-context-consumer-trace-timeout", branch)
+
+    def test_direct_renderer_capture_publishes_before_consumer_trace(self) -> None:
+        direct_branch = RUNTIME_STAGE.index(
+            'elif [ "$critical_path_focus" = "first-context-direct-renderer-capture" ]'
+        )
+        trace_branch = RUNTIME_STAGE.index(
+            'elif [ "$critical_path_focus" = "first-context-direct-renderer-consumer-trace" ]',
+            direct_branch,
+        )
+        branch = RUNTIME_STAGE[direct_branch:trace_branch]
+        self.assertNotIn("v5_1_first_context_consumer_trace.py", branch)
+        self.assertIn(
+            'capture["capture_png_sha256"] == sha256_file(paths["image"])',
+            branch,
+        )
 
     def test_direct_renderer_capture_is_single_and_bounded(self) -> None:
         direct_branch = RUNTIME_STAGE.index(

@@ -130,6 +130,9 @@ PATH_SCOPE_STAGE = "active-rom-path-scope"
 TRANSLATED_VRAM_DIFF_STAGE = "first-context-translated-vram-diff"
 TRANSLATED_GLYPH_ROUTE_STAGE = "first-context-translated-glyph-route"
 DIRECT_RENDERER_CAPTURE_STAGE = "first-context-direct-renderer-capture"
+DIRECT_RENDERER_CONSUMER_TRACE_STAGE = (
+    "first-context-direct-renderer-consumer-trace"
+)
 CURSOR_RESET_STAGE = "active-rom-cursor-reset"
 FALLBACK_STAGE = "continue"
 STAGE_POLICIES = {
@@ -192,6 +195,14 @@ STAGE_POLICIES = {
             "single-observed-font-page-ready-direct-renderer-screen-missing"
         ),
         "next_checkpoint": "rebuild-first-dialogue-without-inline-page-select",
+    },
+    DIRECT_RENDERER_CONSUMER_TRACE_STAGE: {
+        "confirmed_boundary": "correct-first-dialogue-screen-captured",
+        "blocked_boundary": "captured-dialogue-to-font-consumer-route",
+        "selection_reason": (
+            "current-direct-renderer-screen-ready-current-consumer-trace-missing"
+        ),
+        "next_checkpoint": "trace-captured-direct-renderer-consumer",
     },
     CURSOR_RESET_STAGE: {
         "confirmed_boundary": "active-vram-to-incremental-rom-cursor",
@@ -665,7 +676,7 @@ def select_critical_path(root: Path, rom_path: Path) -> dict[str, object] | None
                         return _build_selection(
                             target_sha256=target_sha256,
                             trace_sha256=trace_sha256,
-                            stage=DIRECT_RENDERER_CAPTURE_STAGE,
+                            stage=DIRECT_RENDERER_CONSUMER_TRACE_STAGE,
                         )
                     if not _translated_vram_diff_current(
                         root,

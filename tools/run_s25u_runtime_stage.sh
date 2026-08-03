@@ -289,35 +289,6 @@ else
     echo "SFKR critical path: rebuilding the first dialogue on the proven visible font page."
     write_next_step \
       "실기에서 정상 출력된 글꼴 페이지를 사용해 첫 대사 한 줄을 다시 만들고, 콜드부팅 화면을 자동 캡처하고 있습니다."
-    run_direct_renderer_consumer_trace_if_mapped() {
-      if ! python - <<'PY'
-import json
-from pathlib import Path
-
-path = Path("analysis/device/v5_1_latest_first_context_direct_renderer_capture.json")
-value = json.loads(path.read_text(encoding="utf-8"))
-alignment = value.get("slot_alignment")
-raise SystemExit(
-    0
-    if value.get("schema_version") in {6, 7, 8}
-    and isinstance(alignment, dict)
-    and alignment.get("mapping_confirmed") is True
-    else 1
-)
-PY
-      then
-        echo "SFKR direct renderer mapping remains unresolved; consumer retrace deferred."
-        return 0
-      fi
-      if command -v timeout >/dev/null 2>&1; then
-        timeout -k 15s 180s \
-          python tools/v5_1_first_context_consumer_trace.py \
-          --direct-renderer
-      else
-        python tools/v5_1_first_context_consumer_trace.py \
-          --direct-renderer
-      fi
-    }
     run_direct_renderer_capture_bounded() {
       local capture_status=1
       local local_failure_stage="reports/local/v5_1_first_context_direct_renderer_capture_failure_stage.txt"
@@ -403,8 +374,6 @@ ready = (
     and capture.get("runtime_stage_request_id") == sys.argv[1]
     and capture["test_target_sha256"] == build["test_target_sha256"]
     and capture["renderer_route"] == "direct-observed-page"
-    and isinstance(capture.get("slot_alignment"), dict)
-    and capture["slot_alignment"].get("mapping_confirmed") is True
     and capture["local_encoding_sha256"]
     == published_encoding["local_encoding_sha256"]
     and capture["local_encoding_sha256"]
@@ -417,17 +386,14 @@ ready = (
 raise SystemExit(0 if ready else 1)
 PY
     then
-      direct_renderer_capture_output="$(
-        run_direct_renderer_consumer_trace_if_mapped 2>&1
-      )"
+      direct_renderer_capture_output="SFKR direct renderer capture is already current."
     else
       direct_renderer_capture_output="$(
         python tools/v5_1_first_context_translation_encoding.py \
           --direct-renderer-observed-page &&
         python tools/v5_1_first_context_record_reinsertion.py &&
         python tools/v5_1_first_context_translation_test_build.py &&
-        run_direct_renderer_capture_bounded &&
-        run_direct_renderer_consumer_trace_if_mapped 2>&1
+        run_direct_renderer_capture_bounded 2>&1
       )"
     fi
     direct_renderer_capture_status=$?
@@ -436,6 +402,93 @@ PY
 from pathlib import Path
 import json
 import sys
+
+from tools.patch_io import sha256_file
+from tools.v5_1_first_context_direct_renderer_capture import (
+    PUBLISH_IMAGE_RELATIVE_PATH as CAPTURE_IMAGE_PATH,
+    PUBLISH_RELATIVE_PATH as CAPTURE_PATH,
+    validate_first_context_direct_renderer_capture,
+)
+from tools.v5_1_first_context_translation_test_build import (
+    PUBLISH_RELATIVE_PATH as BUILD_PATH,
+    validate_first_context_translation_test_build,
+)
+
+paths = {
+    "capture": CAPTURE_PATH,
+    "image": CAPTURE_IMAGE_PATH,
+    "build": BUILD_PATH,
+}
+if any(not path.is_file() for path in paths.values()):
+    raise SystemExit(1)
+capture = json.loads(paths["capture"].read_text(encoding="utf-8"))
+build = json.loads(paths["build"].read_text(encoding="utf-8"))
+validate_first_context_direct_renderer_capture(capture)
+validate_first_context_translation_test_build(build)
+ready = (
+    capture.get("schema_version") in {6, 7, 8}
+    and capture.get("runtime_stage_request_id") == sys.argv[1]
+    and capture["test_target_sha256"] == build["test_target_sha256"]
+    and capture["first_context_translation_test_build_sha256"]
+    == sha256_file(paths["build"])
+    and capture["capture_png_sha256"] == sha256_file(paths["image"])
+)
+raise SystemExit(0 if ready else 1)
+PY
+      direct_renderer_capture_status=$?
+    fi
+    printf '%s\n' "$direct_renderer_capture_output"
+    if [ "$direct_renderer_capture_status" -ne 0 ]; then
+      stage_status="$direct_renderer_capture_status"
+      diagnostic_trigger=probe
+      if [ "$direct_renderer_capture_status" -eq 124 ] || \
+        [ "$direct_renderer_capture_status" -eq 137 ]; then
+        record_stage_failure first-context-consumer-trace-timeout
+      else
+        record_stage_failure first-context-direct-renderer-capture
+      fi
+    fi
+  elif [ "$critical_path_focus" = "first-context-direct-renderer-consumer-trace" ]; then
+    echo "SFKR critical path: tracing the already captured direct-renderer build."
+    write_next_step \
+      "저장된 첫 한글 대사 화면을 그대로 유지한 채, 별도 실행으로 글꼴 소비 경로만 추적하고 있습니다."
+    run_direct_renderer_consumer_trace_if_mapped() {
+      if ! python - <<'PY'
+import json
+from pathlib import Path
+
+path = Path("analysis/device/v5_1_latest_first_context_direct_renderer_capture.json")
+value = json.loads(path.read_text(encoding="utf-8"))
+alignment = value.get("slot_alignment")
+raise SystemExit(
+    0
+    if value.get("schema_version") in {6, 7, 8}
+    and isinstance(alignment, dict)
+    and alignment.get("mapping_confirmed") is True
+    else 1
+)
+PY
+      then
+        echo "SFKR direct renderer mapping remains unresolved; consumer retrace deferred."
+        return 1
+      fi
+      if command -v timeout >/dev/null 2>&1; then
+        timeout -k 15s 180s \
+          python tools/v5_1_first_context_consumer_trace.py \
+          --direct-renderer
+      else
+        python tools/v5_1_first_context_consumer_trace.py \
+          --direct-renderer
+      fi
+    }
+    direct_renderer_capture_output="$(
+      run_direct_renderer_consumer_trace_if_mapped 2>&1
+    )"
+    direct_renderer_capture_status=$?
+    if [ "$direct_renderer_capture_status" -eq 0 ]; then
+      python - <<'PY'
+from pathlib import Path
+import json
 
 from tools.patch_io import sha256_file
 from tools.v5_1_first_context_consumer_trace import (
@@ -465,24 +518,16 @@ validate_first_context_consumer_trace(trace)
 validate_first_context_direct_renderer_capture(capture)
 validate_first_context_translation_test_build(build)
 capture_sha256 = sha256_file(paths["capture"])
-mapping_confirmed = (
+ready = (
     isinstance(capture.get("slot_alignment"), dict)
     and capture["slot_alignment"].get("mapping_confirmed") is True
-)
-trace_ready = (
-    trace["test_target_sha256"] == build["test_target_sha256"]
+    and trace["test_target_sha256"] == build["test_target_sha256"]
     and trace["first_context_translation_test_build_sha256"]
     == sha256_file(paths["build"])
     and trace["first_context_translation_runtime_capture_sha256"]
     == capture_sha256
     and trace["first_context_translation_visual_review_sha256"]
     == capture_sha256
-)
-ready = (
-    capture.get("schema_version") in {6, 7, 8}
-    and capture.get("runtime_stage_request_id") == sys.argv[1]
-    and capture["test_target_sha256"] == build["test_target_sha256"]
-    and (not mapping_confirmed or trace_ready)
 )
 raise SystemExit(0 if ready else 1)
 PY
@@ -496,7 +541,7 @@ PY
         [ "$direct_renderer_capture_status" -eq 137 ]; then
         record_stage_failure first-context-consumer-trace-timeout
       else
-        record_stage_failure first-context-direct-renderer-capture
+        record_stage_failure first-context-consumer-trace
       fi
     fi
   elif [ "$critical_path_focus" = "active-rom-cursor-reset" ]; then
