@@ -485,9 +485,10 @@ def _capture_anchor_vram(
             client,
             area_id=int(area["id"]),
             size=int(area["size"]),
-            # Four bounded 4 KiB responses avoid both the unsupported 16 KiB
-            # payload and the sixteen-call overhead of the conservative path.
-            chunk_size=min(0x1000, int(area["size"])),
+            # Gearsystem 3.9.14 on the Android runtime has proven the default
+            # 1 KiB requests, while larger 4/16 KiB payloads are rejected.
+            # Screenshot-first ordering keeps the visible proof safe while
+            # these bounded reads complete.
         )
         return {
             "selector": CONFIRMED_SELECTOR,
