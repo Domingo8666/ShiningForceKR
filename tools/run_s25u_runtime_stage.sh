@@ -664,6 +664,17 @@ PY
         record_stage_failure first-context-consumer-trace
       fi
     fi
+  elif [ "$critical_path_focus" = "first-context-bit-alignment" ]; then
+    echo "SFKR critical path: classifying the first Huffman bit divergence."
+    write_next_step \
+      "저장된 실행 기록을 재사용해 첫 불일치가 바이트 경계에서 발생하는지 판정하고 있습니다."
+    python tools/v5_1_first_context_bit_alignment.py
+    bit_alignment_status=$?
+    if [ "$bit_alignment_status" -ne 0 ]; then
+      stage_status="$bit_alignment_status"
+      diagnostic_trigger=probe
+      record_stage_failure first-context-bit-alignment
+    fi
   elif [ "$critical_path_focus" = "active-rom-cursor-reset" ]; then
     echo "SFKR critical path: resolving the ROM cursor reset and stride."
     write_next_step \

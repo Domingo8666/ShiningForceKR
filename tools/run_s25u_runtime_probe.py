@@ -217,6 +217,7 @@ RUNTIME_FAILURE_STAGES = {
     "first-context-direct-renderer-capture",
     "first-context-consumer-trace",
     "first-context-consumer-trace-timeout",
+    "first-context-bit-alignment",
     "first-context-consumer-trace-identity",
     "first-context-consumer-trace-anchor",
     "first-context-consumer-trace-input",

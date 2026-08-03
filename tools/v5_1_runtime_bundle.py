@@ -264,6 +264,10 @@ try:
         PUBLISH_RELATIVE_PATH as FIRST_CONTEXT_CONSUMER_TRACE_RELATIVE_PATH,
         validate_first_context_consumer_trace,
     )
+    from .v5_1_first_context_bit_alignment import (
+        PUBLISH_RELATIVE_PATH as FIRST_CONTEXT_BIT_ALIGNMENT_RELATIVE_PATH,
+        validate_first_context_bit_alignment,
+    )
     from .v5_1_runtime_stage_failure import (
         validate_first_context_runtime_capture_failure,
     )
@@ -553,6 +557,10 @@ except ImportError:  # direct script execution
         PUBLISH_RELATIVE_PATH as FIRST_CONTEXT_CONSUMER_TRACE_RELATIVE_PATH,
         validate_first_context_consumer_trace,
     )
+    from v5_1_first_context_bit_alignment import (
+        PUBLISH_RELATIVE_PATH as FIRST_CONTEXT_BIT_ALIGNMENT_RELATIVE_PATH,
+        validate_first_context_bit_alignment,
+    )
     from v5_1_runtime_stage_failure import (
         validate_first_context_runtime_capture_failure,
     )
@@ -773,6 +781,8 @@ SAFE_ARTIFACTS = {
         validate_first_context_translation_visual_review,
     FIRST_CONTEXT_CONSUMER_TRACE_RELATIVE_PATH:
         validate_first_context_consumer_trace,
+    FIRST_CONTEXT_BIT_ALIGNMENT_RELATIVE_PATH:
+        validate_first_context_bit_alignment,
     GROUP_TEXT_CANDIDATE_RELATIVE_PATH:
         validate_group_text_candidate_resolution,
     UNMATCHED_GLYPH_FUZZY_RELATIVE_PATH:
@@ -1652,6 +1662,33 @@ def _load_validated_artifacts(root: Path) -> dict[Path, dict[str, object]]:
         )
         if not normal_consumer_inputs_ready and not direct_consumer_inputs_ready:
             artifacts.pop(FIRST_CONTEXT_CONSUMER_TRACE_RELATIVE_PATH)
+    first_context_consumer_trace = artifacts.get(
+        FIRST_CONTEXT_CONSUMER_TRACE_RELATIVE_PATH
+    )
+    first_context_bit_alignment = artifacts.get(
+        FIRST_CONTEXT_BIT_ALIGNMENT_RELATIVE_PATH
+    )
+    if first_context_bit_alignment is not None:
+        if (
+            first_context_consumer_trace is None
+            or first_context_translation_encoding is None
+            or first_context_translation_test_build is None
+            or first_context_bit_alignment["baseline_target_sha256"]
+            != first_context_consumer_trace["baseline_target_sha256"]
+            or first_context_bit_alignment["test_target_sha256"]
+            != first_context_consumer_trace["test_target_sha256"]
+            or first_context_bit_alignment["consumer_trace_sha256"]
+            != sha256_file(root / FIRST_CONTEXT_CONSUMER_TRACE_RELATIVE_PATH)
+            or first_context_bit_alignment["local_consumer_trace_sha256"]
+            != first_context_consumer_trace["local_trace_sha256"]
+            or first_context_bit_alignment["local_encoding_sha256"]
+            != first_context_translation_encoding["local_encoding_sha256"]
+            or first_context_bit_alignment["test_build_sha256"]
+            != sha256_file(
+                root / FIRST_CONTEXT_TRANSLATION_TEST_BUILD_RELATIVE_PATH
+            )
+        ):
+            artifacts.pop(FIRST_CONTEXT_BIT_ALIGNMENT_RELATIVE_PATH)
     group_context_resolution = artifacts.get(
         GROUP_CONTEXT_RESOLUTION_RELATIVE_PATH
     )

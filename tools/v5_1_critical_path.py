@@ -55,9 +55,18 @@ try:
         validate_first_context_translation_test_build,
     )
     from .v5_1_first_context_consumer_trace import (
+        LOCAL_REPORT_PATH as CONSUMER_TRACE_LOCAL_PATH,
         PUBLISH_RELATIVE_PATH as CONSUMER_TRACE_PATH,
         validate_first_context_consumer_trace,
     )
+    from .v5_1_first_context_bit_alignment import (
+        PUBLISH_RELATIVE_PATH as BIT_ALIGNMENT_PATH,
+        validate_first_context_bit_alignment,
+    )
+    from .v5_1_first_context_translation_encoding import (
+        LOCAL_REPORT_PATH as TRANSLATION_ENCODING_LOCAL_PATH,
+    )
+    from .v5_1_first_context_translation_runtime_capture import TEST_ROM_PATH
     from .v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ROM_CURSOR_RESET_PATH,
         validate_active_rom_cursor_reset,
@@ -109,9 +118,18 @@ except ImportError:  # pragma: no cover - direct script execution
         validate_first_context_translation_test_build,
     )
     from v5_1_first_context_consumer_trace import (
+        LOCAL_REPORT_PATH as CONSUMER_TRACE_LOCAL_PATH,
         PUBLISH_RELATIVE_PATH as CONSUMER_TRACE_PATH,
         validate_first_context_consumer_trace,
     )
+    from v5_1_first_context_bit_alignment import (
+        PUBLISH_RELATIVE_PATH as BIT_ALIGNMENT_PATH,
+        validate_first_context_bit_alignment,
+    )
+    from v5_1_first_context_translation_encoding import (
+        LOCAL_REPORT_PATH as TRANSLATION_ENCODING_LOCAL_PATH,
+    )
+    from v5_1_first_context_translation_runtime_capture import TEST_ROM_PATH
     from v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ROM_CURSOR_RESET_PATH,
         validate_active_rom_cursor_reset,
@@ -133,6 +151,7 @@ DIRECT_RENDERER_CAPTURE_STAGE = "first-context-direct-renderer-capture"
 DIRECT_RENDERER_CONSUMER_TRACE_STAGE = (
     "first-context-direct-renderer-consumer-trace"
 )
+BIT_ALIGNMENT_STAGE = "first-context-bit-alignment"
 CURSOR_RESET_STAGE = "active-rom-cursor-reset"
 FALLBACK_STAGE = "continue"
 STAGE_POLICIES = {
@@ -203,6 +222,14 @@ STAGE_POLICIES = {
             "current-direct-renderer-screen-ready-current-consumer-trace-missing"
         ),
         "next_checkpoint": "trace-captured-direct-renderer-consumer",
+    },
+    BIT_ALIGNMENT_STAGE: {
+        "confirmed_boundary": "captured-consumer-context-prefix",
+        "blocked_boundary": "context-divergence-to-huffman-bit-boundary",
+        "selection_reason": (
+            "current-consumer-divergence-ready-bit-alignment-missing"
+        ),
+        "next_checkpoint": "classify-first-context-bit-divergence",
     },
     CURSOR_RESET_STAGE: {
         "confirmed_boundary": "active-vram-to-incremental-rom-cursor",
@@ -556,6 +583,58 @@ def _direct_renderer_consumer_trace_needed(
     )
 
 
+def _consumer_bit_alignment_needed(
+    root: Path,
+    *,
+    target_sha256: str,
+) -> bool:
+    """Reuse the private trace to classify the first bit divergence offline."""
+
+    trace_path = root / CONSUMER_TRACE_PATH
+    local_trace_path = root / CONSUMER_TRACE_LOCAL_PATH
+    local_encoding_path = root / TRANSLATION_ENCODING_LOCAL_PATH
+    test_rom_path = root / TEST_ROM_PATH
+    if any(
+        not path.is_file()
+        for path in (
+            trace_path,
+            local_trace_path,
+            local_encoding_path,
+            test_rom_path,
+        )
+    ):
+        return False
+    try:
+        trace = _load_object(trace_path)
+        validate_first_context_consumer_trace(trace)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    if (
+        trace.get("baseline_target_sha256") != target_sha256
+        or trace.get("status") != "consumer-context-trace-inconclusive"
+        or trace.get("local_trace_sha256") != sha256_file(local_trace_path)
+    ):
+        return False
+    output_path = root / BIT_ALIGNMENT_PATH
+    if not output_path.is_file():
+        return True
+    try:
+        output = _load_object(output_path)
+        validate_first_context_bit_alignment(output)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return True
+    return not (
+        output.get("baseline_target_sha256") == target_sha256
+        and output.get("test_target_sha256")
+        == trace.get("test_target_sha256")
+        and output.get("consumer_trace_sha256") == sha256_file(trace_path)
+        and output.get("local_consumer_trace_sha256")
+        == sha256_file(local_trace_path)
+        and output.get("local_encoding_sha256")
+        == sha256_file(local_encoding_path)
+    )
+
+
 def _build_selection(
     *,
     target_sha256: str,
@@ -677,6 +756,15 @@ def select_critical_path(root: Path, rom_path: Path) -> dict[str, object] | None
                             target_sha256=target_sha256,
                             trace_sha256=trace_sha256,
                             stage=DIRECT_RENDERER_CONSUMER_TRACE_STAGE,
+                        )
+                    if _consumer_bit_alignment_needed(
+                        root,
+                        target_sha256=target_sha256,
+                    ):
+                        return _build_selection(
+                            target_sha256=target_sha256,
+                            trace_sha256=trace_sha256,
+                            stage=BIT_ALIGNMENT_STAGE,
                         )
                     if not _translated_vram_diff_current(
                         root,
