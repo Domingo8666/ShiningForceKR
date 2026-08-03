@@ -432,15 +432,17 @@ def verify_translation_build(
     for assignment in font_assignments:
         page = assignment.get("page")
         symbol = assignment.get("symbol")
+        font_symbol = assignment.get("font_symbol", symbol)
         tile_sha256 = assignment.get("tile_sha256")
         if (
             not isinstance(page, int)
             or not isinstance(symbol, int)
+            or not isinstance(font_symbol, int)
             or not _is_sha256(tile_sha256)
         ):
             raise ValueError("first context build font assignment is invalid")
         start = (
-            direct_renderer_font_tile_offset(page, symbol)
+            direct_renderer_font_tile_offset(page, font_symbol)
             if assignment.get("direct_renderer_page") is True
             else font_tile_offset(page, symbol)
         )

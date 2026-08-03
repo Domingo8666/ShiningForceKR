@@ -1,7 +1,9 @@
 from copy import deepcopy
+import hashlib
 from pathlib import Path
 import sys
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -11,6 +13,11 @@ from tools.v5_1_first_context_translation_test_build import (  # noqa: E402
     build_first_context_translation_test_build,
     build_translation_writes,
     validate_first_context_translation_test_build,
+    verify_translation_build,
+)
+from tools.v5_1_first_context_translation_encoding import (  # noqa: E402
+    CANDIDATE_END_SYMBOL,
+    direct_renderer_font_tile_offset,
 )
 
 
@@ -183,6 +190,57 @@ class FirstContextTranslationTestBuildTests(unittest.TestCase):
         self.assertEqual(writes[0].after, b"\xE0")
         self.assertEqual(writes[0].allowed_end_exclusive, payload_end)
         self.assertEqual(target[payload_start + 1], 0x21)
+
+    def test_verifies_direct_renderer_tile_at_physical_symbol(self) -> None:
+        page = 19
+        decoded_symbol = 2
+        physical_symbol = 7
+        tile = bytes((0xA5,)) * 32
+        tile_start = direct_renderer_font_tile_offset(page, physical_symbol)
+        baseline = bytearray(tile_start + len(tile))
+        test = bytearray(baseline)
+        test[tile_start:tile_start + len(tile)] = tile
+        baseline[0] = test[0] = 1
+
+        with patch(
+            "tools.v5_1_first_context_translation_test_build.load_trees_at",
+            return_value={},
+        ), patch(
+            "tools.v5_1_first_context_translation_test_build.decode_symbol_count",
+            return_value=([CANDIDATE_END_SYMBOL], 8),
+        ):
+            verification = verify_translation_build(
+                baseline=bytes(baseline),
+                test=bytes(test),
+                reinsertion_rows=[{
+                    "length_offset": 0,
+                    "payload_start": 1,
+                    "original_length_bytes": 1,
+                    "encoded_payload_bytes": 1,
+                }],
+                encoding_rows=[{
+                    "symbols": [CANDIDATE_END_SYMBOL],
+                    "encoded_bits": 8,
+                    "encoded_bytes": 1,
+                    "target_encoded_bits": 8,
+                    "initial_context": CANDIDATE_END_SYMBOL,
+                    "runtime_symbol_count": 1,
+                    "terminator_count": 1,
+                }],
+                font_assignments=[{
+                    "page": page,
+                    "symbol": decoded_symbol,
+                    "font_symbol": physical_symbol,
+                    "direct_renderer_page": True,
+                    "tile_sha256": hashlib.sha256(tile).hexdigest(),
+                }],
+                group_selector=2,
+                group_physical_start=0,
+                declared_group_entry_count=1,
+            )
+
+        self.assertEqual(verification["font_glyph_assignment_count"], 1)
+        self.assertEqual(verification["font_glyph_verified_count"], 1)
 
     def test_builds_safe_static_verification_receipt(self) -> None:
         verification = {

@@ -318,24 +318,22 @@ PY
           --direct-renderer
       fi
     }
-    run_direct_renderer_capture_with_retry() {
-      local attempt=1
+    run_direct_renderer_capture_bounded() {
       local capture_status=1
       local local_failure_stage="reports/local/v5_1_first_context_direct_renderer_capture_failure_stage.txt"
       local safe_failure_stage="analysis/device/v5_1_latest_first_context_direct_renderer_capture_failure_stage.txt"
-      while [ "$attempt" -le 3 ]; do
+      if command -v timeout >/dev/null 2>&1; then
+        timeout -k 10s 300s \
+          python tools/v5_1_first_context_direct_renderer_capture.py
+        capture_status=$?
+      else
         python tools/v5_1_first_context_direct_renderer_capture.py
         capture_status=$?
-        if [ "$capture_status" -eq 0 ]; then
-          rm -f "$safe_failure_stage"
-          return 0
-        fi
-        echo "SFKR direct renderer capture attempt $attempt/3 failed; retrying." >&2
-        attempt=$((attempt + 1))
-        if [ "$attempt" -le 3 ]; then
-          sleep 2
-        fi
-      done
+      fi
+      if [ "$capture_status" -eq 0 ]; then
+        rm -f "$safe_failure_stage"
+        return 0
+      fi
       local failure_stage="unavailable"
       if [ -f "$local_failure_stage" ]; then
         failure_stage="$(tr -d '\r\n' < "$local_failure_stage")"
@@ -354,7 +352,10 @@ PY
       esac
       mkdir -p "$(dirname "$safe_failure_stage")"
       printf '%s\n' "$failure_stage" > "$safe_failure_stage"
-      return "$capture_status"
+      # A bounded miss is a deterministic capture failure for this ROM build,
+      # not an outer autopilot timeout.  Returning 1 lets the diagnostic be
+      # published once instead of rerunning the same eight-minute probe.
+      return 1
     }
     if python - "$critical_path_request_id" <<'PY'
 from pathlib import Path
@@ -425,7 +426,7 @@ PY
           --direct-renderer-observed-page &&
         python tools/v5_1_first_context_record_reinsertion.py &&
         python tools/v5_1_first_context_translation_test_build.py &&
-        run_direct_renderer_capture_with_retry &&
+        run_direct_renderer_capture_bounded &&
         run_direct_renderer_consumer_trace_if_mapped 2>&1
       )"
     fi

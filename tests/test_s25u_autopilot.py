@@ -231,6 +231,32 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn("timeout -k 15s 180s", branch)
         self.assertIn("first-context-consumer-trace-timeout", branch)
 
+    def test_direct_renderer_capture_is_single_and_bounded(self) -> None:
+        direct_branch = RUNTIME_STAGE.index(
+            'elif [ "$critical_path_focus" = "first-context-direct-renderer-capture" ]'
+        )
+        next_branch = RUNTIME_STAGE.index(
+            'elif [ "$critical_path_focus" = "active-rom-cursor-reset" ]',
+            direct_branch,
+        )
+        branch = RUNTIME_STAGE[direct_branch:next_branch]
+        self.assertIn("run_direct_renderer_capture_bounded", branch)
+        self.assertIn("timeout -k 10s 300s", branch)
+        self.assertEqual(
+            branch.count(
+                "python tools/v5_1_first_context_direct_renderer_capture.py"
+            ),
+            2,
+        )
+        self.assertNotIn("retrying", branch)
+
+    def test_direct_renderer_failure_stage_is_safe_to_publish(self) -> None:
+        self.assertIn(
+            "analysis/device/"
+            "v5_1_latest_first_context_direct_renderer_capture_failure_stage.txt",
+            SCRIPT,
+        )
+
     def test_consumer_trace_failures_can_always_write_a_diagnostic(self) -> None:
         for stage in (
             "first-context-consumer-trace",
