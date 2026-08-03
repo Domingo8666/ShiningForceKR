@@ -162,6 +162,18 @@ def _record_failure_stage(path: Path, stage: str) -> None:
     path.write_text(stage + "\n", encoding="utf-8")
 
 
+def _write_screenshot_bytes(path: Path, data: bytes) -> None:
+    try:
+        _write_bytes_atomic(path, data)
+    except OSError:
+        # Some Android shared-storage providers reject fsync/atomic rename for
+        # a hidden temporary file even though a validated direct write works.
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    if path.read_bytes() != data:
+        raise OSError("captured screenshot did not round-trip to storage")
+
+
 def _is_sha256(value: object) -> bool:
     return (
         isinstance(value, str)
@@ -491,7 +503,7 @@ def _capture_anchor_vram(
                 f"{phase_prefix}-screenshot-write",
             )
             evidence_path.parent.mkdir(parents=True, exist_ok=True)
-            _write_bytes_atomic(evidence_path, png)
+            _write_screenshot_bytes(evidence_path, png)
             result["screenshot"] = {"file": str(evidence_path), **screen_metadata}
         if capture_vram:
             _record_failure_stage(failure_stage_path, f"{phase_prefix}-vram-list")

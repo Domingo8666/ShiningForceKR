@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import copy
 from hashlib import sha256
+from pathlib import Path
+import tempfile
 import unittest
 
 from tools.v5_1_first_context_direct_renderer_capture import (
@@ -23,6 +25,9 @@ from tools.v5_1_first_context_translation_encoding import (
 from tools.v5_1_first_context_translation_capacity import (
     tile_bytes_from_ink_mask,
 )
+from tools.v5_1_first_context_translated_vram_diff import (
+    _write_screenshot_bytes,
+)
 from tools.v5_1_png_pixels import (
     DEFAULT_TEXT_INK_RGBA,
     PixelImage,
@@ -31,6 +36,18 @@ from unittest.mock import patch
 
 
 class FirstContextDirectRendererCaptureTests(unittest.TestCase):
+    def test_screenshot_write_falls_back_on_android_atomic_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            target = Path(temporary) / "evidence" / "capture.png"
+            data = b"\x89PNG\r\n\x1a\nvalidated"
+            with patch(
+                "tools.v5_1_first_context_translated_vram_diff."
+                "_write_bytes_atomic",
+                side_effect=OSError("atomic rename unsupported"),
+            ):
+                _write_screenshot_bytes(target, data)
+            self.assertEqual(target.read_bytes(), data)
+
     def test_accepts_split_screenshot_receipt(self) -> None:
         value = {
             "artifact_kind": (
