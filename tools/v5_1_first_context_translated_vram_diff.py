@@ -540,7 +540,11 @@ def _capture_anchor_vram(
                 "name": str(area["name"]),
                 "size": int(area["size"]),
             }
-        _record_failure_stage(failure_stage_path, f"{phase_prefix}-payload-ready")
+        callback_state = "callback" if capture_callback is not None else "no-callback"
+        _record_failure_stage(
+            failure_stage_path,
+            f"{phase_prefix}-payload-ready-{callback_state}",
+        )
         if capture_callback is not None:
             capture_callback(result)
             if exit_after_callback:

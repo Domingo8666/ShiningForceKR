@@ -346,7 +346,13 @@ else
          first-context-direct-renderer-screenshot-parse|\
          first-context-direct-renderer-screenshot-write|\
          first-context-direct-renderer-screenshot-buffered|\
-         first-context-direct-renderer-payload-ready|\
+         first-context-direct-renderer-entry|\
+         first-context-direct-renderer-mode-screenshot|\
+         first-context-direct-renderer-mode-vram|\
+         first-context-direct-renderer-mode-combined|\
+         first-context-direct-renderer-capture-dispatch|\
+         first-context-direct-renderer-payload-ready-callback|\
+         first-context-direct-renderer-payload-ready-no-callback|\
          first-context-direct-renderer-alignment|\
          first-context-direct-renderer-local-report|\
          first-context-direct-renderer-publish-image|\
@@ -424,6 +430,9 @@ PY
     then
       direct_renderer_capture_output="SFKR direct renderer capture is already current."
     else
+      rm -f \
+        reports/local/v5_1_first_context_direct_renderer_capture_failure_stage.txt \
+        analysis/device/v5_1_latest_first_context_direct_renderer_capture_failure_stage.txt
       direct_renderer_capture_output="$(
         python tools/v5_1_first_context_translation_encoding.py \
           --direct-renderer-observed-page &&

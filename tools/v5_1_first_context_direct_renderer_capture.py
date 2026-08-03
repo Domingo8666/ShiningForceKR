@@ -770,6 +770,11 @@ def validate_first_context_direct_renderer_screenshot(
 
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
+    failure_path = root / FAILURE_STAGE_PATH
+    _record_failure_stage(
+        failure_path,
+        "first-context-direct-renderer-entry",
+    )
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--proven-visible-page", action="store_true")
     mode = parser.add_mutually_exclusive_group()
@@ -805,6 +810,10 @@ def main() -> int:
     elif request_mode == "vram":
         args.screenshot_only = False
         args.vram_only = True
+    _record_failure_stage(
+        failure_path,
+        f"first-context-direct-renderer-mode-{request_mode}",
+    )
     if (
         args.screenshot_only
         and not request["request_id"].endswith("-screenshot")
@@ -827,8 +836,11 @@ def main() -> int:
         )
     ):
         raise ValueError("direct renderer capture identity disagrees")
+    _record_failure_stage(
+        failure_path,
+        "first-context-direct-renderer-capture-dispatch",
+    )
 
-    failure_path = root / FAILURE_STAGE_PATH
     local_image = root / LOCAL_EVIDENCE_PATH
     screenshot_receipt: dict[str, object] | None = None
     screenshot_image = root / PUBLISH_SCREENSHOT_IMAGE_RELATIVE_PATH
