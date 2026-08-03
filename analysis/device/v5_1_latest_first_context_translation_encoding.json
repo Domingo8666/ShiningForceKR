@@ -6,9 +6,9 @@
   "review_batch_sha256": "8eba1e7f4f380c6aa7a3eb2f649719b1fadb3b6ebb33de588387acdd5c3ee47a",
   "first_context_translation_capacity_sha256": "e061c7a5ecdab71108d75985a01a406d9e98710a1e7ab14875258ed46f56a42e",
   "runtime_context_glyph_preservation_sha256": "11694db864a634119ae20873e4b5cd295b4013c3a9bbb7e82bef13e9d292ec1d",
-  "local_encoding_sha256": "a0c314c90be221098ad9c940a9b395d04c69b8cc09f89650343ccf07a7f2b67b",
+  "local_encoding_sha256": "bf9d87bd83fe9b17ba78017cd96ded60543290d69fa111fff0e2d3a5805dd2b5",
   "combined_font_overlay_sha256": "8e04bccc3a85cc76ddc59f8442758e3bb52d782dca88d1a12c36184e827279ac",
-  "captured_utc": "2026-08-03T01:29:35.169488Z",
+  "captured_utc": "2026-08-03T01:36:42.013064Z",
   "encoding": {
     "context_entry_count": 5,
     "target_character_count": 27,
