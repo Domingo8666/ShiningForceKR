@@ -143,7 +143,7 @@ class S25UAutopilotTests(unittest.TestCase):
             RUNTIME_STAGE,
         )
         self.assertIn(
-            'python - "$critical_path_request_id"',
+            'python - "$direct_capture_request_id"',
             RUNTIME_STAGE,
         )
 
@@ -282,6 +282,9 @@ class S25UAutopilotTests(unittest.TestCase):
             direct_branch,
         )
         branch = RUNTIME_STAGE[direct_branch:next_branch]
+        self.assertIn('direct_capture_request_id="$critical_path_request_id"', branch)
+        self.assertIn("direct_capture_file_request", branch)
+        self.assertIn('case "$direct_capture_request_id" in', branch)
         self.assertIn("*-screenshot)", branch)
         self.assertIn("direct_capture_mode_args=(--screenshot-only)", branch)
         self.assertIn("*-vram)", branch)

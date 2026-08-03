@@ -289,9 +289,19 @@ else
     echo "SFKR critical path: rebuilding the first dialogue on the proven visible font page."
     write_next_step \
       "실기에서 정상 출력된 글꼴 페이지를 사용해 첫 대사 한 줄을 다시 만들고, 콜드부팅 화면을 자동 캡처하고 있습니다."
+    direct_capture_request_id="$critical_path_request_id"
+    if [ -f "$runtime_stage_request_file" ]; then
+      direct_capture_file_request="$(
+        python -c 'import json, re, sys; from pathlib import Path; value=json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")); request_id=value.get("request_id"); valid=set(value)=={"request_id", "stage"} and value.get("stage")=="first-context-direct-renderer-capture" and isinstance(request_id, str) and re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", request_id) is not None; print(request_id if valid else "")' \
+          "$runtime_stage_request_file" 2>/dev/null || true
+      )"
+      if [ -n "$direct_capture_file_request" ]; then
+        direct_capture_request_id="$direct_capture_file_request"
+      fi
+    fi
     direct_capture_mode=combined
     direct_capture_mode_args=()
-    case "$critical_path_request_id" in
+    case "$direct_capture_request_id" in
       *-screenshot)
         direct_capture_mode=screenshot
         direct_capture_mode_args=(--screenshot-only)
@@ -354,7 +364,7 @@ else
       return 1
     }
     if [ "$direct_capture_mode" = "combined" ] && \
-      python - "$critical_path_request_id" <<'PY'
+      python - "$direct_capture_request_id" <<'PY'
 from pathlib import Path
 import json
 import sys
@@ -424,7 +434,7 @@ PY
     fi
     direct_renderer_capture_status=$?
     if [ "$direct_renderer_capture_status" -eq 0 ]; then
-      python - "$critical_path_request_id" "$direct_capture_mode" <<'PY'
+      python - "$direct_capture_request_id" "$direct_capture_mode" <<'PY'
 from pathlib import Path
 import json
 import sys
@@ -485,6 +495,10 @@ PY
       else
         record_stage_failure first-context-direct-renderer-capture
       fi
+    fi
+    if [ "$direct_renderer_capture_status" -eq 0 ] && \
+      [ -n "$direct_capture_request_id" ]; then
+      stage_request_token="$direct_capture_request_id"
     fi
   elif [ "$critical_path_focus" = "first-context-direct-renderer-consumer-trace" ]; then
     echo "SFKR critical path: tracing the already captured direct-renderer build."
