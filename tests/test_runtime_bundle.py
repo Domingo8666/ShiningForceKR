@@ -13,7 +13,9 @@ from tools.patch_io import sha256_file  # noqa: E402
 from tools.v5_1_runtime_bundle import (  # noqa: E402
     SAFE_ARTIFACTS,
     SAFE_BINARY_ARTIFACTS,
+    SAFE_TEXT_ARTIFACTS,
     _load_validated_artifacts,
+    _load_validated_text_artifacts,
     _porcelain_path,
     publish_runtime_bundle,
 )
@@ -36,6 +38,20 @@ from tools.v5_1_test_display_review import write_display_review  # noqa: E402
 
 
 class RuntimeBundleTests(unittest.TestCase):
+    def test_loads_only_whitelisted_direct_renderer_failure_stage(self) -> None:
+        relative = next(iter(SAFE_TEXT_ARTIFACTS))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                "first-context-direct-renderer-anchor\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(_load_validated_text_artifacts(root), {relative})
+            path.write_text("/storage/emulated/0/private.rom\n", encoding="utf-8")
+            self.assertEqual(_load_validated_text_artifacts(root), set())
+
     def test_keeps_consumer_trace_bound_to_direct_renderer_capture(self) -> None:
         repository = Path(__file__).resolve().parents[1]
         relative_paths = (

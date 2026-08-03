@@ -582,6 +582,19 @@ except ImportError:  # direct script execution
 EXPECTED_REMOTE = "github.com/Domingo8666/ShiningForceKR"
 DEFAULT_GIT_NAME = "Domingo8666"
 DEFAULT_GIT_EMAIL = "145947995+Domingo8666@users.noreply.github.com"
+DIRECT_RENDERER_CAPTURE_FAILURE_STAGE_RELATIVE_PATH = Path(
+    "analysis/device/"
+    "v5_1_latest_first_context_direct_renderer_capture_failure_stage.txt"
+)
+DIRECT_RENDERER_CAPTURE_FAILURE_STAGES = {
+    "first-context-direct-renderer-initialize",
+    "first-context-direct-renderer-media",
+    "first-context-direct-renderer-anchor",
+    "first-context-direct-renderer-context",
+    "first-context-direct-renderer-vram",
+    "first-context-direct-renderer-screenshot",
+    "unavailable",
+}
 
 SAFE_ARTIFACTS = {
     Path("analysis/device/v5_1_latest_decoder_register_trace.json"):
@@ -731,6 +744,10 @@ SAFE_BINARY_ARTIFACTS = {
     PUBLISH_IMAGE_RELATIVE_PATH: PUBLISH_RECEIPT_RELATIVE_PATH,
     DIRECT_RENDERER_CAPTURE_IMAGE_RELATIVE_PATH:
         DIRECT_RENDERER_CAPTURE_RELATIVE_PATH,
+}
+SAFE_TEXT_ARTIFACTS = {
+    DIRECT_RENDERER_CAPTURE_FAILURE_STAGE_RELATIVE_PATH:
+        DIRECT_RENDERER_CAPTURE_FAILURE_STAGES,
 }
 
 
@@ -1841,6 +1858,21 @@ def _load_validated_binary_artifacts(
     return binaries
 
 
+def _load_validated_text_artifacts(root: Path) -> set[Path]:
+    texts: set[Path] = set()
+    for relative, allowed_values in SAFE_TEXT_ARTIFACTS.items():
+        path = root / relative
+        if not path.is_file():
+            continue
+        try:
+            value = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if value in allowed_values:
+            texts.add(relative)
+    return texts
+
+
 def _porcelain_path(line: str) -> str:
     if len(line) < 4:
         raise ValueError("unexpected git status entry")
@@ -1858,6 +1890,7 @@ def publish_runtime_bundle(
     root = root.resolve()
     artifacts = _load_validated_artifacts(root)
     binaries = _load_validated_binary_artifacts(root, artifacts)
+    texts = _load_validated_text_artifacts(root)
     top = Path(
         _git(root, "rev-parse", "--show-toplevel").stdout.strip()
     ).resolve()
@@ -1875,6 +1908,8 @@ def publish_runtime_bundle(
         str(relative).replace("\\", "/") for relative in SAFE_ARTIFACTS
     } | {
         str(relative).replace("\\", "/") for relative in SAFE_BINARY_ARTIFACTS
+    } | {
+        str(relative).replace("\\", "/") for relative in SAFE_TEXT_ARTIFACTS
     }
     porcelain = _git(root, "status", "--porcelain").stdout.splitlines()
     changed_paths = {_porcelain_path(line) for line in porcelain}
@@ -1887,7 +1922,7 @@ def publish_runtime_bundle(
     selected = sorted(
         {
             str(relative).replace("\\", "/")
-            for relative in set(artifacts) | binaries
+            for relative in set(artifacts) | binaries | texts
             if str(relative).replace("\\", "/") in changed_paths
         }
         | deleted_safe_paths
@@ -1914,7 +1949,7 @@ def publish_runtime_bundle(
         "ignored_paths": sorted(changed_paths - allowed),
         "paths": sorted(
             str(relative).replace("\\", "/")
-            for relative in set(artifacts) | binaries
+            for relative in set(artifacts) | binaries | texts
         ),
         "pushed": push,
     }
