@@ -539,11 +539,11 @@ def _capture_anchor_vram(
         if breakpoint_armed:
             try:
                 disarm()
-            except RuntimeError:
+            except BaseException:
                 pass
         try:
             client.close()
-        except Exception:
+        except BaseException:
             # The requested payload is already validated in memory.  Some
             # Android MCP child processes time out while being terminated;
             # that shutdown error must not discard a successful capture.
