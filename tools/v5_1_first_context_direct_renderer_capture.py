@@ -886,7 +886,106 @@ def main() -> int:
         )
         failure_path.unlink(missing_ok=True)
 
-    if args.vram_only:
+    def publish_direct_renderer_capture(captured: dict[str, object]) -> None:
+        if screenshot_receipt is not None:
+            if {
+                "selector": int(captured["selector"]),
+                "ordinal": int(captured["ordinal"]),
+            } != screenshot_receipt["runtime_entry"]:
+                raise ValueError(
+                    "direct renderer split runtime entries disagree"
+                )
+            local_image.parent.mkdir(parents=True, exist_ok=True)
+            local_image.write_bytes(screenshot_image.read_bytes())
+        _record_failure_stage(
+            failure_path,
+            "first-context-direct-renderer-alignment",
+        )
+        vram = captured.pop("vram")
+        if not isinstance(vram, bytes):
+            raise ValueError("direct renderer VRAM capture is invalid")
+        slot_alignment, local_slot_alignment = (
+            analyze_direct_renderer_slot_alignment(
+                vram,
+                encoding,
+                paths["rom"].read_bytes(),
+                local_image.read_bytes(),
+            )
+        )
+        local_slot_path = root / LOCAL_SLOT_ALIGNMENT_PATH
+        _record_failure_stage(
+            failure_path,
+            "first-context-direct-renderer-local-report",
+        )
+        local_slot_path.parent.mkdir(parents=True, exist_ok=True)
+        local_slot_path.write_text(
+            json.dumps(local_slot_alignment, ensure_ascii=False, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
+        publish_image = root / PUBLISH_IMAGE_RELATIVE_PATH
+        _record_failure_stage(
+            failure_path,
+            "first-context-direct-renderer-publish-image",
+        )
+        publish_image.parent.mkdir(parents=True, exist_ok=True)
+        publish_image.write_bytes(local_image.read_bytes())
+        if not publish_image.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"):
+            raise ValueError("direct renderer capture image is not PNG")
+        safe = {
+            "artifact_kind": ARTIFACT_KIND,
+            "schema_version": SCHEMA_VERSION,
+            "status": "direct-renderer-first-screen-captured",
+            "baseline_target_sha256": build["baseline_target_sha256"],
+            "test_target_sha256": build["test_target_sha256"],
+            "first_context_translation_test_build_sha256": sha256_file(
+                paths["build"]
+            ),
+            "local_encoding_sha256": sha256_file(paths["encoding"]),
+            "capture_png_sha256": sha256_file(publish_image),
+            "captured_utc": datetime.now(timezone.utc).isoformat().replace(
+                "+00:00", "Z"
+            ),
+            "runtime_entry": {
+                "selector": int(captured["selector"]),
+                "ordinal": int(captured["ordinal"]),
+            },
+            "renderer_route": (
+                str(screenshot_receipt["renderer_route"])
+                if screenshot_receipt is not None
+                else (
+                    "proven-visible-page"
+                    if args.proven_visible_page
+                    else "direct-observed-page"
+                )
+            ),
+            "runtime_stage_request_id": request["request_id"],
+            "direct_renderer_first_row_confirmed": True,
+            "slot_alignment": slot_alignment,
+            "cold_boot": True,
+            "human_visual_review_required": True,
+            "translation_build_eligible": False,
+            "next_checkpoint": (
+                "rebuild-first-dialogue-with-observed-slot-shift"
+                if slot_alignment["mapping_confirmed"] is True
+                else "trace-direct-renderer-slot-alignment"
+            ),
+        }
+        _record_failure_stage(
+            failure_path,
+            "first-context-direct-renderer-artifact",
+        )
+        validate_first_context_direct_renderer_capture(safe)
+        safe_path = root / PUBLISH_RELATIVE_PATH
+        safe_path.parent.mkdir(parents=True, exist_ok=True)
+        safe_path.write_text(
+            json.dumps(safe, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        failure_path.unlink(missing_ok=True)
+        captured["direct_renderer_published"] = True
+
+    if request_mode == "vram":
         screenshot_receipt_path = root / PUBLISH_SCREENSHOT_RELATIVE_PATH
         if not screenshot_receipt_path.is_file() or not screenshot_image.is_file():
             raise ValueError("direct renderer screenshot input is missing")
@@ -914,32 +1013,37 @@ def main() -> int:
             phase_prefix="first-context-direct-renderer",
             capture_screenshot=False,
             capture_vram=True,
+            capture_callback=publish_direct_renderer_capture,
+            exit_after_callback=True,
         )
-        if {
-            "selector": int(capture["selector"]),
-            "ordinal": int(capture["ordinal"]),
-        } != screenshot_receipt["runtime_entry"]:
-            raise ValueError("direct renderer split runtime entries disagree")
-        local_image.parent.mkdir(parents=True, exist_ok=True)
-        local_image.write_bytes(screenshot_image.read_bytes())
     else:
-        capture_image = screenshot_image if args.screenshot_only else local_image
+        capture_image = (
+            screenshot_image if request_mode == "screenshot" else local_image
+        )
         capture = _capture_anchor_vram(
             rom_path=paths["rom"],
             evidence_path=capture_image,
             failure_stage_path=failure_path,
             phase_prefix="first-context-direct-renderer",
             capture_screenshot=True,
-            capture_vram=not args.screenshot_only,
-            write_screenshot=not args.screenshot_only,
+            capture_vram=request_mode != "screenshot",
+            write_screenshot=request_mode != "screenshot",
             capture_callback=(
-                publish_split_screenshot if args.screenshot_only else None
+                publish_split_screenshot
+                if request_mode == "screenshot"
+                else None
             ),
-            exit_after_callback=args.screenshot_only,
+            exit_after_callback=request_mode == "screenshot",
         )
-    if args.screenshot_only:
+    if request_mode == "screenshot":
         publish_split_screenshot(capture)
         print(f"SFKR direct renderer screenshot: {screenshot_image}")
+        return 0
+    if request_mode == "vram":
+        if capture.pop("direct_renderer_published", False) is not True:
+            publish_direct_renderer_capture(capture)
+        publish_image = root / PUBLISH_IMAGE_RELATIVE_PATH
+        print(f"SFKR direct renderer first screen: {publish_image}")
         return 0
     _record_failure_stage(
         failure_path,
