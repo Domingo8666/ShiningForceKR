@@ -17,6 +17,17 @@ from tools.v5_1_first_context_translated_vram_diff import (
 
 
 class FirstContextTranslatedVramDiffTests(unittest.TestCase):
+    def test_captures_screenshot_before_bulk_vram_read(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1]
+            / "tools"
+            / "v5_1_first_context_translated_vram_diff.py"
+        ).read_text(encoding="utf-8")
+        self.assertLess(
+            source.index('client.call("get_screenshot")'),
+            source.index('client.call("list_memory_areas")'),
+        )
+
     def test_anchor_hunt_reuses_the_proven_frame_step_policy(self) -> None:
         self.assertEqual(_anchor_hit_limit(), 64)
         schedule = _anchor_frame_schedule()

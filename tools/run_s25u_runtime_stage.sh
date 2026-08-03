@@ -316,6 +316,9 @@ else
          first-context-direct-renderer-context|\
          first-context-direct-renderer-vram|\
          first-context-direct-renderer-screenshot|\
+         first-context-direct-renderer-screenshot-get|\
+         first-context-direct-renderer-screenshot-parse|\
+         first-context-direct-renderer-screenshot-write|\
          first-context-direct-renderer-alignment|\
          first-context-direct-renderer-local-report|\
          first-context-direct-renderer-publish-image|\
