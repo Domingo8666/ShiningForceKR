@@ -409,6 +409,7 @@ def _capture_anchor_vram(
     _record_failure_stage(failure_stage_path, f"{phase_prefix}-initialize")
     client = McpStdioClient(_default_command())
     breakpoint_armed = False
+    capture_complete = False
     entry_address = f"{DECODER_ENTRY_LOGICAL:04X}"
 
     def arm() -> None:
@@ -534,19 +535,19 @@ def _capture_anchor_vram(
                 "size": int(area["size"]),
             }
         _record_failure_stage(failure_stage_path, f"{phase_prefix}-payload-ready")
+        capture_complete = True
         return result
     finally:
-        if breakpoint_armed:
+        if breakpoint_armed and not capture_complete:
             try:
                 disarm()
             except BaseException:
                 pass
-        try:
-            client.abort()
-        except BaseException:
-            # The requested payload is already validated in memory.  Cleanup
-            # must not discard it even if Android rejects process termination.
-            pass
+        if not capture_complete:
+            try:
+                client.abort()
+            except BaseException:
+                pass
 
 
 def _main() -> int:
