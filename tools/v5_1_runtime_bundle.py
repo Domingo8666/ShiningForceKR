@@ -609,6 +609,7 @@ DIRECT_RENDERER_CAPTURE_FAILURE_STAGES = {
     "first-context-direct-renderer-screenshot-parse",
     "first-context-direct-renderer-screenshot-write",
     "first-context-direct-renderer-screenshot-buffered",
+    "first-context-direct-renderer-launch",
     "first-context-direct-renderer-entry",
     "first-context-direct-renderer-mode-screenshot",
     "first-context-direct-renderer-mode-vram",

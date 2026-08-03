@@ -309,6 +309,9 @@ else
       local capture_status=1
       local local_failure_stage="reports/local/v5_1_first_context_direct_renderer_capture_failure_stage.txt"
       local safe_failure_stage="analysis/device/v5_1_latest_first_context_direct_renderer_capture_failure_stage.txt"
+      mkdir -p "$(dirname "$local_failure_stage")"
+      printf '%s\n' first-context-direct-renderer-launch > \
+        "$local_failure_stage"
       if command -v timeout >/dev/null 2>&1; then
         timeout -k 10s 360s \
           python tools/v5_1_first_context_direct_renderer_capture.py \
@@ -340,6 +343,7 @@ else
          first-context-direct-renderer-screenshot-parse|\
          first-context-direct-renderer-screenshot-write|\
          first-context-direct-renderer-screenshot-buffered|\
+         first-context-direct-renderer-launch|\
          first-context-direct-renderer-entry|\
          first-context-direct-renderer-mode-screenshot|\
          first-context-direct-renderer-mode-vram|\
