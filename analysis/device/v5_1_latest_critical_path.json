@@ -8,7 +8,7 @@
   "confirmed_boundary": "correct-first-dialogue-screen-captured",
   "blocked_boundary": "captured-dialogue-to-font-consumer-route",
   "selection_reason": "current-direct-renderer-screen-ready-current-consumer-trace-missing",
-  "generated_utc": "2026-08-03T04:53:29.447203Z",
+  "generated_utc": "2026-08-03T04:57:15.423021Z",
   "baseline_script_bytes_unchanged": true,
   "translation_build_eligible": false,
   "next_checkpoint": "trace-captured-direct-renderer-consumer"
