@@ -859,6 +859,7 @@ def main() -> int:
             phase_prefix="first-context-direct-renderer",
             capture_screenshot=True,
             capture_vram=not args.screenshot_only,
+            write_screenshot=not args.screenshot_only,
         )
     if args.screenshot_only:
         _record_failure_stage(
@@ -866,6 +867,10 @@ def main() -> int:
             "first-context-direct-renderer-publish-image",
         )
         screenshot_image.parent.mkdir(parents=True, exist_ok=True)
+        screenshot_png = capture.pop("screenshot_png", None)
+        if not isinstance(screenshot_png, bytes):
+            raise ValueError("direct renderer screenshot payload is invalid")
+        screenshot_image.write_bytes(screenshot_png)
         if not screenshot_image.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"):
             raise ValueError("direct renderer screenshot image is not PNG")
         safe_screenshot = {

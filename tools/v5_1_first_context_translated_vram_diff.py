@@ -402,6 +402,7 @@ def _capture_anchor_vram(
     phase_prefix: str,
     capture_screenshot: bool = True,
     capture_vram: bool = True,
+    write_screenshot: bool = True,
 ) -> dict[str, object]:
     if not capture_screenshot and not capture_vram:
         raise ValueError("at least one direct capture payload is required")
@@ -502,9 +503,16 @@ def _capture_anchor_vram(
                 failure_stage_path,
                 f"{phase_prefix}-screenshot-write",
             )
-            evidence_path.parent.mkdir(parents=True, exist_ok=True)
-            _write_screenshot_bytes(evidence_path, png)
-            result["screenshot"] = {"file": str(evidence_path), **screen_metadata}
+            if write_screenshot:
+                evidence_path.parent.mkdir(parents=True, exist_ok=True)
+                _write_screenshot_bytes(evidence_path, png)
+                result["screenshot"] = {
+                    "file": str(evidence_path),
+                    **screen_metadata,
+                }
+            else:
+                result["screenshot_png"] = png
+                result["screenshot"] = screen_metadata
         if capture_vram:
             _record_failure_stage(failure_stage_path, f"{phase_prefix}-vram-list")
             memory_areas = client.call("list_memory_areas")
