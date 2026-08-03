@@ -35,7 +35,7 @@ except ImportError:  # direct script execution
     from v5_1_safe_observation import _git, _normalized_remote
 
 ARTIFACT_KIND = "sanitized-runtime-stage-diagnostic"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 PUBLISH_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_runtime_diagnostic.json"
 )
@@ -65,16 +65,30 @@ TOP_LEVEL_KEYS = {
     "failed_stage",
     "runtime_observation_present",
     "runtime_failure",
+    "runtime_failure_detail",
     "next_checkpoint",
 }
+TOP_LEVEL_KEYS_V3 = TOP_LEVEL_KEYS - {"runtime_failure_detail"}
+DIRECT_RENDERER_FAILURE_PATHS = (
+    Path(
+        "analysis/device/"
+        "v5_1_latest_first_context_direct_renderer_capture_failure_stage.txt"
+    ),
+    Path(
+        "reports/local/"
+        "v5_1_first_context_direct_renderer_capture_failure_stage.txt"
+    ),
+)
 
 
 def validate_runtime_diagnostic(diagnostic: dict[str, object]) -> None:
-    if set(diagnostic) != TOP_LEVEL_KEYS:
+    schema_version = diagnostic.get("schema_version")
+    expected_keys = TOP_LEVEL_KEYS if schema_version == SCHEMA_VERSION else TOP_LEVEL_KEYS_V3
+    if set(diagnostic) != expected_keys:
         raise ValueError("runtime diagnostic top-level fields do not match")
     if diagnostic["artifact_kind"] != ARTIFACT_KIND:
         raise ValueError("unexpected diagnostic artifact kind")
-    if diagnostic["schema_version"] != SCHEMA_VERSION:
+    if schema_version not in {3, SCHEMA_VERSION}:
         raise ValueError("unexpected diagnostic schema version")
     if diagnostic["status"] not in {
         "runtime-stage-ready",
@@ -123,6 +137,17 @@ def validate_runtime_diagnostic(diagnostic: dict[str, object]) -> None:
             raise ValueError(
                 "runtime_failure is only valid for a runtime command failure"
             )
+    if schema_version == SCHEMA_VERSION:
+        failure_detail = diagnostic["runtime_failure_detail"]
+        if failure_detail is not None and (
+            not isinstance(failure_detail, str)
+            or re.fullmatch(
+                r"first-context-direct-renderer-[a-z0-9-]{1,72}",
+                failure_detail,
+            )
+            is None
+        ):
+            raise ValueError("runtime_failure_detail is not a safe token")
     next_checkpoint = diagnostic["next_checkpoint"]
     if (
         not isinstance(next_checkpoint, str)
@@ -258,6 +283,21 @@ def collect_runtime_diagnostic(
             runtime_failure = value
         except (OSError, ValueError, json.JSONDecodeError):
             runtime_failure = None
+    runtime_failure_detail: str | None = None
+    if exit_code != 0:
+        for relative_path in DIRECT_RENDERER_FAILURE_PATHS:
+            try:
+                candidate = (root / relative_path).read_text(
+                    encoding="utf-8"
+                ).strip()
+            except OSError:
+                continue
+            if re.fullmatch(
+                r"first-context-direct-renderer-[a-z0-9-]{1,72}",
+                candidate,
+            ) is not None:
+                runtime_failure_detail = candidate
+                break
     diagnostic: dict[str, object] = {
         "artifact_kind": ARTIFACT_KIND,
         "schema_version": SCHEMA_VERSION,
@@ -272,6 +312,7 @@ def collect_runtime_diagnostic(
             / "analysis/device/v5_1_latest_runtime_observation.json"
         ).is_file(),
         "runtime_failure": runtime_failure,
+        "runtime_failure_detail": runtime_failure_detail,
         "next_checkpoint": (
             "rerun-runtime-probe"
             if ready

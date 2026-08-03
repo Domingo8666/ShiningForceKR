@@ -123,6 +123,45 @@ class RuntimeDiagnosticTests(unittest.TestCase):
             )
             diagnostic = collect_runtime_diagnostic(root, "probe", 1)
         self.assertEqual(diagnostic["runtime_failure"], receipt)
+        self.assertIsNone(diagnostic["runtime_failure_detail"])
+        validate_runtime_diagnostic(diagnostic)
+
+    @patch("tools.v5_1_runtime_diagnostic.verify_target_identity")
+    @patch("tools.v5_1_runtime_diagnostic.sha256_file", return_value="a" * 64)
+    @patch("tools.v5_1_runtime_diagnostic._run_check", return_value=True)
+    @patch(
+        "tools.v5_1_runtime_diagnostic.shutil.which",
+        return_value="/data/data/com.termux/files/usr/bin/proot-distro",
+    )
+    @patch("tools.v5_1_runtime_diagnostic.McpStdioClient")
+    def test_collects_direct_renderer_failure_detail(
+        self,
+        client_class: object,
+        _which: object,
+        _run_check_mock: object,
+        _sha256_mock: object,
+        _verify_mock: object,
+    ) -> None:
+        client_class.return_value.initialize.return_value = REQUIRED_TOOLS  # type: ignore[attr-defined]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "build").mkdir()
+            (root / "build/Final_Conflict_Korean_v5.1.gg").write_bytes(
+                b"target"
+            )
+            (root / "reports/local").mkdir(parents=True)
+            (root / "reports/v5_1_emucap_trace_plan.json").write_text(
+                json.dumps({"source_analysis_sha256": "a" * 64}),
+                encoding="utf-8",
+            )
+            detail = "first-context-direct-renderer-prepare-build"
+            (
+                root
+                / "reports/local/"
+                "v5_1_first_context_direct_renderer_capture_failure_stage.txt"
+            ).write_text(detail + "\n", encoding="utf-8")
+            diagnostic = collect_runtime_diagnostic(root, "probe", 1)
+        self.assertEqual(diagnostic["runtime_failure_detail"], detail)
         validate_runtime_diagnostic(diagnostic)
 
 
