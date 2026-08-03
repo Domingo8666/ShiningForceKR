@@ -491,7 +491,7 @@ def analyze_direct_renderer_slot_alignment(
                 "font_tiles": sample["rom_font_candidates"][:512],
                 "rom_match_count": len(sample["rom_offsets"]),
                 "rom_offsets": sample["rom_offsets"][:512],
-                "routes": sample["route_candidates"],
+                "routes": sample["route_candidates"][:512],
             }
             for sample in samples
         ],
@@ -1010,7 +1010,26 @@ def main() -> int:
             failure_path,
             "first-context-direct-renderer-artifact",
         )
-        validate_first_context_direct_renderer_capture(safe)
+        try:
+            validate_first_context_direct_renderer_capture(safe)
+        except ValueError as error:
+            failure_suffix = {
+                "direct renderer capture fields do not match": "fields",
+                "direct renderer capture is inconsistent": "inconsistent",
+                "direct renderer capture request identity is invalid": "request",
+                "direct renderer slot alignment fields do not match": (
+                    "alignment-fields"
+                ),
+                "direct renderer slot alignment is inconsistent": (
+                    "alignment-inconsistent"
+                ),
+                "direct renderer slot route candidates are invalid": "routes",
+            }.get(str(error), "unknown")
+            _record_failure_stage(
+                failure_path,
+                f"first-context-direct-renderer-artifact-{failure_suffix}",
+            )
+            raise
         safe_path = root / PUBLISH_RELATIVE_PATH
         safe_path.parent.mkdir(parents=True, exist_ok=True)
         safe_path.write_text(

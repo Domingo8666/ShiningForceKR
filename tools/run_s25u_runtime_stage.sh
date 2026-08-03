@@ -354,7 +354,14 @@ else
          first-context-direct-renderer-alignment|\
          first-context-direct-renderer-local-report|\
          first-context-direct-renderer-publish-image|\
-         first-context-direct-renderer-artifact)
+         first-context-direct-renderer-artifact|\
+         first-context-direct-renderer-artifact-fields|\
+         first-context-direct-renderer-artifact-inconsistent|\
+         first-context-direct-renderer-artifact-request|\
+         first-context-direct-renderer-artifact-alignment-fields|\
+         first-context-direct-renderer-artifact-alignment-inconsistent|\
+         first-context-direct-renderer-artifact-routes|\
+         first-context-direct-renderer-artifact-unknown)
           ;;
         *)
           failure_stage=unavailable
