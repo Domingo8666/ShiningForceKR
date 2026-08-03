@@ -3,17 +3,17 @@
   "schema_version": 1,
   "status": "direct-renderer-screenshot-captured",
   "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
-  "test_target_sha256": "aed8dabc53f8fcc54d8c5ef02d3dcd761eb4c87d4c12713e208a0db0077546f8",
-  "first_context_translation_test_build_sha256": "83d6c8544f1904438f25030bd6bc32031e00bc3ae15953d1b0501b945870ced1",
-  "local_encoding_sha256": "97e590837a9972d2056cce85ee64dbac09a43465f2d8a34c68b46f642978aa5d",
-  "capture_png_sha256": "7a93440f24db86bb2ef8fb08c73224b92bae2b3d95fa04498ce75de28388bbe3",
-  "captured_utc": "2026-08-03T04:06:45.324755Z",
+  "test_target_sha256": "085fe3f43bb45796f6661beecd1e9b04c93b857a15aac09dd69460fd3a821e02",
+  "first_context_translation_test_build_sha256": "c60152f72f3f643e0bf74548177894f727a9a9e9dabd29ab647d90ee37c91efc",
+  "local_encoding_sha256": "ecb8f8de52ec52d549644d9d101a00bfe519eb0feff99b76d42c05da1b7aadcd",
+  "capture_png_sha256": "e658405aedc5a29af9846c49458174bb5aeef81c85b0df9a748d4581cd648a24",
+  "captured_utc": "2026-08-03T04:30:46.951514Z",
   "runtime_entry": {
     "selector": 2,
     "ordinal": 147
   },
   "renderer_route": "direct-observed-page",
-  "runtime_stage_request_id": "direct-renderer-slot-map-20260803-78-screenshot",
+  "runtime_stage_request_id": "direct-renderer-slot-map-20260803-82-screenshot",
   "cold_boot": true,
   "human_visual_review_required": true,
   "next_checkpoint": "capture-direct-renderer-vram-in-fresh-session"
