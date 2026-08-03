@@ -134,7 +134,8 @@ class S25UAutopilotTests(unittest.TestCase):
         self.assertIn("last_runtime_stage_request", RUNTIME_STAGE)
         self.assertIn('set(value)=={"request_id", "stage"}', RUNTIME_STAGE)
         self.assertIn('stage in allowed', RUNTIME_STAGE)
-        self.assertIn(
+        self.assertIn('critical_path_focus="$stage_request_focus"', RUNTIME_STAGE)
+        self.assertNotIn(
             'if [ "$stage_request_token" != "$last_stage_request" ]',
             RUNTIME_STAGE,
         )

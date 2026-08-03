@@ -163,20 +163,14 @@ else
       python -c 'import json, re, sys; from pathlib import Path; path=Path(sys.argv[1]); value=json.loads(path.read_text(encoding="utf-8")); allowed={"first-context-translated-glyph-route", "first-context-direct-renderer-capture"}; request_id=value.get("request_id"); stage=value.get("stage"); valid=set(value)=={"request_id", "stage"} and isinstance(request_id, str) and re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", request_id) is not None and stage in allowed; print(f"{request_id}|{stage}" if valid else "")' \
         "$runtime_stage_request_file" 2>/dev/null || true
     )"
-    if [ -n "$stage_request_payload" ]; then
-      stage_request_token="${stage_request_payload%%|*}"
-      stage_request_focus="${stage_request_payload#*|}"
-      last_stage_request=""
-      if [ -f "$last_runtime_stage_request_file" ]; then
-        last_stage_request="$(cat "$last_runtime_stage_request_file")"
-      fi
-      if [ "$stage_request_token" != "$last_stage_request" ]; then
+      if [ -n "$stage_request_payload" ]; then
+        stage_request_token="${stage_request_payload%%|*}"
+        stage_request_focus="${stage_request_payload#*|}"
+        # The tracked, validated request is authoritative.  A stale private
+        # completion marker must never redirect a failed capture back to the
+        # automatically selected analysis stage.
         critical_path_focus="$stage_request_focus"
-      else
-        stage_request_token=""
-        stage_request_focus=""
       fi
-    fi
   fi
   # Keep the validated request identity on the same variable used by the
   # direct-renderer pre/post checks below.  With `set -u`, referring to a
