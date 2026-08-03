@@ -273,6 +273,22 @@ class S25UAutopilotTests(unittest.TestCase):
         )
         self.assertNotIn("retrying", branch)
 
+    def test_direct_renderer_large_payloads_use_separate_sessions(self) -> None:
+        direct_branch = RUNTIME_STAGE.index(
+            'elif [ "$critical_path_focus" = "first-context-direct-renderer-capture" ]'
+        )
+        next_branch = RUNTIME_STAGE.index(
+            'elif [ "$critical_path_focus" = "active-rom-cursor-reset" ]',
+            direct_branch,
+        )
+        branch = RUNTIME_STAGE[direct_branch:next_branch]
+        self.assertIn("*-screenshot)", branch)
+        self.assertIn("direct_capture_mode_args=(--screenshot-only)", branch)
+        self.assertIn("*-vram)", branch)
+        self.assertIn("direct_capture_mode_args=(--vram-only)", branch)
+        self.assertIn("validate_first_context_direct_renderer_screenshot", branch)
+        self.assertIn("SCREENSHOT_IMAGE_PATH", branch)
+
     def test_direct_renderer_failure_stage_is_safe_to_publish(self) -> None:
         self.assertIn(
             "analysis/device/"

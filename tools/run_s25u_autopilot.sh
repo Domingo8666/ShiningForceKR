@@ -297,6 +297,8 @@ is_safe_artifact() {
     analysis/device/v5_1_latest_first_context_translated_glyph_route.json|\
     analysis/device/v5_1_latest_first_context_direct_renderer_capture.json|\
     analysis/device/v5_1_latest_first_context_direct_renderer_capture.png|\
+    analysis/device/v5_1_latest_first_context_direct_renderer_screenshot.json|\
+    analysis/device/v5_1_latest_first_context_direct_renderer_screenshot.png|\
     analysis/device/v5_1_latest_first_context_direct_renderer_capture_failure_stage.txt|\
     analysis/device/v5_1_latest_active_rom_cursor_reset.json|\
     analysis/device/v5_1_latest_critical_path.json|\

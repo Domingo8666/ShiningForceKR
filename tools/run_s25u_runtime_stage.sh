@@ -289,16 +289,30 @@ else
     echo "SFKR critical path: rebuilding the first dialogue on the proven visible font page."
     write_next_step \
       "실기에서 정상 출력된 글꼴 페이지를 사용해 첫 대사 한 줄을 다시 만들고, 콜드부팅 화면을 자동 캡처하고 있습니다."
+    direct_capture_mode=combined
+    direct_capture_mode_args=()
+    case "$critical_path_request_id" in
+      *-screenshot)
+        direct_capture_mode=screenshot
+        direct_capture_mode_args=(--screenshot-only)
+        ;;
+      *-vram)
+        direct_capture_mode=vram
+        direct_capture_mode_args=(--vram-only)
+        ;;
+    esac
     run_direct_renderer_capture_bounded() {
       local capture_status=1
       local local_failure_stage="reports/local/v5_1_first_context_direct_renderer_capture_failure_stage.txt"
       local safe_failure_stage="analysis/device/v5_1_latest_first_context_direct_renderer_capture_failure_stage.txt"
       if command -v timeout >/dev/null 2>&1; then
         timeout -k 10s 360s \
-          python tools/v5_1_first_context_direct_renderer_capture.py
+          python tools/v5_1_first_context_direct_renderer_capture.py \
+          "${direct_capture_mode_args[@]}"
         capture_status=$?
       else
-        python tools/v5_1_first_context_direct_renderer_capture.py
+        python tools/v5_1_first_context_direct_renderer_capture.py \
+          "${direct_capture_mode_args[@]}"
         capture_status=$?
       fi
       if [ "$capture_status" -eq 0 ]; then
@@ -337,7 +351,8 @@ else
       # published once instead of rerunning the same eight-minute probe.
       return 1
     }
-    if python - "$critical_path_request_id" <<'PY'
+    if [ "$direct_capture_mode" = "combined" ] && \
+      python - "$critical_path_request_id" <<'PY'
 from pathlib import Path
 import json
 import sys
@@ -407,7 +422,7 @@ PY
     fi
     direct_renderer_capture_status=$?
     if [ "$direct_renderer_capture_status" -eq 0 ]; then
-      python - "$critical_path_request_id" <<'PY'
+      python - "$critical_path_request_id" "$direct_capture_mode" <<'PY'
 from pathlib import Path
 import json
 import sys
@@ -416,27 +431,39 @@ from tools.patch_io import sha256_file
 from tools.v5_1_first_context_direct_renderer_capture import (
     PUBLISH_IMAGE_RELATIVE_PATH as CAPTURE_IMAGE_PATH,
     PUBLISH_RELATIVE_PATH as CAPTURE_PATH,
+    PUBLISH_SCREENSHOT_IMAGE_RELATIVE_PATH as SCREENSHOT_IMAGE_PATH,
+    PUBLISH_SCREENSHOT_RELATIVE_PATH as SCREENSHOT_PATH,
     validate_first_context_direct_renderer_capture,
+    validate_first_context_direct_renderer_screenshot,
 )
 from tools.v5_1_first_context_translation_test_build import (
     PUBLISH_RELATIVE_PATH as BUILD_PATH,
     validate_first_context_translation_test_build,
 )
 
-paths = {
-    "capture": CAPTURE_PATH,
-    "image": CAPTURE_IMAGE_PATH,
-    "build": BUILD_PATH,
-}
+mode = sys.argv[2]
+if mode == "screenshot":
+    paths = {
+        "capture": SCREENSHOT_PATH,
+        "image": SCREENSHOT_IMAGE_PATH,
+        "build": BUILD_PATH,
+    }
+    validator = validate_first_context_direct_renderer_screenshot
+else:
+    paths = {
+        "capture": CAPTURE_PATH,
+        "image": CAPTURE_IMAGE_PATH,
+        "build": BUILD_PATH,
+    }
+    validator = validate_first_context_direct_renderer_capture
 if any(not path.is_file() for path in paths.values()):
     raise SystemExit(1)
 capture = json.loads(paths["capture"].read_text(encoding="utf-8"))
 build = json.loads(paths["build"].read_text(encoding="utf-8"))
-validate_first_context_direct_renderer_capture(capture)
+validator(capture)
 validate_first_context_translation_test_build(build)
 ready = (
-    capture.get("schema_version") in {6, 7, 8}
-    and capture.get("runtime_stage_request_id") == sys.argv[1]
+    capture.get("runtime_stage_request_id") == sys.argv[1]
     and capture["test_target_sha256"] == build["test_target_sha256"]
     and capture["first_context_translation_test_build_sha256"]
     == sha256_file(paths["build"])

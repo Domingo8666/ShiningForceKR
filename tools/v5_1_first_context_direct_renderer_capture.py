@@ -44,6 +44,10 @@ except ImportError:  # pragma: no cover - direct script execution
 
 ARTIFACT_KIND = "sanitized-v5-1-first-context-direct-renderer-capture"
 SCHEMA_VERSION = 8
+SCREENSHOT_ARTIFACT_KIND = (
+    "sanitized-v5-1-first-context-direct-renderer-screenshot"
+)
+SCREENSHOT_SCHEMA_VERSION = 1
 ROUTE_SCHEMA_VERSIONS = {6, 7, SCHEMA_VERSION}
 NUMERIC_SAMPLE_SCHEMA_VERSIONS = {7, SCHEMA_VERSION}
 NAME_TABLE_BASE = 0x3800
@@ -73,6 +77,12 @@ PUBLISH_RELATIVE_PATH = Path(
 )
 PUBLISH_IMAGE_RELATIVE_PATH = Path(
     "analysis/device/v5_1_latest_first_context_direct_renderer_capture.png"
+)
+PUBLISH_SCREENSHOT_RELATIVE_PATH = Path(
+    "analysis/device/v5_1_latest_first_context_direct_renderer_screenshot.json"
+)
+PUBLISH_SCREENSHOT_IMAGE_RELATIVE_PATH = Path(
+    "analysis/device/v5_1_latest_first_context_direct_renderer_screenshot.png"
 )
 LOCAL_EVIDENCE_PATH = Path(
     "evidence/local/v5_1_first_context_direct_renderer_capture.png"
@@ -104,6 +114,23 @@ TOP_LEVEL_KEYS_V2 = {
 TOP_LEVEL_KEYS = TOP_LEVEL_KEYS_V2 | {"runtime_stage_request_id"}
 TOP_LEVEL_KEYS_V4 = TOP_LEVEL_KEYS | {"slot_alignment"}
 RUNTIME_ENTRY_KEYS = {"selector", "ordinal"}
+SCREENSHOT_TOP_LEVEL_KEYS = {
+    "artifact_kind",
+    "schema_version",
+    "status",
+    "baseline_target_sha256",
+    "test_target_sha256",
+    "first_context_translation_test_build_sha256",
+    "local_encoding_sha256",
+    "capture_png_sha256",
+    "captured_utc",
+    "runtime_entry",
+    "renderer_route",
+    "runtime_stage_request_id",
+    "cold_boot",
+    "human_visual_review_required",
+    "next_checkpoint",
+}
 SLOT_ALIGNMENT_KEYS_V4 = {
     "sample_count",
     "unique_desired_vram_match_count",
@@ -688,10 +715,55 @@ def validate_first_context_direct_renderer_capture(
                 raise ValueError("direct renderer slot route candidates are invalid")
 
 
+def validate_first_context_direct_renderer_screenshot(
+    value: dict[str, object],
+) -> None:
+    runtime_entry = value.get("runtime_entry")
+    if (
+        set(value) != SCREENSHOT_TOP_LEVEL_KEYS
+        or value.get("artifact_kind") != SCREENSHOT_ARTIFACT_KIND
+        or value.get("schema_version") != SCREENSHOT_SCHEMA_VERSION
+        or value.get("status") != "direct-renderer-screenshot-captured"
+        or value.get("renderer_route")
+        not in {"direct-observed-page", "proven-visible-page"}
+        or not all(
+            _is_sha256(value.get(key))
+            for key in (
+                "baseline_target_sha256",
+                "test_target_sha256",
+                "first_context_translation_test_build_sha256",
+                "local_encoding_sha256",
+                "capture_png_sha256",
+            )
+        )
+        or not isinstance(runtime_entry, dict)
+        or set(runtime_entry) != RUNTIME_ENTRY_KEYS
+        or any(
+            not isinstance(item, int) or isinstance(item, bool) or item < 0
+            for item in runtime_entry.values()
+        )
+        or not isinstance(value.get("runtime_stage_request_id"), str)
+        or re.fullmatch(
+            r"[a-z0-9][a-z0-9._-]{0,63}",
+            value["runtime_stage_request_id"],
+        )
+        is None
+        or not value["runtime_stage_request_id"].endswith("-screenshot")
+        or value.get("cold_boot") is not True
+        or value.get("human_visual_review_required") is not True
+        or value.get("next_checkpoint")
+        != "capture-direct-renderer-vram-in-fresh-session"
+    ):
+        raise ValueError("direct renderer screenshot receipt is inconsistent")
+
+
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--proven-visible-page", action="store_true")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--screenshot-only", action="store_true")
+    mode.add_argument("--vram-only", action="store_true")
     args = parser.parse_args()
     paths = {
         "rom": root / TEST_ROM_PATH,
@@ -715,6 +787,13 @@ def main() -> int:
         is None
     ):
         raise ValueError("direct renderer capture input is invalid")
+    if (
+        args.screenshot_only
+        and not request["request_id"].endswith("-screenshot")
+    ) or (
+        args.vram_only and not request["request_id"].endswith("-vram")
+    ):
+        raise ValueError("direct renderer split mode and request disagree")
     validate_first_context_translation_test_build(build)
     rows = encoding.get("rows")
     if (
@@ -731,14 +810,106 @@ def main() -> int:
     ):
         raise ValueError("direct renderer capture identity disagrees")
 
-    local_image = root / LOCAL_EVIDENCE_PATH
     failure_path = root / FAILURE_STAGE_PATH
-    capture = _capture_anchor_vram(
-        rom_path=paths["rom"],
-        evidence_path=local_image,
-        failure_stage_path=failure_path,
-        phase_prefix="first-context-direct-renderer",
-    )
+    local_image = root / LOCAL_EVIDENCE_PATH
+    screenshot_receipt: dict[str, object] | None = None
+    screenshot_image = root / PUBLISH_SCREENSHOT_IMAGE_RELATIVE_PATH
+    if args.vram_only:
+        screenshot_receipt_path = root / PUBLISH_SCREENSHOT_RELATIVE_PATH
+        if not screenshot_receipt_path.is_file() or not screenshot_image.is_file():
+            raise ValueError("direct renderer screenshot input is missing")
+        screenshot_receipt = json.loads(
+            screenshot_receipt_path.read_text(encoding="utf-8")
+        )
+        if not isinstance(screenshot_receipt, dict):
+            raise ValueError("direct renderer screenshot receipt is invalid")
+        validate_first_context_direct_renderer_screenshot(screenshot_receipt)
+        if (
+            screenshot_receipt["baseline_target_sha256"]
+            != build["baseline_target_sha256"]
+            or screenshot_receipt["test_target_sha256"]
+            != build["test_target_sha256"]
+            or screenshot_receipt["local_encoding_sha256"]
+            != sha256_file(paths["encoding"])
+            or screenshot_receipt["capture_png_sha256"]
+            != sha256_file(screenshot_image)
+        ):
+            raise ValueError("direct renderer screenshot identity disagrees")
+        capture = _capture_anchor_vram(
+            rom_path=paths["rom"],
+            evidence_path=local_image,
+            failure_stage_path=failure_path,
+            phase_prefix="first-context-direct-renderer",
+            capture_screenshot=False,
+            capture_vram=True,
+        )
+        if {
+            "selector": int(capture["selector"]),
+            "ordinal": int(capture["ordinal"]),
+        } != screenshot_receipt["runtime_entry"]:
+            raise ValueError("direct renderer split runtime entries disagree")
+        local_image.parent.mkdir(parents=True, exist_ok=True)
+        local_image.write_bytes(screenshot_image.read_bytes())
+    else:
+        capture = _capture_anchor_vram(
+            rom_path=paths["rom"],
+            evidence_path=local_image,
+            failure_stage_path=failure_path,
+            phase_prefix="first-context-direct-renderer",
+            capture_screenshot=True,
+            capture_vram=not args.screenshot_only,
+        )
+    if args.screenshot_only:
+        _record_failure_stage(
+            failure_path,
+            "first-context-direct-renderer-publish-image",
+        )
+        screenshot_image.parent.mkdir(parents=True, exist_ok=True)
+        screenshot_image.write_bytes(local_image.read_bytes())
+        if not screenshot_image.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"):
+            raise ValueError("direct renderer screenshot image is not PNG")
+        safe_screenshot = {
+            "artifact_kind": SCREENSHOT_ARTIFACT_KIND,
+            "schema_version": SCREENSHOT_SCHEMA_VERSION,
+            "status": "direct-renderer-screenshot-captured",
+            "baseline_target_sha256": build["baseline_target_sha256"],
+            "test_target_sha256": build["test_target_sha256"],
+            "first_context_translation_test_build_sha256": sha256_file(
+                paths["build"]
+            ),
+            "local_encoding_sha256": sha256_file(paths["encoding"]),
+            "capture_png_sha256": sha256_file(screenshot_image),
+            "captured_utc": datetime.now(timezone.utc).isoformat().replace(
+                "+00:00", "Z"
+            ),
+            "runtime_entry": {
+                "selector": int(capture["selector"]),
+                "ordinal": int(capture["ordinal"]),
+            },
+            "renderer_route": (
+                "proven-visible-page"
+                if args.proven_visible_page
+                else "direct-observed-page"
+            ),
+            "runtime_stage_request_id": request["request_id"],
+            "cold_boot": True,
+            "human_visual_review_required": True,
+            "next_checkpoint": "capture-direct-renderer-vram-in-fresh-session",
+        }
+        _record_failure_stage(
+            failure_path,
+            "first-context-direct-renderer-artifact",
+        )
+        validate_first_context_direct_renderer_screenshot(safe_screenshot)
+        screenshot_receipt_path = root / PUBLISH_SCREENSHOT_RELATIVE_PATH
+        screenshot_receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        screenshot_receipt_path.write_text(
+            json.dumps(safe_screenshot, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        failure_path.unlink(missing_ok=True)
+        print(f"SFKR direct renderer screenshot: {screenshot_image}")
+        return 0
     _record_failure_stage(
         failure_path,
         "first-context-direct-renderer-alignment",
@@ -792,9 +963,13 @@ def main() -> int:
             "ordinal": int(capture["ordinal"]),
         },
         "renderer_route": (
-            "proven-visible-page"
-            if args.proven_visible_page
-            else "direct-observed-page"
+            str(screenshot_receipt["renderer_route"])
+            if screenshot_receipt is not None
+            else (
+                "proven-visible-page"
+                if args.proven_visible_page
+                else "direct-observed-page"
+            )
         ),
         "runtime_stage_request_id": request["request_id"],
         "direct_renderer_first_row_confirmed": True,

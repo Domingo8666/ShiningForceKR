@@ -186,7 +186,12 @@ try:
     from .v5_1_first_context_direct_renderer_capture import (
         PUBLISH_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_RELATIVE_PATH,
         PUBLISH_IMAGE_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_IMAGE_RELATIVE_PATH,
+        PUBLISH_SCREENSHOT_RELATIVE_PATH
+        as DIRECT_RENDERER_SCREENSHOT_RELATIVE_PATH,
+        PUBLISH_SCREENSHOT_IMAGE_RELATIVE_PATH
+        as DIRECT_RENDERER_SCREENSHOT_IMAGE_RELATIVE_PATH,
         validate_first_context_direct_renderer_capture,
+        validate_first_context_direct_renderer_screenshot,
     )
     from .v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ACTIVE_ROM_CURSOR_RESET_RELATIVE_PATH,
@@ -470,7 +475,12 @@ except ImportError:  # direct script execution
     from v5_1_first_context_direct_renderer_capture import (
         PUBLISH_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_RELATIVE_PATH,
         PUBLISH_IMAGE_RELATIVE_PATH as DIRECT_RENDERER_CAPTURE_IMAGE_RELATIVE_PATH,
+        PUBLISH_SCREENSHOT_RELATIVE_PATH
+        as DIRECT_RENDERER_SCREENSHOT_RELATIVE_PATH,
+        PUBLISH_SCREENSHOT_IMAGE_RELATIVE_PATH
+        as DIRECT_RENDERER_SCREENSHOT_IMAGE_RELATIVE_PATH,
         validate_first_context_direct_renderer_capture,
+        validate_first_context_direct_renderer_screenshot,
     )
     from v5_1_active_rom_cursor_reset import (
         PUBLISH_RELATIVE_PATH as ACTIVE_ROM_CURSOR_RESET_RELATIVE_PATH,
@@ -707,6 +717,8 @@ SAFE_ARTIFACTS = {
         validate_first_context_translated_glyph_route,
     DIRECT_RENDERER_CAPTURE_RELATIVE_PATH:
         validate_first_context_direct_renderer_capture,
+    DIRECT_RENDERER_SCREENSHOT_RELATIVE_PATH:
+        validate_first_context_direct_renderer_screenshot,
     ACTIVE_ROM_CURSOR_RESET_RELATIVE_PATH:
         validate_active_rom_cursor_reset,
     CRITICAL_PATH_RELATIVE_PATH:
@@ -753,6 +765,8 @@ SAFE_BINARY_ARTIFACTS = {
     PUBLISH_IMAGE_RELATIVE_PATH: PUBLISH_RECEIPT_RELATIVE_PATH,
     DIRECT_RENDERER_CAPTURE_IMAGE_RELATIVE_PATH:
         DIRECT_RENDERER_CAPTURE_RELATIVE_PATH,
+    DIRECT_RENDERER_SCREENSHOT_IMAGE_RELATIVE_PATH:
+        DIRECT_RENDERER_SCREENSHOT_RELATIVE_PATH,
 }
 SAFE_TEXT_ARTIFACTS = {
     DIRECT_RENDERER_CAPTURE_FAILURE_STAGE_RELATIVE_PATH:
@@ -1848,7 +1862,10 @@ def _load_validated_binary_artifacts(
         if receipt is None:
             continue
         try:
-            if relative == DIRECT_RENDERER_CAPTURE_IMAGE_RELATIVE_PATH:
+            if relative in {
+                DIRECT_RENDERER_CAPTURE_IMAGE_RELATIVE_PATH,
+                DIRECT_RENDERER_SCREENSHOT_IMAGE_RELATIVE_PATH,
+            }:
                 image_path = (root / relative).resolve()
                 image_path.relative_to(root.resolve())
                 data = image_path.read_bytes()

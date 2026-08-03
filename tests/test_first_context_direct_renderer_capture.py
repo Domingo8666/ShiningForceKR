@@ -15,6 +15,7 @@ from tools.v5_1_first_context_direct_renderer_capture import (
     NAME_TABLE_WIDTH,
     analyze_direct_renderer_slot_alignment,
     validate_first_context_direct_renderer_capture,
+    validate_first_context_direct_renderer_screenshot,
 )
 from tools.v5_1_first_context_translation_encoding import (
     direct_renderer_font_tile_offset,
@@ -30,6 +31,32 @@ from unittest.mock import patch
 
 
 class FirstContextDirectRendererCaptureTests(unittest.TestCase):
+    def test_accepts_split_screenshot_receipt(self) -> None:
+        value = {
+            "artifact_kind": (
+                "sanitized-v5-1-first-context-direct-renderer-screenshot"
+            ),
+            "schema_version": 1,
+            "status": "direct-renderer-screenshot-captured",
+            "baseline_target_sha256": "a" * 64,
+            "test_target_sha256": "b" * 64,
+            "first_context_translation_test_build_sha256": "c" * 64,
+            "local_encoding_sha256": "d" * 64,
+            "capture_png_sha256": "e" * 64,
+            "captured_utc": "2026-08-03T00:00:00Z",
+            "runtime_entry": {"selector": 2, "ordinal": 147},
+            "renderer_route": "direct-observed-page",
+            "runtime_stage_request_id": "direct-slot-58-screenshot",
+            "cold_boot": True,
+            "human_visual_review_required": True,
+            "next_checkpoint": "capture-direct-renderer-vram-in-fresh-session",
+        }
+        validate_first_context_direct_renderer_screenshot(value)
+        invalid = copy.deepcopy(value)
+        invalid["runtime_stage_request_id"] = "direct-slot-58-vram"
+        with self.assertRaises(ValueError):
+            validate_first_context_direct_renderer_screenshot(invalid)
+
     def test_dialogue_coordinates_include_game_gear_viewport_crop(self) -> None:
         self.assertEqual(GAME_GEAR_VIEWPORT_TILE_COLUMN, 6)
         self.assertEqual(GAME_GEAR_VIEWPORT_TILE_ROW, 3)

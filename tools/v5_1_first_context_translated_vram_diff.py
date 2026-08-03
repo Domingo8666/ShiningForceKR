@@ -388,7 +388,11 @@ def _capture_anchor_vram(
     evidence_path: Path,
     failure_stage_path: Path,
     phase_prefix: str,
+    capture_screenshot: bool = True,
+    capture_vram: bool = True,
 ) -> dict[str, object]:
+    if not capture_screenshot and not capture_vram:
+        raise ValueError("at least one direct capture payload is required")
     _record_failure_stage(failure_stage_path, f"{phase_prefix}-initialize")
     client = McpStdioClient(_default_command())
     breakpoint_armed = False
@@ -466,42 +470,46 @@ def _capture_anchor_vram(
             rom_size=rom_path.stat().st_size,
         )
         _step_frames_and_wait(client, POST_DECODE_CAPTURE_FRAMES)
-        # Capture the small visible framebuffer before the much larger VRAM
-        # transfer.  On the Android MCP runtime, a screenshot requested after
-        # the chunked VRAM read can miss the 30-second response window even
-        # though the emulator remains at the correct paused frame.
-        _record_failure_stage(failure_stage_path, f"{phase_prefix}-screenshot-get")
-        screenshot_payload = client.call("get_screenshot")
-        _record_failure_stage(failure_stage_path, f"{phase_prefix}-screenshot-parse")
-        png, screen_metadata = _parse_screenshot(screenshot_payload)
-        _record_failure_stage(failure_stage_path, f"{phase_prefix}-screenshot-write")
-        evidence_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_bytes_atomic(evidence_path, png)
-        _record_failure_stage(failure_stage_path, f"{phase_prefix}-vram-list")
-        memory_areas = client.call("list_memory_areas")
-        area = _select_vram_area(memory_areas)
-        _record_failure_stage(failure_stage_path, f"{phase_prefix}-vram-read")
-        vram = _read_memory_area(
-            client,
-            area_id=int(area["id"]),
-            size=int(area["size"]),
-            # Gearsystem 3.9.14 on the Android runtime has proven the default
-            # 1 KiB requests, while larger 4/16 KiB payloads are rejected.
-            # Screenshot-first ordering keeps the visible proof safe while
-            # these bounded reads complete.
-        )
-        return {
+        result: dict[str, object] = {
             "selector": CONFIRMED_SELECTOR,
             "ordinal": CONFIRMED_ORDINAL,
             "initial_context": initial_context,
-            "vram": vram,
-            "vram_area": {
+        }
+        if capture_screenshot:
+            _record_failure_stage(
+                failure_stage_path,
+                f"{phase_prefix}-screenshot-get",
+            )
+            screenshot_payload = client.call("get_screenshot")
+            _record_failure_stage(
+                failure_stage_path,
+                f"{phase_prefix}-screenshot-parse",
+            )
+            png, screen_metadata = _parse_screenshot(screenshot_payload)
+            _record_failure_stage(
+                failure_stage_path,
+                f"{phase_prefix}-screenshot-write",
+            )
+            evidence_path.parent.mkdir(parents=True, exist_ok=True)
+            _write_bytes_atomic(evidence_path, png)
+            result["screenshot"] = {"file": str(evidence_path), **screen_metadata}
+        if capture_vram:
+            _record_failure_stage(failure_stage_path, f"{phase_prefix}-vram-list")
+            memory_areas = client.call("list_memory_areas")
+            area = _select_vram_area(memory_areas)
+            _record_failure_stage(failure_stage_path, f"{phase_prefix}-vram-read")
+            vram = _read_memory_area(
+                client,
+                area_id=int(area["id"]),
+                size=int(area["size"]),
+            )
+            result["vram"] = vram
+            result["vram_area"] = {
                 "id": int(area["id"]),
                 "name": str(area["name"]),
                 "size": int(area["size"]),
-            },
-            "screenshot": {"file": str(evidence_path), **screen_metadata},
-        }
+            }
+        return result
     finally:
         if breakpoint_armed:
             try:
