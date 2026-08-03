@@ -477,13 +477,17 @@ def _capture_anchor_vram(
         _record_failure_stage(failure_stage_path, f"{phase_prefix}-screenshot-write")
         evidence_path.parent.mkdir(parents=True, exist_ok=True)
         _write_bytes_atomic(evidence_path, png)
-        _record_failure_stage(failure_stage_path, f"{phase_prefix}-vram")
+        _record_failure_stage(failure_stage_path, f"{phase_prefix}-vram-list")
         memory_areas = client.call("list_memory_areas")
         area = _select_vram_area(memory_areas)
+        _record_failure_stage(failure_stage_path, f"{phase_prefix}-vram-read")
         vram = _read_memory_area(
             client,
             area_id=int(area["id"]),
             size=int(area["size"]),
+            # One immutable 16 KiB response avoids sixteen Android/MCP round
+            # trips that can otherwise consume the outer stage budget.
+            chunk_size=int(area["size"]),
         )
         return {
             "selector": CONFIRMED_SELECTOR,

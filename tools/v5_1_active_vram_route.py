@@ -180,10 +180,13 @@ def _read_memory_area(
     *,
     area_id: int,
     size: int,
+    chunk_size: int = MEMORY_READ_CHUNK,
 ) -> bytes:
+    if not 1 <= chunk_size <= size:
+        raise ValueError("memory read chunk size is invalid")
     chunks = []
-    for offset in range(0, size, MEMORY_READ_CHUNK):
-        length = min(MEMORY_READ_CHUNK, size - offset)
+    for offset in range(0, size, chunk_size):
+        length = min(chunk_size, size - offset)
         payload = client.call(
             "read_memory",
             {

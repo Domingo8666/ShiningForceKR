@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
 from tools.v5_1_active_vram_route import (  # noqa: E402
     _contiguous_ranges,
     _parse_memory_bytes,
+    _read_memory_area,
     _ram_offset,
     _select_ram_area,
     _select_vram_area,
@@ -33,6 +34,32 @@ def _runtime_entry() -> dict[str, int]:
 
 
 class ActiveVramRouteTests(unittest.TestCase):
+    def test_can_read_vram_in_one_bounded_mcp_response(self) -> None:
+        class Client:
+            calls: list[tuple[str, dict[str, object]]] = []
+
+            def call(
+                self,
+                name: str,
+                arguments: dict[str, object],
+            ) -> dict[str, object]:
+                self.calls.append((name, arguments))
+                size = int(arguments["size"])
+                return {"data": " ".join("00" for _ in range(size))}
+
+        client = Client()
+        self.assertEqual(
+            _read_memory_area(
+                client,
+                area_id=2,
+                size=0x4000,
+                chunk_size=0x4000,
+            ),
+            bytes(0x4000),
+        )
+        self.assertEqual(len(client.calls), 1)
+        self.assertEqual(client.calls[0][1]["size"], 0x4000)
+
     def test_parses_memory_and_selects_exact_vram_area(self) -> None:
         self.assertEqual(_parse_memory_bytes("00 7F FF", 3), b"\x00\x7f\xff")
         selected = _select_vram_area(
