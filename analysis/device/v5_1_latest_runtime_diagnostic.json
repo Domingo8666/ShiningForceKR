@@ -4,7 +4,7 @@
   "status": "runtime-stage-not-ready",
   "trigger": "probe",
   "exit_code": 1,
-  "attempt_utc": "2026-08-03T04:09:12Z",
+  "attempt_utc": "2026-08-03T04:15:58Z",
   "checks": {
     "proot_available": true,
     "ubuntu_available": true,
@@ -24,6 +24,6 @@
     "failure_kind": "runtime-error",
     "mcp_method": null
   },
-  "runtime_failure_detail": "first-context-direct-renderer-capture-dispatch",
+  "runtime_failure_detail": "first-context-direct-renderer-artifact",
   "next_checkpoint": "repair-runtime-command"
 }
