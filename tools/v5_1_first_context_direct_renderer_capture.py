@@ -739,6 +739,10 @@ def main() -> int:
         failure_stage_path=failure_path,
         phase_prefix="first-context-direct-renderer",
     )
+    _record_failure_stage(
+        failure_path,
+        "first-context-direct-renderer-alignment",
+    )
     vram = capture.pop("vram")
     if not isinstance(vram, bytes):
         raise ValueError("direct renderer VRAM capture is invalid")
@@ -751,12 +755,20 @@ def main() -> int:
         )
     )
     local_slot_path = root / LOCAL_SLOT_ALIGNMENT_PATH
+    _record_failure_stage(
+        failure_path,
+        "first-context-direct-renderer-local-report",
+    )
     local_slot_path.parent.mkdir(parents=True, exist_ok=True)
     local_slot_path.write_text(
         json.dumps(local_slot_alignment, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     publish_image = root / PUBLISH_IMAGE_RELATIVE_PATH
+    _record_failure_stage(
+        failure_path,
+        "first-context-direct-renderer-publish-image",
+    )
     publish_image.parent.mkdir(parents=True, exist_ok=True)
     publish_image.write_bytes(local_image.read_bytes())
     if not publish_image.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"):
@@ -796,6 +808,10 @@ def main() -> int:
             else "trace-direct-renderer-slot-alignment"
         ),
     }
+    _record_failure_stage(
+        failure_path,
+        "first-context-direct-renderer-artifact",
+    )
     validate_first_context_direct_renderer_capture(safe)
     safe_path = root / PUBLISH_RELATIVE_PATH
     safe_path.parent.mkdir(parents=True, exist_ok=True)

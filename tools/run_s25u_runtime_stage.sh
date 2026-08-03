@@ -313,9 +313,13 @@ else
         first-context-direct-renderer-initialize|\
         first-context-direct-renderer-media|\
         first-context-direct-renderer-anchor|\
-        first-context-direct-renderer-context|\
-        first-context-direct-renderer-vram|\
-        first-context-direct-renderer-screenshot)
+         first-context-direct-renderer-context|\
+         first-context-direct-renderer-vram|\
+         first-context-direct-renderer-screenshot|\
+         first-context-direct-renderer-alignment|\
+         first-context-direct-renderer-local-report|\
+         first-context-direct-renderer-publish-image|\
+         first-context-direct-renderer-artifact)
           ;;
         *)
           failure_stage=unavailable
