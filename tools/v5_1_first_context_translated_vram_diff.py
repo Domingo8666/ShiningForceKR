@@ -11,8 +11,10 @@ bytes, glyph identities, registers, and addresses remain phone-local.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import re
 
@@ -403,9 +405,13 @@ def _capture_anchor_vram(
     capture_screenshot: bool = True,
     capture_vram: bool = True,
     write_screenshot: bool = True,
+    capture_callback: Callable[[dict[str, object]], None] | None = None,
+    exit_after_callback: bool = False,
 ) -> dict[str, object]:
     if not capture_screenshot and not capture_vram:
         raise ValueError("at least one direct capture payload is required")
+    if exit_after_callback and capture_callback is None:
+        raise ValueError("immediate capture exit requires a callback")
     _record_failure_stage(failure_stage_path, f"{phase_prefix}-initialize")
     client = McpStdioClient(_default_command())
     breakpoint_armed = False
@@ -535,6 +541,13 @@ def _capture_anchor_vram(
                 "size": int(area["size"]),
             }
         _record_failure_stage(failure_stage_path, f"{phase_prefix}-payload-ready")
+        if capture_callback is not None:
+            capture_callback(result)
+            if exit_after_callback:
+                # Gearsystem's Android child can block indefinitely during
+                # object teardown.  The callback has already fsynced and
+                # validated every safe artifact needed by the parent shell.
+                os._exit(0)
         capture_complete = True
         return result
     finally:

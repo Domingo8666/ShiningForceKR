@@ -814,6 +814,60 @@ def main() -> int:
     local_image = root / LOCAL_EVIDENCE_PATH
     screenshot_receipt: dict[str, object] | None = None
     screenshot_image = root / PUBLISH_SCREENSHOT_IMAGE_RELATIVE_PATH
+
+    def publish_split_screenshot(captured: dict[str, object]) -> None:
+        _record_failure_stage(
+            failure_path,
+            "first-context-direct-renderer-publish-image",
+        )
+        screenshot_image.parent.mkdir(parents=True, exist_ok=True)
+        screenshot_png = captured.pop("screenshot_png", None)
+        if not isinstance(screenshot_png, bytes):
+            raise ValueError("direct renderer screenshot payload is invalid")
+        screenshot_image.write_bytes(screenshot_png)
+        if not screenshot_image.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"):
+            raise ValueError("direct renderer screenshot image is not PNG")
+        safe_screenshot = {
+            "artifact_kind": SCREENSHOT_ARTIFACT_KIND,
+            "schema_version": SCREENSHOT_SCHEMA_VERSION,
+            "status": "direct-renderer-screenshot-captured",
+            "baseline_target_sha256": build["baseline_target_sha256"],
+            "test_target_sha256": build["test_target_sha256"],
+            "first_context_translation_test_build_sha256": sha256_file(
+                paths["build"]
+            ),
+            "local_encoding_sha256": sha256_file(paths["encoding"]),
+            "capture_png_sha256": sha256_file(screenshot_image),
+            "captured_utc": datetime.now(timezone.utc).isoformat().replace(
+                "+00:00", "Z"
+            ),
+            "runtime_entry": {
+                "selector": int(captured["selector"]),
+                "ordinal": int(captured["ordinal"]),
+            },
+            "renderer_route": (
+                "proven-visible-page"
+                if args.proven_visible_page
+                else "direct-observed-page"
+            ),
+            "runtime_stage_request_id": request["request_id"],
+            "cold_boot": True,
+            "human_visual_review_required": True,
+            "next_checkpoint": "capture-direct-renderer-vram-in-fresh-session",
+        }
+        _record_failure_stage(
+            failure_path,
+            "first-context-direct-renderer-artifact",
+        )
+        validate_first_context_direct_renderer_screenshot(safe_screenshot)
+        screenshot_receipt_path = root / PUBLISH_SCREENSHOT_RELATIVE_PATH
+        screenshot_receipt_path.parent.mkdir(parents=True, exist_ok=True)
+        screenshot_receipt_path.write_text(
+            json.dumps(safe_screenshot, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        failure_path.unlink(missing_ok=True)
+
     if args.vram_only:
         screenshot_receipt_path = root / PUBLISH_SCREENSHOT_RELATIVE_PATH
         if not screenshot_receipt_path.is_file() or not screenshot_image.is_file():
@@ -860,59 +914,13 @@ def main() -> int:
             capture_screenshot=True,
             capture_vram=not args.screenshot_only,
             write_screenshot=not args.screenshot_only,
+            capture_callback=(
+                publish_split_screenshot if args.screenshot_only else None
+            ),
+            exit_after_callback=args.screenshot_only,
         )
     if args.screenshot_only:
-        _record_failure_stage(
-            failure_path,
-            "first-context-direct-renderer-publish-image",
-        )
-        screenshot_image.parent.mkdir(parents=True, exist_ok=True)
-        screenshot_png = capture.pop("screenshot_png", None)
-        if not isinstance(screenshot_png, bytes):
-            raise ValueError("direct renderer screenshot payload is invalid")
-        screenshot_image.write_bytes(screenshot_png)
-        if not screenshot_image.read_bytes().startswith(b"\x89PNG\r\n\x1a\n"):
-            raise ValueError("direct renderer screenshot image is not PNG")
-        safe_screenshot = {
-            "artifact_kind": SCREENSHOT_ARTIFACT_KIND,
-            "schema_version": SCREENSHOT_SCHEMA_VERSION,
-            "status": "direct-renderer-screenshot-captured",
-            "baseline_target_sha256": build["baseline_target_sha256"],
-            "test_target_sha256": build["test_target_sha256"],
-            "first_context_translation_test_build_sha256": sha256_file(
-                paths["build"]
-            ),
-            "local_encoding_sha256": sha256_file(paths["encoding"]),
-            "capture_png_sha256": sha256_file(screenshot_image),
-            "captured_utc": datetime.now(timezone.utc).isoformat().replace(
-                "+00:00", "Z"
-            ),
-            "runtime_entry": {
-                "selector": int(capture["selector"]),
-                "ordinal": int(capture["ordinal"]),
-            },
-            "renderer_route": (
-                "proven-visible-page"
-                if args.proven_visible_page
-                else "direct-observed-page"
-            ),
-            "runtime_stage_request_id": request["request_id"],
-            "cold_boot": True,
-            "human_visual_review_required": True,
-            "next_checkpoint": "capture-direct-renderer-vram-in-fresh-session",
-        }
-        _record_failure_stage(
-            failure_path,
-            "first-context-direct-renderer-artifact",
-        )
-        validate_first_context_direct_renderer_screenshot(safe_screenshot)
-        screenshot_receipt_path = root / PUBLISH_SCREENSHOT_RELATIVE_PATH
-        screenshot_receipt_path.parent.mkdir(parents=True, exist_ok=True)
-        screenshot_receipt_path.write_text(
-            json.dumps(safe_screenshot, ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        failure_path.unlink(missing_ok=True)
+        publish_split_screenshot(capture)
         print(f"SFKR direct renderer screenshot: {screenshot_image}")
         return 0
     _record_failure_stage(
