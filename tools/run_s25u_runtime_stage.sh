@@ -335,6 +335,8 @@ else
          first-context-direct-renderer-screenshot-get|\
          first-context-direct-renderer-screenshot-parse|\
          first-context-direct-renderer-screenshot-write|\
+         first-context-direct-renderer-screenshot-buffered|\
+         first-context-direct-renderer-payload-ready|\
          first-context-direct-renderer-alignment|\
          first-context-direct-renderer-local-report|\
          first-context-direct-renderer-publish-image|\

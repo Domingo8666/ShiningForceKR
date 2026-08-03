@@ -513,6 +513,10 @@ def _capture_anchor_vram(
             else:
                 result["screenshot_png"] = png
                 result["screenshot"] = screen_metadata
+                _record_failure_stage(
+                    failure_stage_path,
+                    f"{phase_prefix}-screenshot-buffered",
+                )
         if capture_vram:
             _record_failure_stage(failure_stage_path, f"{phase_prefix}-vram-list")
             memory_areas = client.call("list_memory_areas")
@@ -529,6 +533,7 @@ def _capture_anchor_vram(
                 "name": str(area["name"]),
                 "size": int(area["size"]),
             }
+        _record_failure_stage(failure_stage_path, f"{phase_prefix}-payload-ready")
         return result
     finally:
         if breakpoint_armed:
