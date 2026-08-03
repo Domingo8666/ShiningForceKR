@@ -369,6 +369,11 @@ else
       # published once instead of rerunning the same eight-minute probe.
       return 1
     }
+    record_direct_renderer_prepare_failure() {
+      mkdir -p analysis/device
+      printf '%s\n' "$1" > \
+        analysis/device/v5_1_latest_first_context_direct_renderer_capture_failure_stage.txt
+    }
     if [ "$direct_capture_mode" = "combined" ] && \
       python - "$direct_capture_request_id" <<'PY'
 from pathlib import Path
@@ -434,10 +439,22 @@ PY
         reports/local/v5_1_first_context_direct_renderer_capture_failure_stage.txt \
         analysis/device/v5_1_latest_first_context_direct_renderer_capture_failure_stage.txt
       direct_renderer_capture_output="$(
-        python tools/v5_1_first_context_translation_encoding.py \
-          --direct-renderer-observed-page &&
-        python tools/v5_1_first_context_record_reinsertion.py &&
-        python tools/v5_1_first_context_translation_test_build.py &&
+        if ! python tools/v5_1_first_context_translation_encoding.py \
+          --direct-renderer-observed-page; then
+          record_direct_renderer_prepare_failure \
+            first-context-direct-renderer-prepare-encoding
+          exit 1
+        fi
+        if ! python tools/v5_1_first_context_record_reinsertion.py; then
+          record_direct_renderer_prepare_failure \
+            first-context-direct-renderer-prepare-record
+          exit 1
+        fi
+        if ! python tools/v5_1_first_context_translation_test_build.py; then
+          record_direct_renderer_prepare_failure \
+            first-context-direct-renderer-prepare-build
+          exit 1
+        fi
         run_direct_renderer_capture_bounded 2>&1
       )"
     fi
