@@ -505,6 +505,11 @@ class McpStdioClient:
                 self._process.kill()
         self._process.wait(timeout=5)
 
+    def abort(self) -> None:
+        """Stop a disposable emulator child without waiting for shutdown."""
+        if self._process.poll() is None:
+            self._process.kill()
+
 
 def _step_frames_and_wait(
     client: McpStdioClient,
