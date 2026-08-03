@@ -13,7 +13,10 @@ import argparse
 try:
     from .patch_io import sha256_file
     from .v5_1_png_pixels import decode_png_rgba
-    from .v5_1_first_context_translated_vram_diff import _capture_anchor_vram
+    from .v5_1_first_context_translated_vram_diff import (
+        _capture_anchor_vram,
+        _record_failure_stage,
+    )
     from .v5_1_first_context_translation_encoding import (
         DIRECT_RENDERER_GLYPH_LAST_SYMBOL,
         FONT_PAGE_COUNT,
@@ -28,7 +31,10 @@ try:
 except ImportError:  # pragma: no cover - direct script execution
     from patch_io import sha256_file
     from v5_1_png_pixels import decode_png_rgba
-    from v5_1_first_context_translated_vram_diff import _capture_anchor_vram
+    from v5_1_first_context_translated_vram_diff import (
+        _capture_anchor_vram,
+        _record_failure_stage,
+    )
     from v5_1_first_context_translation_encoding import (
         DIRECT_RENDERER_GLYPH_LAST_SYMBOL,
         FONT_PAGE_COUNT,

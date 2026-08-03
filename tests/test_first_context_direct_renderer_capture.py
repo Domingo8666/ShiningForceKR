@@ -17,6 +17,7 @@ from tools.v5_1_first_context_direct_renderer_capture import (
     NAME_TABLE_WIDTH,
     analyze_direct_renderer_slot_alignment,
     capture_mode_from_request_id,
+    _record_failure_stage,
     validate_first_context_direct_renderer_capture,
     validate_first_context_direct_renderer_screenshot,
 )
@@ -37,6 +38,15 @@ from unittest.mock import patch
 
 
 class FirstContextDirectRendererCaptureTests(unittest.TestCase):
+    def test_capture_failure_stage_writer_is_available(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "capture-stage.txt"
+            _record_failure_stage(path, "first-context-direct-renderer-entry")
+            self.assertEqual(
+                path.read_text(encoding="utf-8"),
+                "first-context-direct-renderer-entry\n",
+            )
+
     def test_persisted_request_id_selects_split_capture_mode(self) -> None:
         self.assertEqual(
             capture_mode_from_request_id("direct-slot-69-screenshot"),
