@@ -1825,19 +1825,18 @@ PY
   fi
 fi
 
-if [ "$stage_status" -eq 0 ] && [ -n "${stage_request_token:-}" ]; then
-  mkdir -p "$state_dir"
-  stage_request_temp="$last_runtime_stage_request_file.tmp"
-  printf '%s\n' "$stage_request_token" >"$stage_request_temp"
-  mv "$stage_request_temp" "$last_runtime_stage_request_file"
-fi
-
 python tools/v5_1_runtime_diagnostic.py \
   --trigger "$diagnostic_trigger" \
   --exit-code "$stage_status"
 diagnostic_status=$?
 if [ "$diagnostic_status" -ne 0 ] && [ "$stage_status" -eq 0 ]; then
   stage_status="$diagnostic_status"
+fi
+if [ "$stage_status" -eq 0 ] && [ -n "${stage_request_token:-}" ]; then
+  mkdir -p "$state_dir"
+  stage_request_temp="$last_runtime_stage_request_file.tmp"
+  printf '%s\n' "$stage_request_token" >"$stage_request_temp"
+  mv "$stage_request_temp" "$last_runtime_stage_request_file"
 fi
 if [ "$stage_status" -ne 0 ]; then
   write_next_step \

@@ -142,6 +142,10 @@ class S25UAutopilotTests(unittest.TestCase):
             'critical_path_request_id="${stage_request_token:-}"',
             RUNTIME_STAGE,
         )
+        self.assertGreater(
+            RUNTIME_STAGE.index('mv "$stage_request_temp"'),
+            RUNTIME_STAGE.index('python tools/v5_1_runtime_diagnostic.py'),
+        )
         self.assertIn(
             'python - "$direct_capture_request_id"',
             RUNTIME_STAGE,
