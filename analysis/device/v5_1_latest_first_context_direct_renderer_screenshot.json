@@ -1,0 +1,20 @@
+{
+  "artifact_kind": "sanitized-v5-1-first-context-direct-renderer-screenshot",
+  "schema_version": 1,
+  "status": "direct-renderer-screenshot-captured",
+  "baseline_target_sha256": "5dc9d1aef40c8fea4e9374ddf12a7e6eff4fb5d77fe66d5361d78059186adb39",
+  "test_target_sha256": "aed8dabc53f8fcc54d8c5ef02d3dcd761eb4c87d4c12713e208a0db0077546f8",
+  "first_context_translation_test_build_sha256": "83d6c8544f1904438f25030bd6bc32031e00bc3ae15953d1b0501b945870ced1",
+  "local_encoding_sha256": "97e590837a9972d2056cce85ee64dbac09a43465f2d8a34c68b46f642978aa5d",
+  "capture_png_sha256": "7a93440f24db86bb2ef8fb08c73224b92bae2b3d95fa04498ce75de28388bbe3",
+  "captured_utc": "2026-08-03T04:06:45.324755Z",
+  "runtime_entry": {
+    "selector": 2,
+    "ordinal": 147
+  },
+  "renderer_route": "direct-observed-page",
+  "runtime_stage_request_id": "direct-renderer-slot-map-20260803-78-screenshot",
+  "cold_boot": true,
+  "human_visual_review_required": true,
+  "next_checkpoint": "capture-direct-renderer-vram-in-fresh-session"
+}
