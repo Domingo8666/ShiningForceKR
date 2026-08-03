@@ -166,10 +166,16 @@ else
       if [ -n "$stage_request_payload" ]; then
         stage_request_token="${stage_request_payload%%|*}"
         stage_request_focus="${stage_request_payload#*|}"
-        # The tracked, validated request is authoritative.  A stale private
-        # completion marker must never redirect a failed capture back to the
-        # automatically selected analysis stage.
-        critical_path_focus="$stage_request_focus"
+        last_stage_request="$(
+          cat "$last_runtime_stage_request_file" 2>/dev/null || true
+        )"
+        # A failed request is retried after a safe-artifact rebase because its
+        # completion marker is still stale.  Once that exact request succeeds,
+        # release the override so later commits can advance to the critical
+        # path selected from the newly captured evidence.
+        if [ "$stage_request_token" != "$last_stage_request" ]; then
+          critical_path_focus="$stage_request_focus"
+        fi
       fi
   fi
   # Keep the validated request identity on the same variable used by the
