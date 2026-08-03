@@ -7,7 +7,7 @@
   "first_context_translation_test_build_sha256": "c60152f72f3f643e0bf74548177894f727a9a9e9dabd29ab647d90ee37c91efc",
   "local_encoding_sha256": "ecb8f8de52ec52d549644d9d101a00bfe519eb0feff99b76d42c05da1b7aadcd",
   "capture_png_sha256": "e658405aedc5a29af9846c49458174bb5aeef81c85b0df9a748d4581cd648a24",
-  "captured_utc": "2026-08-03T04:35:28.446637Z",
+  "captured_utc": "2026-08-03T04:42:40.238254Z",
   "runtime_entry": {
     "selector": 2,
     "ordinal": 147
